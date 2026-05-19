@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Outil Manager — Dashboard</title>
+  <link rel="stylesheet" href="../../colors_and_type.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: var(--font-sans);
+      background: var(--neutral-50);
+    }
+    
+    #root {
+      display: flex;
+      min-height: 100vh;
+    }
+    
+    .sidebar {
+      width: 260px;
+      background: white;
+      border-right: 1px solid var(--neutral-200);
+      display: flex;
+      flex-direction: column;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+    }
+    
+    .sidebar-header {
+      padding: 24px 20px;
+      border-bottom: 1px solid var(--neutral-100);
+    }
+    
+    .logo-area {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: var(--primary-600);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+    }
+    
+    .logo-text {
+      font-weight: 800;
+      font-size: 16px;
+      color: var(--neutral-900);
+      letter-spacing: 0.3px;
+    }
+    
+    .user-role {
+      font-size: 13px;
+      color: var(--neutral-500);
+      margin-left: 48px;
+    }
+    
+    .nav-menu {
+      flex: 1;
+      padding: 16px 12px;
+      overflow-y: auto;
+    }
+    
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: var(--radius-md);
+      color: var(--neutral-600);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 150ms;
+      border: none;
+      background: transparent;
+      width: 100%;
+      text-align: left;
+      margin-bottom: 4px;
+    }
+    
+    .nav-item:hover {
+      background: var(--neutral-50);
+      color: var(--neutral-900);
+    }
+    
+    .nav-item.active {
+      background: var(--primary-50);
+      color: var(--primary-700);
+      font-weight: 600;
+    }
+    
+    .sidebar-footer {
+      padding: 16px 20px;
+      border-top: 1px solid var(--neutral-100);
+    }
+    
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .user-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-full);
+      background: var(--primary-500);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    
+    .user-details {
+      flex: 1;
+    }
+    
+    .user-name {
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--neutral-900);
+    }
+    
+    .user-email {
+      font-size: 11px;
+      color: var(--neutral-500);
+    }
+    
+    .main-content {
+      flex: 1;
+      overflow-y: auto;
+    }
+    
+    .top-bar {
+      height: 64px;
+      background: white;
+      border-bottom: 1px solid var(--neutral-200);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    
+    .page-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--neutral-900);
+    }
+    
+    .top-actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    
+    .btn {
+      padding: 0 20px;
+      height: 40px;
+      border-radius: var(--radius-md);
+      font-weight: 600;
+      font-size: 14px;
+      border: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 150ms;
+      font-family: var(--font-sans);
+    }
+    
+    .btn-primary {
+      background: var(--primary-600);
+      color: white;
+      box-shadow: var(--shadow-sm);
+    }
+    
+    .btn-primary:hover {
+      background: var(--primary-700);
+    }
+    
+    .btn-secondary {
+      background: white;
+      color: var(--neutral-700);
+      border: 1px solid var(--neutral-200);
+    }
+    
+    .btn-secondary:hover {
+      background: var(--neutral-50);
+    }
+    
+    .content-area {
+      padding: 24px 32px;
+    }
+    
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+    
+    .kpi-card {
+      background: white;
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--neutral-100);
+      transition: all 150ms;
+    }
+    
+    .kpi-card:hover {
+      box-shadow: var(--shadow-md);
+      border-color: var(--neutral-200);
+    }
+    
+    .kpi-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    
+    .kpi-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--neutral-600);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    .kpi-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .kpi-value {
+      font-size: 36px;
+      font-weight: 800;
+      color: var(--neutral-900);
+      margin-bottom: 4px;
+      font-family: var(--font-mono);
+    }
+    
+    .kpi-trend {
+      font-size: 13px;
+      color: var(--neutral-500);
+    }
+    
+    .kpi-trend.positive {
+      color: var(--success-600);
+    }
+    
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    
+    .section-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--neutral-900);
+    }
+    
+    .table-card {
+      background: white;
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--neutral-100);
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    
+    .table-filters {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--neutral-100);
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    
+    .filter-select {
+      padding: 0 12px;
+      height: 36px;
+      border: 1px solid var(--neutral-200);
+      border-radius: var(--radius-md);
+      font-size: 14px;
+      background: white;
+      color: var(--neutral-700);
+      cursor: pointer;
+    }
+    
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    
+    .data-table thead {
+      background: var(--neutral-50);
+      border-bottom: 1px solid var(--neutral-200);
+    }
+    
+    .data-table th {
+      padding: 12px 20px;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--neutral-600);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    .data-table td {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--neutral-100);
+      font-size: 14px;
+    }
+    
+    .data-table tbody tr:hover {
+      background: var(--neutral-50);
+    }
+    
+    .table-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-full);
+      background: var(--primary-500);
+      color: white;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 12px;
+      margin-right: 10px;
+      vertical-align: middle;
+    }
+    
+    .table-name {
+      font-weight: 600;
+      color: var(--neutral-900);
+    }
+    
+    .table-meta {
+      font-size: 13px;
+      color: var(--neutral-500);
+      display: block;
+      margin-top: 2px;
+    }
+    
+    .time-cell {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--neutral-700);
+    }
+    
+    .map-section {
+      background: white;
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--neutral-100);
+      overflow: hidden;
+      height: 400px;
+    }
+    
+    #dashboard-map {
+      width: 100%;
+      height: 100%;
+    }
+    
+    .chart-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+      gap: 20px;
+      margin-top: 24px;
+    }
+    
+    .chart-card {
+      background: white;
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--neutral-100);
+    }
+    
+    .chart-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--neutral-900);
+      margin-bottom: 16px;
+    }
+    
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: var(--radius-full);
+    }
+    
+    .status-disponible {
+      background: var(--success-100);
+      color: var(--success-700);
+    }
+    .status-disponible .status-dot { background: var(--success-500); }
+    
+    .status-mission {
+      background: var(--primary-100);
+      color: var(--primary-700);
+    }
+    .status-mission .status-dot { background: var(--primary-500); }
+    
+    .status-absent {
+      background: var(--error-100);
+      color: var(--error-700);
+    }
+    .status-absent .status-dot { background: var(--error-500); }
+    
+    .status-offline {
+      background: var(--neutral-100);
+      color: var(--neutral-700);
+    }
+    .status-offline .status-dot { background: var(--neutral-400); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+    
+    const animateurs = [
+      { id: 1, name: 'Karim Mansouri', initials: 'KM', sector: 'Centre', city: 'Casablanca', status: 'disponible', entree: '08:15', sortie: '17:30', lat: 33.5731, lng: -7.5898 },
+      { id: 2, name: 'Sara Bennani', initials: 'SB', sector: 'Nord', city: 'Casablanca', status: 'mission', entree: '08:00', sortie: '—', lat: 33.5950, lng: -7.6187 },
+      { id: 3, name: 'Ahmed El Amrani', initials: 'AE', sector: 'Sud', city: 'Casablanca', status: 'offline', entree: '—', sortie: '—', lat: 33.5500, lng: -7.6000 },
+      { id: 4, name: 'Fatima Zahra', initials: 'FZ', sector: 'Est', city: 'Casablanca', status: 'disponible', entree: '07:45', sortie: '16:00', lat: 33.5850, lng: -7.5700 },
+      { id: 5, name: 'Youssef Alami', initials: 'YA', sector: 'Ouest', city: 'Casablanca', status: 'absent', entree: '—', sortie: '—', lat: 33.5680, lng: -7.6100 },
+      { id: 6, name: 'Nadia Idrissi', initials: 'NI', sector: 'Centre', city: 'Casablanca', status: 'mission', entree: '08:30', sortie: '—', lat: 33.5780, lng: -7.5950 },
+      { id: 7, name: 'Omar Tazi', initials: 'OT', sector: 'Nord', city: 'Casablanca', status: 'disponible', entree: '08:10', sortie: '17:15', lat: 33.5920, lng: -7.6150 },
+      { id: 8, name: 'Leila Fassi', initials: 'LF', sector: 'Sud', city: 'Casablanca', status: 'mission', entree: '07:55', sortie: '—', lat: 33.5550, lng: -7.6050 },
+    ];
+    
+    function Sidebar({ currentView, setCurrentView }) {
+      return (
+        <div className="sidebar">
+          <div className="sidebar-header">
+            <div className="logo-area">
+              <div className="logo-icon">
+                <i data-lucide="clock" style={{ width: 20, height: 20 }}></i>
+              </div>
+              <div className="logo-text">OUTILS POINTAGE</div>
+            </div>
+            <div className="user-role">Manager</div>
+          </div>
+          
+          <nav className="nav-menu">
+            <button 
+              className={`nav-item ${currentView === 'dashboard' ? 'active' : ''}`}
+              onClick={() => setCurrentView('dashboard')}
+            >
+              <i data-lucide="layout-dashboard" style={{ width: 20, height: 20 }}></i>
+              Dashboard
+            </button>
+            <button className="nav-item">
+              <i data-lucide="users" style={{ width: 20, height: 20 }}></i>
+              Animateurs
+            </button>
+            <button className="nav-item">
+              <i data-lucide="map-pin" style={{ width: 20, height: 20 }}></i>
+              Géolocalisation
+            </button>
+            <button className="nav-item">
+              <i data-lucide="calendar" style={{ width: 20, height: 20 }}></i>
+              Historique
+            </button>
+            <button className="nav-item">
+              <i data-lucide="bar-chart-3" style={{ width: 20, height: 20 }}></i>
+              Rapports
+            </button>
+            <button className="nav-item">
+              <i data-lucide="settings" style={{ width: 20, height: 20 }}></i>
+              Paramètres
+            </button>
+          </nav>
+          
+          <div className="sidebar-footer">
+            <div className="user-info">
+              <div className="user-avatar">MH</div>
+              <div className="user-details">
+                <div className="user-name">Manager Casablanca</div>
+                <div className="user-email">manager@example.com</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
+    function KPICards() {
+      const disponibles = animateurs.filter(a => a.status === 'disponible').length;
+      const enMission = animateurs.filter(a => a.status === 'mission').length;
+      const absents = animateurs.filter(a => a.status === 'absent').length;
+      const secteurs = [...new Set(animateurs.map(a => a.sector))].length;
+      
+      return (
+        <div className="kpi-grid">
+          <div className="kpi-card">
+            <div className="kpi-header">
+              <div className="kpi-label">Disponibles</div>
+              <div className="kpi-icon" style={{ background: 'var(--success-50)', color: 'var(--success-600)' }}>
+                <i data-lucide="user-check" style={{ width: 20, height: 20 }}></i>
+              </div>
+            </div>
+            <div className="kpi-value">{disponibles}</div>
+            <div className="kpi-trend positive">↑ +2 depuis hier</div>
+          </div>
+          
+          <div className="kpi-card">
+            <div className="kpi-header">
+              <div className="kpi-label">En mission</div>
+              <div className="kpi-icon" style={{ background: 'var(--primary-50)', color: 'var(--primary-600)' }}>
+                <i data-lucide="navigation" style={{ width: 20, height: 20 }}></i>
+              </div>
+            </div>
+            <div className="kpi-value">{enMission}</div>
+            <div className="kpi-trend">{Math.round(enMission / animateurs.length * 100)}% du total</div>
+          </div>
+          
+          <div className="kpi-card">
+            <div className="kpi-header">
+              <div className="kpi-label">Absents</div>
+              <div className="kpi-icon" style={{ background: 'var(--error-50)', color: 'var(--error-600)' }}>
+                <i data-lucide="user-x" style={{ width: 20, height: 20 }}></i>
+              </div>
+            </div>
+            <div className="kpi-value">{absents}</div>
+            <div className="kpi-trend">{Math.round(absents / animateurs.length * 100)}% du total</div>
+          </div>
+          
+          <div className="kpi-card">
+            <div className="kpi-header">
+              <div className="kpi-label">Secteurs</div>
+              <div className="kpi-icon" style={{ background: 'var(--info-50)', color: 'var(--info-600)' }}>
+                <i data-lucide="map" style={{ width: 20, height: 20 }}></i>
+              </div>
+            </div>
+            <div className="kpi-value">{secteurs}</div>
+            <div className="kpi-trend">Casablanca</div>
+          </div>
+        </div>
+      );
+    }
+    
+    function AnimateursTable({ animateurs }) {
+      const statusLabels = {
+        disponible: 'Disponible',
+        mission: 'En mission',
+        absent: 'Absent',
+        offline: 'Hors ligne'
+      };
+      
+      const avatarColors = ['var(--primary-500)', 'var(--success-500)', 'var(--info-500)', 'var(--warning-500)'];
+      
+      return (
+        <div className="table-card">
+          <div className="table-filters">
+            <select className="filter-select">
+              <option>Tous les secteurs</option>
+              <option>Centre</option>
+              <option>Nord</option>
+              <option>Sud</option>
+              <option>Est</option>
+              <option>Ouest</option>
+            </select>
+            <select className="filter-select">
+              <option>Tous les statuts</option>
+              <option>Disponible</option>
+              <option>En mission</option>
+              <option>Absent</option>
+              <option>Hors ligne</option>
+            </select>
+            <select className="filter-select">
+              <option>Aujourd'hui</option>
+              <option>Cette semaine</option>
+              <option>Ce mois</option>
+            </select>
+          </div>
+          
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Animateur</th>
+                <th>Secteur</th>
+                <th>Statut</th>
+                <th>Entrée</th>
+                <th>Sortie</th>
+                <th>GPS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {animateurs.map((a, idx) => (
+                <tr key={a.id}>
+                  <td>
+                    <span className="table-avatar" style={{ background: avatarColors[idx % avatarColors.length] }}>
+                      {a.initials}
+                    </span>
+                    <span className="table-name">{a.name}</span>
+                  </td>
+                  <td>{a.sector}</td>
+                  <td>
+                    <span className={`status-badge status-${a.status}`}>
+                      <span className="status-dot"></span>
+                      {statusLabels[a.status]}
+                    </span>
+                  </td>
+                  <td className="time-cell">{a.entree}</td>
+                  <td className="time-cell">{a.sortie}</td>
+                  <td className="time-cell">{a.lat.toFixed(3)}, {a.lng.toFixed(3)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+    
+    function MapDashboard({ animateurs }) {
+      const mapRef = useRef(null);
+      
+      useEffect(() => {
+        if (!mapRef.current) {
+          const map = L.map('dashboard-map').setView([33.5731, -7.5898], 13);
+          
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+          }).addTo(map);
+          
+          const statusColors = {
+            disponible: '#12A150',
+            mission: '#0065FF',
+            absent: '#EF4444',
+            offline: '#8B949E'
+          };
+          
+          animateurs.forEach(a => {
+            const color = statusColors[a.status];
+            const marker = L.circleMarker([a.lat, a.lng], {
+              radius: 8,
+              fillColor: color,
+              color: 'white',
+              weight: 2,
+              fillOpacity: 0.9
+            }).addTo(map);
+            
+            marker.bindPopup(`<strong>${a.name}</strong><br>${a.sector}`);
+          });
+          
+          mapRef.current = map;
+        }
+        
+        return () => {
+          if (mapRef.current) {
+            mapRef.current.remove();
+            mapRef.current = null;
+          }
+        };
+      }, []);
+      
+      return <div id="dashboard-map"></div>;
+    }
+    
+    function Charts() {
+      const chartRef1 = useRef(null);
+      const chartRef2 = useRef(null);
+      
+      useEffect(() => {
+        if (chartRef1.current) {
+          const ctx1 = chartRef1.current.getContext('2d');
+          new Chart(ctx1, {
+            type: 'bar',
+            data: {
+              labels: ['Centre', 'Nord', 'Sud', 'Est', 'Ouest'],
+              datasets: [{
+                label: 'Taux de présence (%)',
+                data: [85, 92, 78, 88, 82],
+                backgroundColor: 'rgba(0, 82, 204, 0.7)',
+                borderColor: 'rgb(0, 82, 204)',
+                borderWidth: 2,
+                borderRadius: 6
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false }
+              },
+              scales: {
+                y: {
+                  beginAtZero: true,
+                  max: 100,
+                  ticks: {
+                    callback: (value) => value + '%'
+                  }
+                }
+              }
+            }
+          });
+        }
+        
+        if (chartRef2.current) {
+          const ctx2 = chartRef2.current.getContext('2d');
+          new Chart(ctx2, {
+            type: 'doughnut',
+            data: {
+              labels: ['Disponible', 'En mission', 'Absent', 'Hors ligne'],
+              datasets: [{
+                data: [3, 3, 1, 1],
+                backgroundColor: [
+                  'rgb(18, 161, 80)',
+                  'rgb(0, 101, 255)',
+                  'rgb(239, 68, 68)',
+                  'rgb(139, 148, 158)'
+                ],
+                borderWidth: 0
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  position: 'bottom'
+                }
+              }
+            }
+          });
+        }
+      }, []);
+      
+      return (
+        <div className="chart-grid">
+          <div className="chart-card">
+            <div className="chart-title">Taux de présence par secteur</div>
+            <div style={{ height: 250 }}>
+              <canvas ref={chartRef1}></canvas>
+            </div>
+          </div>
+          
+          <div className="chart-card">
+            <div className="chart-title">Répartition des statuts</div>
+            <div style={{ height: 250 }}>
+              <canvas ref={chartRef2}></canvas>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
+    function App() {
+      const [currentView, setCurrentView] = useState('dashboard');
+      
+      useEffect(() => {
+        lucide.createIcons();
+      });
+      
+      return (
+        <div style={{ display: 'flex' }}>
+          <Sidebar currentView={currentView} setCurrentView={setCurrentView} />
+          
+          <div className="main-content">
+            <div className="top-bar">
+              <div className="page-title">Dashboard</div>
+              <div className="top-actions">
+                <button className="btn btn-secondary">
+                  <i data-lucide="download" style={{ width: 18, height: 18 }}></i>
+                  Exporter
+                </button>
+                <button className="btn btn-primary">
+                  <i data-lucide="refresh-cw" style={{ width: 18, height: 18 }}></i>
+                  Actualiser
+                </button>
+              </div>
+            </div>
+            
+            <div className="content-area">
+              <KPICards />
+              
+              <div className="section-header">
+                <div className="section-title">Animateurs actifs</div>
+              </div>
+              <AnimateursTable animateurs={animateurs} />
+              
+              <div className="section-header">
+                <div className="section-title">Géolocalisation en temps réel</div>
+              </div>
+              <div className="map-section">
+                <MapDashboard animateurs={animateurs} />
+              </div>
+              
+              <Charts />
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>

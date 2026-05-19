@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Typographie</title>
+  <link rel="stylesheet" href="../colors_and_type.css">
+  <style>
+    body {
+      padding: 24px;
+      background: white;
+    }
+    .type-sample {
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--neutral-100);
+    }
+    .type-sample:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+    }
+    .type-label {
+      font-size: 11px;
+      color: var(--neutral-500);
+      font-weight: 600;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .mono-sample {
+      font-family: var(--font-mono);
+      color: var(--primary-600);
+    }
+  </style>
+</head>
+<body>
+  <div class="type-sample">
+    <div class="type-label">H1 — Display (36px/800)</div>
+    <h1 style="margin: 0;">Gestion des Animateurs</h1>
+  </div>
+  
+  <div class="type-sample">
+    <div class="type-label">H2 — Section (30px/700)</div>
+    <h2 style="margin: 0;">Statistiques du jour</h2>
+  </div>
+  
+  <div class="type-sample">
+    <div class="type-label">H3 — Subsection (24px/700)</div>
+    <h3 style="margin: 0;">Secteur Centre-Ville</h3>
+  </div>
+  
+  <div class="type-sample">
+    <div class="type-label">Body — Texte courant (16px/400)</div>
+    <p style="margin: 0;">Le pointage permet de suivre en temps réel la présence des animateurs sur le terrain et de valider leur géolocalisation.</p>
+  </div>
+  
+  <div class="type-sample">
+    <div class="type-label">Small — Métadonnées (14px/400)</div>
+    <p class="text-small text-muted" style="margin: 0;">Dernière mise à jour : Aujourd'hui à 14:32</p>
+  </div>
+  
+  <div class="type-sample">
+    <div class="type-label">Mono — Données (16px/500)</div>
+    <p class="mono-sample" style="margin: 0; font-size: 16px; font-weight: 500;">08:45 → 17:30 • GPS: 33.5731, -7.5898</p>
+  </div>
+</body>
+</html>

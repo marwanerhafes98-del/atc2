@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Badges de statut</title>
+  <link rel="stylesheet" href="../colors_and_type.css">
+  <style>
+    body {
+      padding: 24px;
+      background: white;
+    }
+    .badge-showcase {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .badge-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: var(--radius-full);
+    }
+    .badge-disponible {
+      background: var(--success-100);
+      color: var(--success-700);
+    }
+    .badge-disponible .badge-dot {
+      background: var(--success-500);
+    }
+    .badge-mission {
+      background: var(--primary-100);
+      color: var(--primary-700);
+    }
+    .badge-mission .badge-dot {
+      background: var(--primary-500);
+    }
+    .badge-absent {
+      background: var(--error-100);
+      color: var(--error-700);
+    }
+    .badge-absent .badge-dot {
+      background: var(--error-500);
+    }
+    .badge-offline {
+      background: var(--neutral-100);
+      color: var(--neutral-700);
+    }
+    .badge-offline .badge-dot {
+      background: var(--neutral-400);
+    }
+    
+    .animateur-card {
+      background: white;
+      border: 1px solid var(--neutral-200);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+      box-shadow: var(--shadow-xs);
+    }
+    .avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius-full);
+      background: var(--primary-500);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .animateur-info {
+      flex: 1;
+    }
+    .animateur-name {
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+    .animateur-sector {
+      font-size: 13px;
+      color: var(--neutral-500);
+    }
+  </style>
+</head>
+<body>
+  <div class="badge-showcase">
+    <div class="badge badge-disponible">
+      <span class="badge-dot"></span>
+      Disponible
+    </div>
+    <div class="badge badge-mission">
+      <span class="badge-dot"></span>
+      En mission
+    </div>
+    <div class="badge badge-absent">
+      <span class="badge-dot"></span>
+      Absent
+    </div>
+    <div class="badge badge-offline">
+      <span class="badge-dot"></span>
+      Hors ligne
+    </div>
+  </div>
+  
+  <div>
+    <div class="animateur-card">
+      <div class="avatar">KM</div>
+      <div class="animateur-info">
+        <div class="animateur-name">Karim Mansouri</div>
+        <div class="animateur-sector">Secteur Centre • Casablanca</div>
+      </div>
+      <div class="badge badge-disponible">
+        <span class="badge-dot"></span>
+        Disponible
+      </div>
+    </div>
+    
+    <div class="animateur-card">
+      <div class="avatar" style="background: var(--success-500);">SB</div>
+      <div class="animateur-info">
+        <div class="animateur-name">Sara Bennani</div>
+        <div class="animateur-sector">Secteur Nord • Casablanca</div>
+      </div>
+      <div class="badge badge-mission">
+        <span class="badge-dot"></span>
+        En mission
+      </div>
+    </div>
+    
+    <div class="animateur-card">
+      <div class="avatar" style="background: var(--neutral-400);">AE</div>
+      <div class="animateur-info">
+        <div class="animateur-name">Ahmed El Amrani</div>
+        <div class="animateur-sector">Secteur Sud • Casablanca</div>
+      </div>
+      <div class="badge badge-offline">
+        <span class="badge-dot"></span>
+        Hors ligne
+      </div>
+    </div>
+  </div>
+</body>
+</html>

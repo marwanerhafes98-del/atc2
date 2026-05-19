@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Boutons</title>
+  <link rel="stylesheet" href="../colors_and_type.css">
+  <style>
+    body {
+      padding: 24px;
+      background: var(--neutral-50);
+    }
+    .btn-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .btn {
+      padding: 0 20px;
+      height: 48px;
+      border-radius: var(--radius-md);
+      font-weight: 600;
+      font-size: 15px;
+      border: none;
+      cursor: pointer;
+      transition: all 150ms ease-out;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-family: var(--font-sans);
+    }
+    .btn-primary {
+      background: var(--primary-600);
+      color: white;
+      box-shadow: var(--shadow-sm);
+    }
+    .btn-primary:hover {
+      background: var(--primary-700);
+      box-shadow: var(--shadow-md);
+    }
+    .btn-secondary {
+      background: white;
+      color: var(--neutral-700);
+      border: 1px solid var(--neutral-200);
+      box-shadow: var(--shadow-xs);
+    }
+    .btn-secondary:hover {
+      background: var(--neutral-50);
+      border-color: var(--neutral-300);
+    }
+    .btn-ghost {
+      background: transparent;
+      color: var(--neutral-600);
+    }
+    .btn-ghost:hover {
+      background: var(--neutral-100);
+    }
+    .btn-success {
+      background: var(--success-600);
+      color: white;
+      box-shadow: var(--shadow-sm);
+    }
+    .btn-danger {
+      background: var(--error-500);
+      color: white;
+      box-shadow: var(--shadow-sm);
+    }
+    .btn-small {
+      height: 36px;
+      padding: 0 16px;
+      font-size: 14px;
+    }
+    .section-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--neutral-500);
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+  </style>
+</head>
+<body>
+  <div class="section-label">Actions principales</div>
+  <div class="btn-group">
+    <button class="btn btn-primary">Valider le pointage</button>
+    <button class="btn btn-secondary">Voir sur la carte</button>
+    <button class="btn btn-ghost">Annuler</button>
+  </div>
+  
+  <div class="section-label">Actions sémantiques</div>
+  <div class="btn-group">
+    <button class="btn btn-success">Marquer présent</button>
+    <button class="btn btn-danger">Marquer absent</button>
+  </div>
+  
+  <div class="section-label">Tailles</div>
+  <div class="btn-group">
+    <button class="btn btn-primary">Normal (48px)</button>
+    <button class="btn btn-primary btn-small">Compact (36px)</button>
+  </div>
+</body>
+</html>

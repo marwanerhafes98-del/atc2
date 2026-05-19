@@ -1,0 +1,16 @@
+<svg width="200" height="60" viewBox="0 0 200 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+  
+  <rect x="2" y="8" width="196" height="44" rx="6" fill="#0052CC"></rect>
+  
+  
+  <circle cx="25" cy="30" r="10" stroke="white" stroke-width="2.5" fill="none"></circle>
+  <path d="M25 24 L25 30 L29 32" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>
+  
+  
+  <text x="45" y="26" font-family="Inter, sans-serif" font-size="16" font-weight="800" fill="white" letter-spacing="0.5">OUTILS</text>
+  <text x="45" y="42" font-family="Inter, sans-serif" font-size="16" font-weight="800" fill="#FFD700" letter-spacing="0.5">POINTAGE</text>
+  
+  
+  <path d="M175 18 L175 28 L179 33 L183 28 L183 18 C183 15.8 181.2 14 179 14 C176.8 14 175 15.8 175 18Z" fill="#FFD700"></path>
+  <circle cx="179" cy="19" r="2.5" fill="#0052CC"></circle>
+</svg>
