@@ -216,6 +216,9 @@
     .login-tab.active { background:white; color:var(--primary-700); box-shadow:0 2px 8px rgba(0,0,0,0.1); }
     .login-error { background:#FEE2E2; border:1px solid #FECACA; color:#991B1B; padding:10px 14px; border-radius:var(--radius-md); font-size:13px; font-weight:600; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
     .login-success { background:#DCFCE7; border:1px solid #BBF7D0; color:#166534; padding:10px 14px; border-radius:var(--radius-md); font-size:13px; font-weight:600; margin-bottom:14px; }
+    .remember-row { display:flex; align-items:center; gap:9px; margin:2px 0 14px; }
+    .remember-row input[type=checkbox] { width:18px; height:18px; accent-color:var(--primary-600); cursor:pointer; flex-shrink:0; }
+    .remember-row label { font-size:13px; color:var(--neutral-600); cursor:pointer; user-select:none; }
   </style>
 </head>
 <body>
@@ -508,6 +511,7 @@ function LoginScreen({ onLogin }) {
   const [confirm, setConfirm] = useState('');
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
+  const [remember, setRemember] = useState(true);
 
   const VILLES = [...new Set(ANIMATEURS_DB.map(a => a.ville))].sort();
   const switchMode = (m) => { setMode(m); setError(''); };
@@ -517,7 +521,7 @@ function LoginScreen({ onLogin }) {
     const res = await LS.login(email, password);
     setLoading(false);
     if (res.error) { setError(res.error); return; }
-    onLogin(res.account);
+    onLogin(res.account, remember);
   };
 
   const handleRegister = async (e) => {
@@ -527,7 +531,7 @@ function LoginScreen({ onLogin }) {
     const res = await LS.register(name, email, password, ville);
     setLoading(false);
     if (res.error) { setError(res.error); return; }
-    onLogin(res.account);
+    onLogin(res.account, remember);
   };
 
   return (
@@ -557,6 +561,10 @@ function LoginScreen({ onLogin }) {
             <label className="form-label">Mot de passe</label>
             <input type="password" className="form-input" placeholder="••••••••"
               value={password} onChange={e => setPwd(e.target.value)} required />
+          </div>
+          <div className="remember-row">
+            <input type="checkbox" id="remember-me" checked={remember} onChange={e => setRemember(e.target.checked)} />
+            <label htmlFor="remember-me">Se souvenir de moi sur cet appareil</label>
           </div>
           <button type="submit" className="btn-login" disabled={loading}>{loading ? 'Connexion...' : 'Se connecter'}</button>
           <div className="login-hint">Comptes pré-enregistrés : mot de passe = 1234</div>
@@ -1104,7 +1112,12 @@ function ProfileView({ user, animateurs, onLogout }) {
 
 /* ── APP ── */
 function App() {
-  const [user, setUser]       = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ptg_saved_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
   const [currentView, setCurrentView] = useState('list');
   const [animateurs, setAnimateurs]   = useState(
     ANIMATEURS_DB.map(a => ({ ...a, status:'nonpointe', pointedAt:null, note:undefined }))
@@ -1162,6 +1175,17 @@ function App() {
 
   const showToast = (msg, type='neutral') => setToast({ msg, type });
 
+  const handleLogin = (account, remember) => {
+    setUser(account);
+    if (remember) localStorage.setItem('ptg_saved_user', JSON.stringify(account));
+    else localStorage.removeItem('ptg_saved_user');
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('ptg_saved_user');
+    setUser(null);
+  };
+
   const handleConfirmPointage = (id, status, note, coords) => {
     const time = NOW_TIME();
     const a    = animateurs.find(a => a.id === id);
@@ -1186,7 +1210,7 @@ function App() {
     showToast(`${form.name} ajouté`, 'success');
   };
 
-  if (!user) return <LoginScreen onLogin={setUser} />;
+  if (!user) return <LoginScreen onLogin={handleLogin} />;
 
   const visibleAnimateurs = user.ville
     ? animateurs.filter(a => a.ville === user.ville)
@@ -1230,7 +1254,7 @@ function App() {
           </div>
         )}
         {currentView === 'history' && <HistoryView userEmail={user.email} />}
-        {currentView === 'profile' && <ProfileView user={user} animateurs={visibleAnimateurs} onLogout={() => setUser(null)} />}
+        {currentView === 'profile' && <ProfileView user={user} animateurs={visibleAnimateurs} onLogout={handleLogout} />}
       </div>
 
       {!selectedAnimateur && (
