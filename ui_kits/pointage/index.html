@@ -567,7 +567,6 @@ function LoginScreen({ onLogin }) {
             <label htmlFor="remember-me">Se souvenir de moi sur cet appareil</label>
           </div>
           <button type="submit" className="btn-login" disabled={loading}>{loading ? 'Connexion...' : 'Se connecter'}</button>
-          <div className="login-hint">Comptes pré-enregistrés : mot de passe = 1234</div>
         </form>
       ) : (
         <form className="login-form" onSubmit={handleRegister}>
