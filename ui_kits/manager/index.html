@@ -1674,11 +1674,34 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
 
 /* ── MAP VIEW ── */
 function MapView({ accounts }) {
-  const mapRef   = useRef(null);
-  const leafRef  = useRef(null);
+  const mapRef     = useRef(null);
+  const leafRef    = useRef(null);
   const markersRef = useRef({});
-  const [locs,    setLocs]    = useState({});
-  const [loading, setLoading] = useState(true);
+  const [locs,        setLocs]        = useState({});
+  const [loading,     setLoading]     = useState(true);
+  const [filterVille, setFilterVille] = useState('Toutes');
+  const [filterTL,    setFilterTL]    = useState('Tous');
+
+  const LIVE_THRESH = 120000;
+
+  // Accounts filtrés selon les deux filtres
+  const filteredAccounts = useMemo(() => {
+    let list = accounts;
+    if (filterVille !== 'Toutes') list = list.filter(a => a.ville === filterVille);
+    if (filterTL    !== 'Tous')   list = list.filter(a => a.name  === filterTL);
+    return list;
+  }, [accounts, filterVille, filterTL]);
+
+  // Villes disponibles (depuis accounts)
+  const villesDispos = useMemo(() =>
+    [...new Set(accounts.map(a => a.ville))].sort(),
+  [accounts]);
+
+  // TLs disponibles selon la ville sélectionnée
+  const tlsDispos = useMemo(() => {
+    const src = filterVille === 'Toutes' ? accounts : accounts.filter(a => a.ville === filterVille);
+    return src.map(a => a.name).sort();
+  }, [accounts, filterVille]);
 
   // Live Firebase listener for locations
   useEffect(() => {
@@ -1690,7 +1713,7 @@ function MapView({ accounts }) {
     return () => ref.off('value');
   }, []);
 
-  // Build / refresh map whenever locs or accounts change
+  // Build / refresh map whenever locs or filteredAccounts change
   useEffect(() => {
     if (!mapRef.current) return;
 
@@ -1703,33 +1726,44 @@ function MapView({ accounts }) {
 
     const map = leafRef.current;
 
-    // Remove old markers
+    // Retirer les anciens marqueurs
     Object.values(markersRef.current).forEach(m => map.removeLayer(m));
     markersRef.current = {};
 
-    const now = Date.now();
-    const LIVE_THRESH = 120000; // 2 min
-
-    let hasBounds = false;
+    const now   = Date.now();
     const bounds = [];
+    const filteredEmails = new Set(filteredAccounts.map(a => a.email.toLowerCase()));
 
     Object.entries(locs).forEach(([key, loc]) => {
       if (!loc || !loc.lat || !loc.lng) return;
-      const age  = now - new Date(loc.ts).getTime();
-      const live = age < LIVE_THRESH;
+      // N'afficher que les marqueurs des comptes filtrés
+      if (filteredEmails.size > 0 && !filteredEmails.has((loc.email||'').toLowerCase())) return;
+
+      const age    = now - new Date(loc.ts).getTime();
+      const live   = age < LIVE_THRESH;
       const color  = live ? '#22C55E' : '#94A3B8';
       const border = live ? '#15803D' : '#64748B';
       const size   = live ? 16 : 12;
 
+      const acc          = accounts.find(a => a.email.toLowerCase() === (loc.email||'').toLowerCase());
+      const displayName  = acc?.name  || loc.name  || key;
+      const displayVille = acc?.ville || loc.ville || '—';
+      const cityColor    = CITY_COLORS[displayVille] || '#64748B';
+
       const icon = L.divIcon({
         className: '',
         html: `
-          <div style="position:relative;width:${size+8}px;height:${size+8}px;">
-            ${live ? `<div style="position:absolute;inset:0;border-radius:50%;background:${color};opacity:0.25;" class="live-marker-ring"></div>` : ''}
-            <div style="position:absolute;top:4px;left:4px;width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2.5px solid ${border};box-shadow:0 2px 6px rgba(0,0,0,0.25);"></div>
+          <div style="position:relative;width:${size+16}px;height:${size+24}px;">
+            ${live ? `<div style="position:absolute;top:0;left:0;width:${size+16}px;height:${size+16}px;border-radius:50%;background:${color};opacity:0.2;" class="live-marker-ring"></div>` : ''}
+            <div style="position:absolute;top:4px;left:4px;width:${size+8}px;height:${size+8}px;border-radius:50%;background:${color};border:3px solid ${border};box-shadow:0 3px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;">
+              <div style="width:${size-2}px;height:${size-2}px;border-radius:50%;background:white;opacity:0.35;"></div>
+            </div>
+            <div style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);background:white;border:1.5px solid var(--neutral-200);border-radius:4px;padding:1px 5px;font-size:9px;font-weight:700;color:#0F172A;white-space:nowrap;max-width:80px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 3px rgba(0,0,0,0.12);">
+              ${displayName.split(' ')[0]}
+            </div>
           </div>`,
-        iconSize:   [size+8, size+8],
-        iconAnchor: [(size+8)/2, (size+8)/2],
+        iconSize:   [size+16, size+24],
+        iconAnchor: [(size+16)/2, size+20],
       });
 
       const timeAgoStr = (() => {
@@ -1739,33 +1773,44 @@ function MapView({ accounts }) {
         return `il y a ${Math.floor(s/3600)} h`;
       })();
 
-      const acc = accounts.find(a => a.email.toLowerCase() === (loc.email||'').toLowerCase());
-      const displayName = acc?.name || loc.name || key;
-      const displayVille = acc?.ville || loc.ville || '—';
-
       const popup = `
-        <div style="font-family:system-ui,sans-serif;min-width:160px;">
-          <div style="font-size:14px;font-weight:700;color:#0F172A;margin-bottom:4px;">${displayName}</div>
-          <div style="font-size:12px;color:#64748B;margin-bottom:6px;">📍 ${displayVille}</div>
+        <div style="font-family:system-ui,sans-serif;min-width:170px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <div style="width:32px;height:32px;border-radius:50%;background:${cityColor};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:white;flex-shrink:0;">
+              ${displayName.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase()}
+            </div>
+            <div>
+              <div style="font-size:13px;font-weight:700;color:#0F172A;">${displayName}</div>
+              <div style="font-size:11px;color:#64748B;">📍 ${displayVille}</div>
+            </div>
+          </div>
           <div style="display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:99px;font-size:11px;font-weight:700;background:${live?'#DCFCE7':'#F1F5F9'};color:${live?'#15803D':'#64748B'};">
             <span style="width:6px;height:6px;border-radius:50%;background:${live?'#22C55E':'#94A3B8'};display:inline-block;"></span>
             ${live ? 'En ligne' : 'Hors ligne'}
           </div>
-          <div style="font-size:11px;color:#94A3B8;margin-top:6px;">Mis à jour : ${timeAgoStr}</div>
+          <div style="font-size:11px;color:#94A3B8;margin-top:7px;">Mis à jour : ${timeAgoStr}</div>
           <div style="font-size:10px;color:#CBD5E1;margin-top:2px;">${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}</div>
         </div>`;
 
       const marker = L.marker([loc.lat, loc.lng], { icon }).addTo(map);
-      marker.bindPopup(popup, { maxWidth:220 });
+      marker.bindPopup(popup, { maxWidth:230 });
       markersRef.current[key] = marker;
       bounds.push([loc.lat, loc.lng]);
-      hasBounds = true;
+
+      // Si filtre sur un TL précis → ouvrir son popup automatiquement
+      if (filterTL !== 'Tous') marker.openPopup();
     });
 
-    if (hasBounds && Object.keys(markersRef.current).length > 0) {
-      try { map.fitBounds(bounds, { padding:[40,40], maxZoom:13 }); } catch(e) {}
+    if (bounds.length > 0) {
+      try {
+        if (bounds.length === 1) {
+          map.setView(bounds[0], 13);
+        } else {
+          map.fitBounds(bounds, { padding:[50,50], maxZoom:13 });
+        }
+      } catch(e) {}
     }
-  }, [locs, accounts]);
+  }, [locs, filteredAccounts, filterTL]);
 
   // Cleanup map on unmount
   useEffect(() => {
@@ -1774,32 +1819,61 @@ function MapView({ accounts }) {
     };
   }, []);
 
-  const now = Date.now();
-  const LIVE_THRESH = 120000;
-  const locList = Object.values(locs).filter(l => l && l.lat);
+  const now          = Date.now();
+  const locList      = Object.values(locs).filter(l => l && l.lat);
   const liveCount    = locList.filter(l => (now - new Date(l.ts).getTime()) < LIVE_THRESH).length;
   const offlineCount = locList.length - liveCount;
   const noLocCount   = accounts.length - locList.length;
 
+  // Liste filtrée pour le tableau
+  const tableAccounts = filteredAccounts;
+
   return (
     <div className="map-page">
 
-      {/* Stats */}
-      <div className="map-stat-row">
-        <div className="map-stat">
-          <span className="map-stat-val" style={{color:'#22C55E'}}>{liveCount}</span>
-          <span>Team Lead{liveCount!==1?'s':''} en ligne</span>
-        </div>
-        <div className="map-stat">
-          <span className="map-stat-val" style={{color:'#94A3B8'}}>{offlineCount}</span>
-          <span>Hors ligne (position connue)</span>
-        </div>
-        <div className="map-stat">
-          <span className="map-stat-val" style={{color:'#F59E0B'}}>{noLocCount}</span>
-          <span>Sans position</span>
-        </div>
-        {/* Legend */}
-        <div className="map-legend" style={{marginLeft:'auto'}}>
+      {/* ── Filtres ── */}
+      <div className="analytics-filters" style={{marginBottom:12}}>
+        <i data-lucide="sliders-horizontal" style={{width:16,height:16,color:'var(--neutral-400)',flexShrink:0}}></i>
+        <span className="af-label">Filtrer</span>
+        <div className="af-divider"></div>
+
+        {/* Filtre Ville */}
+        <select
+          className={`af-select ${filterVille !== 'Toutes' ? 'active-filter' : ''}`}
+          value={filterVille}
+          onChange={e => { setFilterVille(e.target.value); setFilterTL('Tous'); }}>
+          <option value="Toutes">Toutes les villes</option>
+          {villesDispos.map(v => (
+            <option key={v} value={v}>
+              {v} ({accounts.filter(a => a.ville === v).length} TL)
+            </option>
+          ))}
+        </select>
+
+        {/* Filtre Team Lead */}
+        <select
+          className={`af-select ${filterTL !== 'Tous' ? 'active-filter' : ''}`}
+          value={filterTL}
+          onChange={e => setFilterTL(e.target.value)}>
+          <option value="Tous">Tous les Team Leads</option>
+          {tlsDispos.map(name => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+
+        <div className="af-spacer"></div>
+
+        {/* Reset */}
+        {(filterVille !== 'Toutes' || filterTL !== 'Tous') && (
+          <button className="btn btn-ghost btn-sm"
+            onClick={() => { setFilterVille('Toutes'); setFilterTL('Tous'); }}>
+            <i data-lucide="x" style={{width:13,height:13}}></i>
+            Réinitialiser
+          </button>
+        )}
+
+        {/* Légende */}
+        <div className="map-legend">
           <div style={{display:'flex',alignItems:'center',gap:6}}>
             <div className="map-legend-dot" style={{background:'#22C55E'}}></div>
             <span>En ligne</span>
@@ -1811,7 +1885,29 @@ function MapView({ accounts }) {
         </div>
       </div>
 
-      {/* Map */}
+      {/* ── Stats ── */}
+      <div className="map-stat-row">
+        <div className="map-stat">
+          <span className="map-stat-val" style={{color:'#22C55E'}}>{liveCount}</span>
+          <span>TL en ligne</span>
+        </div>
+        <div className="map-stat">
+          <span className="map-stat-val" style={{color:'#94A3B8'}}>{offlineCount}</span>
+          <span>Hors ligne (position connue)</span>
+        </div>
+        <div className="map-stat">
+          <span className="map-stat-val" style={{color:'#F59E0B'}}>{noLocCount}</span>
+          <span>Sans position</span>
+        </div>
+        {(filterVille !== 'Toutes' || filterTL !== 'Tous') && (
+          <div className="map-stat" style={{borderColor:'var(--primary-200)',background:'var(--primary-50)'}}>
+            <span className="map-stat-val" style={{color:'var(--primary-600)'}}>{tableAccounts.length}</span>
+            <span style={{color:'var(--primary-700)'}}>TL affichés (filtre actif)</span>
+          </div>
+        )}
+      </div>
+
+      {/* ── Carte ── */}
       <div className="map-wrap">
         {loading && (
           <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',background:'#F8FAFC',zIndex:10,borderRadius:12,fontSize:14,color:'var(--neutral-500)',fontWeight:600}}>
@@ -1821,20 +1917,28 @@ function MapView({ accounts }) {
         <div id="mgr-map" ref={mapRef}></div>
       </div>
 
-      {/* TL list */}
-      {locList.length === 0 && !loading && (
+      {/* ── Tableau ── */}
+      {locList.length === 0 && !loading ? (
         <div style={{marginTop:16,background:'white',border:'1px solid var(--neutral-100)',borderRadius:12,padding:'28px',textAlign:'center',color:'var(--neutral-400)',fontSize:13,fontWeight:600}}>
           Aucune position disponible — les Team Leads doivent ouvrir l'outil Pointage et autoriser la géolocalisation.
         </div>
-      )}
-      {locList.length > 0 && (
+      ) : (
         <div style={{marginTop:14,background:'white',border:'1px solid var(--neutral-100)',borderRadius:12,overflow:'hidden',flexShrink:0}}>
+          <div style={{padding:'12px 20px',borderBottom:'1px solid var(--neutral-100)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <div style={{fontWeight:700,fontSize:14,color:'var(--neutral-900)'}}>
+              Positions des Team Leads
+            </div>
+            <div style={{fontSize:12,color:'var(--neutral-500)'}}>
+              {tableAccounts.length} TL affiché{tableAccounts.length!==1?'s':''}
+              {(filterVille !== 'Toutes' || filterTL !== 'Tous') ? ' (filtrés)' : ''}
+            </div>
+          </div>
           <table className="tbl">
             <thead>
               <tr><th>Team Lead</th><th>Ville</th><th>Statut</th><th>Dernière position</th><th>Coordonnées</th></tr>
             </thead>
             <tbody>
-              {accounts.map(acc => {
+              {tableAccounts.map(acc => {
                 const key = acc.email.replace(/\./g,'_').replace(/@/g,'__at__');
                 const loc = locs[key];
                 const live = loc && (now - new Date(loc.ts).getTime()) < LIVE_THRESH;
