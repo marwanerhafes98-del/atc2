@@ -1127,17 +1127,20 @@ function App() {
     const todayStr = new Date().toDateString();
     const ref = db.ref('ptg/pointages');
     const handler = ref.on('value', snap => {
-      const all = snap.exists() ? Object.values(snap.val()) : [];
-      const mine = all.filter(p => p.teamLeadEmail === user.email && p.date === todayStr);
-      setTodayCount(mine.length);
-      if (mine.length > 0) {
-        setAnimateurs(prev => prev.map(a => {
-          const matches = mine.filter(p => p.animateurId === a.id || p.animateurName === a.name);
-          if (!matches.length) return a;
-          const last = matches[matches.length - 1];
-          return { ...a, status: last.status, note: last.note || undefined, pointedAt: last.time || '—' };
-        }));
-      }
+      try {
+        const raw = snap.exists() ? snap.val() : {};
+        const all = Object.values(raw || {}).filter(p => p && typeof p === 'object');
+        const mine = all.filter(p => p.teamLeadEmail === user.email && p.date === todayStr);
+        setTodayCount(mine.length);
+        if (mine.length > 0) {
+          setAnimateurs(prev => prev.map(a => {
+            const matches = mine.filter(p => p.animateurId === a.id || p.animateurName === a.name);
+            if (!matches.length) return a;
+            const last = matches[matches.length - 1];
+            return { ...a, status: last.status, note: last.note || undefined, pointedAt: last.time || '—' };
+          }));
+        }
+      } catch (e) { /* ignore parse errors */ }
     });
 
     const ping = setInterval(() => LS.pingSession(user.email), 30000);
