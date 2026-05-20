@@ -509,6 +509,25 @@ const LS = {
       ...data,
       initials: initials((data.name || acc.name).trim())
     });
+  },
+
+  async seedAccounts() {
+    const snap = await db.ref('ptg/accounts').once('value');
+    const existing = snap.exists()
+      ? Object.values(snap.val()).map(a => (a.email || '').toLowerCase())
+      : [];
+    let nextId = Date.now();
+    for (const [name, email] of Object.entries(TL_NAME_TO_EMAIL)) {
+      if (existing.includes(email.toLowerCase())) continue;
+      const ville = ANIMATEURS_DB.find(a => a.teamLead === name)?.ville || 'Casablanca';
+      const acc = {
+        id: nextId++,
+        name, email, password: '1234',
+        ville, initials: initials(name),
+        createdAt: new Date().toISOString(), createdBy: 'system'
+      };
+      await db.ref(`ptg/accounts/${acc.id}`).set(acc);
+    }
   }
 };
 
@@ -1473,6 +1492,7 @@ function App() {
 
   useEffect(() => {
     if (!loggedIn) return;
+    LS.seedAccounts(); // crée les comptes TL manquants au premier lancement
     const refAcc = db.ref('ptg/accounts');
     const refSes = db.ref('ptg/sessions');
     const refPtg = db.ref('ptg/pointages');
