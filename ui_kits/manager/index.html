@@ -237,6 +237,20 @@ const VILLES = ['Agadir','Beni Mellal','Casablanca','Fes','Marrakech','Meknes','
 const STATUS_FR = { present:'Présent', absent:'Absent', malade:'Malade', demission:'Démission', nonpointe:'Non pointé' };
 const STATUS_COLOR = { present:'#16A34A', absent:'#DC2626', malade:'#D97706', demission:'#7C3AED', nonpointe:'#64748B' };
 
+/* ── TL NAME → EMAIL MAPPING (mirrors TEAM_LEADS_DB in pointage tool) ── */
+const TL_NAME_TO_EMAIL = {
+  'Y. Boualaihi':        'y.boualaihi@labelvie.ma',
+  'Elbousiydy Mohammed': 'm.elbousiydy@labelvie.ma',
+  'Mohammed Sandoud':    'm.sandoud@labelvie.ma',
+  'D. Elharche':         'd.elharche@labelvie.ma',
+  'Abdessadek Mimmous':  'a.mimmous@labelvie.ma',
+  'A. Bouichi':          'a.bouichi@labelvie.ma',
+  'Mehdi Elhaissat':     'm.elhaissat@labelvie.ma',
+  'Hicham Aboulouarit':  'h.aboulouarit@labelvie.ma',
+  'M. Elghezaouy':       'm.elghezaouy@labelvie.ma',
+  'Benmira Smail':       's.benmira@labelvie.ma',
+};
+
 /* ── ANIMATEURS DATABASE ── */
 const ANIMATEURS_DB = [
   // AGADIR
@@ -809,36 +823,36 @@ function DashboardView({ accounts, sessions, pointages, onRefresh }) {
     [pointages]
   );
 
-  // Filtered team lead account
-  const tlAccount = useMemo(() =>
-    filterTL !== 'Tous' ? accounts.find(a => a.email === filterTL) : null,
-    [filterTL, accounts]
-  );
+  // Unique TL names from ANIMATEURS_DB for the current ville filter
+  const teamLeadsForVille = useMemo(() => {
+    const src = filterVille === 'Toutes' ? ANIMATEURS_DB : ANIMATEURS_DB.filter(a => a.ville === filterVille);
+    const map = {};
+    src.forEach(a => { if (!map[a.teamLead]) map[a.teamLead] = a.ville; });
+    return Object.entries(map).map(([name, ville]) => ({ name, ville })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [filterVille]);
 
   // Filtered animateurs
   const filteredAnims = useMemo(() => {
     let list = ANIMATEURS_DB;
     if (filterVille !== 'Toutes') list = list.filter(a => a.ville === filterVille);
-    if (tlAccount) list = list.filter(a => a.teamLead === tlAccount.name);
+    if (filterTL !== 'Tous')     list = list.filter(a => a.teamLead === filterTL);
     return list;
-  }, [filterVille, tlAccount]);
+  }, [filterVille, filterTL]);
 
   // Filtered pointages
   const filteredPtgs = useMemo(() => {
     let list = todayPtgs;
     if (filterVille !== 'Toutes') list = list.filter(p => p.ville === filterVille);
-    if (tlAccount) list = list.filter(p => p.teamLeadEmail === tlAccount.email);
+    if (filterTL !== 'Tous') {
+      const tlEmail = TL_NAME_TO_EMAIL[filterTL];
+      if (tlEmail) list = list.filter(p => p.teamLeadEmail === tlEmail);
+    }
     return list;
-  }, [todayPtgs, filterVille, tlAccount]);
+  }, [todayPtgs, filterVille, filterTL]);
 
   const stats = useMemo(() => computeStats(filteredAnims, filteredPtgs), [filteredAnims, filteredPtgs]);
 
-  const teamLeads = useMemo(() =>
-    [...accounts].sort((a,b) => a.name.localeCompare(b.name)),
-    [accounts]
-  );
-
-  const handleExport = () => exportCSV(filteredAnims, filteredPtgs, filterVille, tlAccount?.name || 'Tous');
+  const handleExport = () => exportCSV(filteredAnims, filteredPtgs, filterVille, filterTL !== 'Tous' ? filterTL : 'Tous');
 
   return (
     <>
@@ -859,8 +873,8 @@ function DashboardView({ accounts, sessions, pointages, onRefresh }) {
         <select className={`af-select ${filterTL !== 'Tous' ? 'active-filter' : ''}`}
           value={filterTL} onChange={e => setFilterTL(e.target.value)}>
           <option value="Tous">Tous les Team Leads</option>
-          {teamLeads.map(a => (
-            <option key={a.email} value={a.email}>{a.name} — {a.ville}</option>
+          {teamLeadsForVille.map(tl => (
+            <option key={tl.name} value={tl.name}>{tl.name} — {tl.ville}</option>
           ))}
         </select>
 
@@ -1270,22 +1284,24 @@ function WeeklyPresenceView({ pointages, accounts }) {
   const todayStr = new Date().toDateString();
   const DAY_FR   = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 
-  // TL account for filtering
-  const tlAccount = useMemo(() =>
-    filterTL !== 'Tous' ? accounts.find(a => a.email === filterTL) : null,
-    [filterTL, accounts]
-  );
-
   // All unique dates in this week as toDateString
   const weekDateStrings = useMemo(() => weekDays.map(d => d.toDateString()), [weekDays]);
+
+  // Unique TL names from ANIMATEURS_DB for the current ville filter
+  const teamLeadsForVille = useMemo(() => {
+    const src = filterVille === 'Toutes' ? ANIMATEURS_DB : ANIMATEURS_DB.filter(a => a.ville === filterVille);
+    const map = {};
+    src.forEach(a => { if (!map[a.teamLead]) map[a.teamLead] = a.ville; });
+    return Object.entries(map).map(([name, ville]) => ({ name, ville })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [filterVille]);
 
   // Filtered animateurs
   const filteredAnims = useMemo(() => {
     let list = ANIMATEURS_DB;
     if (filterVille !== 'Toutes') list = list.filter(a => a.ville === filterVille);
-    if (tlAccount) list = list.filter(a => a.teamLead === tlAccount.name);
+    if (filterTL !== 'Tous')     list = list.filter(a => a.teamLead === filterTL);
     return list;
-  }, [filterVille, tlAccount]);
+  }, [filterVille, filterTL]);
 
   // Pointages for this week
   const weekPtgs = useMemo(() =>
@@ -1361,8 +1377,8 @@ function WeeklyPresenceView({ pointages, accounts }) {
         <select className={`af-select ${filterTL !== 'Tous' ? 'active-filter' : ''}`}
           value={filterTL} onChange={e => setFilterTL(e.target.value)}>
           <option value="Tous">Tous les Team Leads</option>
-          {[...accounts].sort((a,b)=>a.name.localeCompare(b.name)).map(a => (
-            <option key={a.email} value={a.email}>{a.name} — {a.ville}</option>
+          {teamLeadsForVille.map(tl => (
+            <option key={tl.name} value={tl.name}>{tl.name} — {tl.ville}</option>
           ))}
         </select>
         <div className="af-spacer"></div>
