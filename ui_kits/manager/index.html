@@ -10,6 +10,8 @@
   <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     * { box-sizing:border-box; }
     body { margin:0; padding:0; font-family:var(--font-sans); background:var(--neutral-100); }
@@ -182,6 +184,20 @@
     .alert-banner { border-radius:10px; padding:12px 16px; display:flex; align-items:center; gap:10px; margin-bottom:16px; font-size:13px; font-weight:600; }
     .alert-warning { background:#FEF3C7; color:#B45309; border:1px solid #FDE68A; }
     .alert-info    { background:#EFF6FF;  color:#1D4ED8; border:1px solid #BFDBFE; }
+
+    /* ── MAP PAGE ── */
+    .map-page { display:flex; flex-direction:column; height:calc(100vh - 60px); }
+    .map-topbar { display:flex; align-items:center; gap:12px; padding:14px 0 16px; flex-wrap:wrap; flex-shrink:0; }
+    .map-legend { display:flex; align-items:center; gap:16px; padding:8px 14px; background:white; border:1px solid var(--neutral-100); border-radius:10px; font-size:12px; font-weight:600; }
+    .map-legend-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+    .map-wrap { flex:1; min-height:0; border-radius:12px; overflow:hidden; border:1px solid var(--neutral-200); box-shadow:0 2px 8px rgba(0,0,0,0.07); }
+    #mgr-map { width:100%; height:100%; }
+    .map-stat-row { display:flex; gap:10px; flex-shrink:0; margin-bottom:4px; }
+    .map-stat { background:white; border:1px solid var(--neutral-100); border-radius:10px; padding:10px 16px; display:flex; align-items:center; gap:10px; font-size:13px; font-weight:600; color:var(--neutral-700); }
+    .map-stat-val { font-size:22px; font-weight:800; font-family:var(--font-mono); }
+    /* pulsing dot for live markers */
+    @keyframes map-pulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.4);opacity:0.7} }
+    .live-marker-ring { animation:map-pulse 1.5s infinite; }
 
     /* ── DATE PICKER ── */
     .date-input { height:36px; padding:0 12px; border:1.5px solid var(--neutral-200); border-radius:8px; font-size:13px; font-family:var(--font-sans); color:var(--neutral-800); background:white; cursor:pointer; }
@@ -1656,6 +1672,222 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
   );
 }
 
+/* ── MAP VIEW ── */
+function MapView({ accounts }) {
+  const mapRef   = useRef(null);
+  const leafRef  = useRef(null);
+  const markersRef = useRef({});
+  const [locs,    setLocs]    = useState({});
+  const [loading, setLoading] = useState(true);
+
+  // Live Firebase listener for locations
+  useEffect(() => {
+    const ref = db.ref('ptg/locations');
+    ref.on('value', snap => {
+      setLocs(snap.exists() ? snap.val() : {});
+      setLoading(false);
+    });
+    return () => ref.off('value');
+  }, []);
+
+  // Build / refresh map whenever locs or accounts change
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    if (!leafRef.current) {
+      leafRef.current = L.map('mgr-map', { zoomControl:true }).setView([31.7917, -7.0926], 6);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution:'© OpenStreetMap contributors', maxZoom:18
+      }).addTo(leafRef.current);
+    }
+
+    const map = leafRef.current;
+
+    // Remove old markers
+    Object.values(markersRef.current).forEach(m => map.removeLayer(m));
+    markersRef.current = {};
+
+    const now = Date.now();
+    const LIVE_THRESH = 120000; // 2 min
+
+    let hasBounds = false;
+    const bounds = [];
+
+    Object.entries(locs).forEach(([key, loc]) => {
+      if (!loc || !loc.lat || !loc.lng) return;
+      const age  = now - new Date(loc.ts).getTime();
+      const live = age < LIVE_THRESH;
+      const color  = live ? '#22C55E' : '#94A3B8';
+      const border = live ? '#15803D' : '#64748B';
+      const size   = live ? 16 : 12;
+
+      const icon = L.divIcon({
+        className: '',
+        html: `
+          <div style="position:relative;width:${size+8}px;height:${size+8}px;">
+            ${live ? `<div style="position:absolute;inset:0;border-radius:50%;background:${color};opacity:0.25;" class="live-marker-ring"></div>` : ''}
+            <div style="position:absolute;top:4px;left:4px;width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2.5px solid ${border};box-shadow:0 2px 6px rgba(0,0,0,0.25);"></div>
+          </div>`,
+        iconSize:   [size+8, size+8],
+        iconAnchor: [(size+8)/2, (size+8)/2],
+      });
+
+      const timeAgoStr = (() => {
+        const s = age / 1000;
+        if (s < 60)   return 'À l\'instant';
+        if (s < 3600) return `il y a ${Math.floor(s/60)} min`;
+        return `il y a ${Math.floor(s/3600)} h`;
+      })();
+
+      const acc = accounts.find(a => a.email.toLowerCase() === (loc.email||'').toLowerCase());
+      const displayName = acc?.name || loc.name || key;
+      const displayVille = acc?.ville || loc.ville || '—';
+
+      const popup = `
+        <div style="font-family:system-ui,sans-serif;min-width:160px;">
+          <div style="font-size:14px;font-weight:700;color:#0F172A;margin-bottom:4px;">${displayName}</div>
+          <div style="font-size:12px;color:#64748B;margin-bottom:6px;">📍 ${displayVille}</div>
+          <div style="display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:99px;font-size:11px;font-weight:700;background:${live?'#DCFCE7':'#F1F5F9'};color:${live?'#15803D':'#64748B'};">
+            <span style="width:6px;height:6px;border-radius:50%;background:${live?'#22C55E':'#94A3B8'};display:inline-block;"></span>
+            ${live ? 'En ligne' : 'Hors ligne'}
+          </div>
+          <div style="font-size:11px;color:#94A3B8;margin-top:6px;">Mis à jour : ${timeAgoStr}</div>
+          <div style="font-size:10px;color:#CBD5E1;margin-top:2px;">${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}</div>
+        </div>`;
+
+      const marker = L.marker([loc.lat, loc.lng], { icon }).addTo(map);
+      marker.bindPopup(popup, { maxWidth:220 });
+      markersRef.current[key] = marker;
+      bounds.push([loc.lat, loc.lng]);
+      hasBounds = true;
+    });
+
+    if (hasBounds && Object.keys(markersRef.current).length > 0) {
+      try { map.fitBounds(bounds, { padding:[40,40], maxZoom:13 }); } catch(e) {}
+    }
+  }, [locs, accounts]);
+
+  // Cleanup map on unmount
+  useEffect(() => {
+    return () => {
+      if (leafRef.current) { leafRef.current.remove(); leafRef.current = null; }
+    };
+  }, []);
+
+  const now = Date.now();
+  const LIVE_THRESH = 120000;
+  const locList = Object.values(locs).filter(l => l && l.lat);
+  const liveCount    = locList.filter(l => (now - new Date(l.ts).getTime()) < LIVE_THRESH).length;
+  const offlineCount = locList.length - liveCount;
+  const noLocCount   = accounts.length - locList.length;
+
+  return (
+    <div className="map-page">
+
+      {/* Stats */}
+      <div className="map-stat-row">
+        <div className="map-stat">
+          <span className="map-stat-val" style={{color:'#22C55E'}}>{liveCount}</span>
+          <span>Team Lead{liveCount!==1?'s':''} en ligne</span>
+        </div>
+        <div className="map-stat">
+          <span className="map-stat-val" style={{color:'#94A3B8'}}>{offlineCount}</span>
+          <span>Hors ligne (position connue)</span>
+        </div>
+        <div className="map-stat">
+          <span className="map-stat-val" style={{color:'#F59E0B'}}>{noLocCount}</span>
+          <span>Sans position</span>
+        </div>
+        {/* Legend */}
+        <div className="map-legend" style={{marginLeft:'auto'}}>
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <div className="map-legend-dot" style={{background:'#22C55E'}}></div>
+            <span>En ligne</span>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <div className="map-legend-dot" style={{background:'#94A3B8'}}></div>
+            <span>Hors ligne</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Map */}
+      <div className="map-wrap">
+        {loading && (
+          <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',background:'#F8FAFC',zIndex:10,borderRadius:12,fontSize:14,color:'var(--neutral-500)',fontWeight:600}}>
+            Chargement de la carte…
+          </div>
+        )}
+        <div id="mgr-map" ref={mapRef}></div>
+      </div>
+
+      {/* TL list */}
+      {locList.length === 0 && !loading && (
+        <div style={{marginTop:16,background:'white',border:'1px solid var(--neutral-100)',borderRadius:12,padding:'28px',textAlign:'center',color:'var(--neutral-400)',fontSize:13,fontWeight:600}}>
+          Aucune position disponible — les Team Leads doivent ouvrir l'outil Pointage et autoriser la géolocalisation.
+        </div>
+      )}
+      {locList.length > 0 && (
+        <div style={{marginTop:14,background:'white',border:'1px solid var(--neutral-100)',borderRadius:12,overflow:'hidden',flexShrink:0}}>
+          <table className="tbl">
+            <thead>
+              <tr><th>Team Lead</th><th>Ville</th><th>Statut</th><th>Dernière position</th><th>Coordonnées</th></tr>
+            </thead>
+            <tbody>
+              {accounts.map(acc => {
+                const key = acc.email.replace(/\./g,'_').replace(/@/g,'__at__');
+                const loc = locs[key];
+                const live = loc && (now - new Date(loc.ts).getTime()) < LIVE_THRESH;
+                return (
+                  <tr key={acc.id}>
+                    <td>
+                      <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        <div className="av" style={{background:avatarColor(acc.name),width:28,height:28,fontSize:11}}>{initials(acc.name)}</div>
+                        <div>
+                          <div style={{fontWeight:600,fontSize:13,color:'var(--neutral-900)'}}>{acc.name}</div>
+                          <div style={{fontSize:11,color:'var(--neutral-500)'}}>{acc.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:(CITY_COLORS[acc.ville]||'#64748B')+'20',color:CITY_COLORS[acc.ville]||'#64748B'}}>
+                        {acc.ville}
+                      </span>
+                    </td>
+                    <td>
+                      {!loc ? (
+                        <span style={{fontSize:12,color:'var(--neutral-400)',fontStyle:'italic'}}>Aucune position</span>
+                      ) : live ? (
+                        <span className="badge badge-live"><span className="bdot"></span>En ligne</span>
+                      ) : (
+                        <span className="badge badge-offline"><span className="bdot"></span>Hors ligne</span>
+                      )}
+                    </td>
+                    <td>
+                      {loc ? (
+                        <span style={{fontSize:12,color:'var(--neutral-600)',fontFamily:'var(--font-mono)'}}>
+                          {(() => { const s=(now-new Date(loc.ts).getTime())/1000; if(s<60) return 'À l\'instant'; if(s<3600) return `il y a ${Math.floor(s/60)} min`; return `il y a ${Math.floor(s/3600)} h`; })()}
+                        </span>
+                      ) : <span className="mono">—</span>}
+                    </td>
+                    <td>
+                      {loc ? (
+                        <span style={{fontSize:11,color:'var(--neutral-500)',fontFamily:'var(--font-mono)'}}>
+                          {loc.lat.toFixed(4)}, {loc.lng.toFixed(4)}
+                        </span>
+                      ) : <span className="mono">—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── EDIT ANIMATEUR MODAL (MANAGER) ── */
 function EditAnimateurMgrModal({ animateur, animateurs, accounts, onClose, onSaved }) {
   const [form, setForm] = useState({
@@ -1968,13 +2200,15 @@ function App() {
 
   const liveCount  = accounts.filter(a => LS.isLive(a.email)).length;
   const todayPtgN  = pointages.filter(p => p.date === new Date().toDateString()).length;
-  const PAGE_TITLES = { dashboard:'Dashboard', accounts:'Comptes Team Leads', activity:'Journal des pointages', weekly:'Présence hebdomadaire', animateurs:'Gestion des animateurs' };
+  const LIVE_LOC_THRESH = 120000;
+  const PAGE_TITLES = { dashboard:'Dashboard', accounts:'Comptes Team Leads', animateurs:'Gestion des animateurs', carte:'Localisation en temps réel', activity:'Journal des pointages', weekly:'Présence hebdomadaire' };
   const pageTitle  = PAGE_TITLES[view] || 'Dashboard';
 
   const navItems = [
     { key:'dashboard',  icon:'layout-dashboard', label:'Dashboard',         badge:0 },
     { key:'accounts',   icon:'users',            label:'Comptes',           badge:accounts.length },
     { key:'animateurs', icon:'user-cog',         label:'Animateurs',        badge:animateurs.length },
+    { key:'carte',      icon:'map-pin',          label:'Carte temps réel',  badge:liveCount },
     { key:'activity',   icon:'clipboard-list',   label:'Journal',           badge:todayPtgN },
     { key:'weekly',     icon:'calendar-days',    label:'Présence hebdo',    badge:0 },
   ];
@@ -2039,6 +2273,7 @@ function App() {
           {view === 'dashboard'  && <DashboardView accounts={accounts} sessions={sessions} pointages={pointages} onRefresh={refresh} animateurs={animateurs} />}
           {view === 'accounts'   && <AccountsView  accounts={accounts} sessions={sessions} onRefresh={refresh} />}
           {view === 'animateurs' && <AnimateursView animateurs={animateurs} accounts={accounts} />}
+          {view === 'carte'      && <MapView accounts={accounts} />}
           {view === 'activity'   && <ActivityView  pointages={pointages} accounts={accounts} />}
           {view === 'weekly'     && <WeeklyPresenceView pointages={pointages} accounts={accounts} animateurs={animateurs} />}
         </div>

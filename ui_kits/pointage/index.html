@@ -1300,6 +1300,26 @@ function App() {
       });
     });
 
+    // GPS tracking — partage la position du TL en temps réel avec le manager
+    const locKey = encodeKey(user.email);
+    let watchId = null;
+    const writeLocation = (lat, lng) => {
+      db.ref(`ptg/locations/${locKey}`).set({
+        lat, lng,
+        ts:    new Date().toISOString(),
+        email: user.email,
+        name:  user.name,
+        ville: user.ville,
+      });
+    };
+    if (navigator.geolocation) {
+      watchId = navigator.geolocation.watchPosition(
+        pos => writeLocation(pos.coords.latitude, pos.coords.longitude),
+        () => {},
+        { enableHighAccuracy:true, maximumAge:15000, timeout:20000 }
+      );
+    }
+
     // Écoute Firebase pour les changements d'animateurs (réaffectations manager)
     const animRef = db.ref('ptg/animateurs');
     const animHandler = animRef.on('value', snap => {
@@ -1342,6 +1362,7 @@ function App() {
     const onUnload = () => LS.endSession(user.email);
     window.addEventListener('beforeunload', onUnload);
     return () => {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
       accRef.off('value', accHandler);
       animRef.off('value', animHandler);
       ref.off('value', handler);
