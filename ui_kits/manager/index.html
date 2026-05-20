@@ -234,7 +234,7 @@ const MANAGER_EMAIL    = 'manager@labelvie.ma';
 const MANAGER_PASSWORD = 'manager2026';
 
 /* ── CONSTANTS ── */
-const CITY_COLORS = { 'Agadir':'#0052CC','Beni Mellal':'#0EA5E9','Casablanca':'#8B5CF6','Fes':'#F97316','Marrakech':'#EC4899','Meknes':'#14B8A6','Rabat':'#22C55E','Tanger':'#EF4444' };
+const CITY_COLORS = { 'Agadir':'#0052CC','Beni Mellal':'#0EA5E9','Casablanca':'#8B5CF6','Fes':'#F97316','Marrakech':'#EC4899','Meknes':'#14B8A6','Oqba':'#F59E0B','Rabat':'#22C55E','Tanger':'#EF4444' };
 const AVATAR_PALETTE = ['#0052CC','#0EA5E9','#8B5CF6','#EC4899','#14B8A6','#F97316','#22C55E','#EF4444'];
 const VILLES = ['Agadir','Beni Mellal','Casablanca','Fes','Marrakech','Meknes','Oqba','Rabat','Tanger'];
 const STATUS_FR = { present:'Présent', absent:'Absent', malade:'Malade', demission:'Démission', nonpointe:'Non pointé' };
@@ -587,9 +587,10 @@ function exportDashboardXLSX(animList, todayPtgs, filterVille, filterTLName) {
 }
 
 /* ── FIREBASE DATA LAYER ── */
-let _accounts  = [];
-let _sessions  = {};
-let _pointages = [];
+let _accounts    = [];
+let _sessions    = {};
+let _pointages   = [];
+let _animateurs  = [];
 const encodeKey = (email) => email.replace(/\./g, '_').replace(/@/g, '__at__');
 
 const LS = {
@@ -647,7 +648,7 @@ const LS = {
     let nextId = Date.now();
     for (const [name, email] of Object.entries(TL_NAME_TO_EMAIL)) {
       if (existing.includes(email.toLowerCase())) continue;
-      const ville = ANIMATEURS_DB.find(a => a.teamLead === name)?.ville || 'Casablanca';
+      const ville = (_animateurs.length ? _animateurs : ANIMATEURS_DB).find(a => a.teamLead === name)?.ville || 'Casablanca';
       const acc = {
         id: nextId++,
         name, email, password: '1234',
@@ -656,6 +657,26 @@ const LS = {
       };
       await db.ref(`ptg/accounts/${acc.id}`).set(acc);
     }
+  },
+
+  async seedAnimateurs() {
+    const snap = await db.ref('ptg/animateurs').once('value');
+    if (snap.exists()) return;
+    const updates = {};
+    ANIMATEURS_DB.forEach(a => { updates[String(a.id)] = a; });
+    await db.ref('ptg/animateurs').set(updates);
+  },
+
+  async updateAnimateur(id, data) {
+    await db.ref(`ptg/animateurs/${id}`).update(data);
+  },
+
+  async addAnimateur(anim) {
+    await db.ref(`ptg/animateurs/${anim.id}`).set(anim);
+  },
+
+  async deleteAnimateur(id) {
+    await db.ref(`ptg/animateurs/${id}`).remove();
   }
 };
 
@@ -966,7 +987,7 @@ function SectorGapPanel({ animateurs, todayPtgs }) {
 }
 
 /* ── DASHBOARD VIEW ── */
-function DashboardView({ accounts, sessions, pointages, onRefresh }) {
+function DashboardView({ accounts, sessions, pointages, onRefresh, animateurs }) {
   const [filterVille, setFilterVille]   = useState('Toutes');
   const [filterTL,    setFilterTL]      = useState('Tous');
 
@@ -975,21 +996,21 @@ function DashboardView({ accounts, sessions, pointages, onRefresh }) {
     [pointages]
   );
 
-  // Unique TL names from ANIMATEURS_DB for the current ville filter
+  // Unique TL names for the current ville filter
   const teamLeadsForVille = useMemo(() => {
-    const src = filterVille === 'Toutes' ? ANIMATEURS_DB : ANIMATEURS_DB.filter(a => a.ville === filterVille);
+    const src = filterVille === 'Toutes' ? animateurs : animateurs.filter(a => a.ville === filterVille);
     const map = {};
     src.forEach(a => { if (!map[a.teamLead]) map[a.teamLead] = a.ville; });
     return Object.entries(map).map(([name, ville]) => ({ name, ville })).sort((a, b) => a.name.localeCompare(b.name));
-  }, [filterVille]);
+  }, [filterVille, animateurs]);
 
   // Filtered animateurs
   const filteredAnims = useMemo(() => {
-    let list = ANIMATEURS_DB;
+    let list = animateurs;
     if (filterVille !== 'Toutes') list = list.filter(a => a.ville === filterVille);
     if (filterTL !== 'Tous')     list = list.filter(a => a.teamLead === filterTL);
     return list;
-  }, [filterVille, filterTL]);
+  }, [filterVille, filterTL, animateurs]);
 
   // Filtered pointages
   const filteredPtgs = useMemo(() => {
@@ -1018,7 +1039,7 @@ function DashboardView({ accounts, sessions, pointages, onRefresh }) {
           value={filterVille} onChange={e => { setFilterVille(e.target.value); setFilterTL('Tous'); }}>
           <option value="Toutes">Toutes les villes</option>
           {VILLES.map(v => (
-            <option key={v} value={v}>{v} ({ANIMATEURS_DB.filter(a=>a.ville===v).length} animateurs)</option>
+            <option key={v} value={v}>{v} ({animateurs.filter(a=>a.ville===v).length} animateurs)</option>
           ))}
         </select>
 
@@ -1427,7 +1448,7 @@ function getWeekDays(offset) {
   });
 }
 
-function WeeklyPresenceView({ pointages, accounts }) {
+function WeeklyPresenceView({ pointages, accounts, animateurs }) {
   const [weekOffset,   setWeekOffset]   = useState(0);
   const [filterVille,  setFilterVille]  = useState('Toutes');
   const [filterTL,     setFilterTL]     = useState('Tous');
@@ -1439,21 +1460,21 @@ function WeeklyPresenceView({ pointages, accounts }) {
   // All unique dates in this week as toDateString
   const weekDateStrings = useMemo(() => weekDays.map(d => d.toDateString()), [weekDays]);
 
-  // Unique TL names from ANIMATEURS_DB for the current ville filter
+  // Unique TL names for the current ville filter
   const teamLeadsForVille = useMemo(() => {
-    const src = filterVille === 'Toutes' ? ANIMATEURS_DB : ANIMATEURS_DB.filter(a => a.ville === filterVille);
+    const src = filterVille === 'Toutes' ? animateurs : animateurs.filter(a => a.ville === filterVille);
     const map = {};
     src.forEach(a => { if (!map[a.teamLead]) map[a.teamLead] = a.ville; });
     return Object.entries(map).map(([name, ville]) => ({ name, ville })).sort((a, b) => a.name.localeCompare(b.name));
-  }, [filterVille]);
+  }, [filterVille, animateurs]);
 
   // Filtered animateurs
   const filteredAnims = useMemo(() => {
-    let list = ANIMATEURS_DB;
+    let list = animateurs;
     if (filterVille !== 'Toutes') list = list.filter(a => a.ville === filterVille);
     if (filterTL !== 'Tous')     list = list.filter(a => a.teamLead === filterTL);
     return list;
-  }, [filterVille, filterTL]);
+  }, [filterVille, filterTL, animateurs]);
 
   // Pointages for this week
   const weekPtgs = useMemo(() =>
@@ -1524,7 +1545,7 @@ function WeeklyPresenceView({ pointages, accounts }) {
         <select className={`af-select ${filterVille !== 'Toutes' ? 'active-filter' : ''}`}
           value={filterVille} onChange={e => { setFilterVille(e.target.value); setFilterTL('Tous'); }}>
           <option value="Toutes">Toutes les villes</option>
-          {VILLES.map(v => <option key={v} value={v}>{v} ({ANIMATEURS_DB.filter(a=>a.ville===v).length})</option>)}
+          {VILLES.map(v => <option key={v} value={v}>{v} ({animateurs.filter(a=>a.ville===v).length})</option>)}
         </select>
         <select className={`af-select ${filterTL !== 'Tous' ? 'active-filter' : ''}`}
           value={filterTL} onChange={e => setFilterTL(e.target.value)}>
@@ -1611,13 +1632,287 @@ function WeeklyPresenceView({ pointages, accounts }) {
   );
 }
 
+/* ── EDIT ANIMATEUR MODAL (MANAGER) ── */
+function EditAnimateurMgrModal({ animateur, animateurs, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    name: animateur.name, sector: animateur.sector,
+    ville: animateur.ville, teamLead: animateur.teamLead, phone: animateur.phone || '',
+  });
+  const [saving, setSaving] = useState(false);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const tlsForVille = useMemo(() =>
+    Object.keys(TL_NAME_TO_EMAIL).filter(name => {
+      const tlVille = animateurs.find(a => a.teamLead === name)?.ville;
+      return !tlVille || tlVille === form.ville;
+    }).sort(),
+  [form.ville, animateurs]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault(); setSaving(true);
+    await LS.updateAnimateur(animateur.id, {
+      name: form.name.trim(), sector: form.sector.trim(),
+      ville: form.ville, teamLead: form.teamLead, phone: form.phone,
+    });
+    onSaved(); onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target===e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-hd">
+          <div className="modal-title">Modifier l'animateur</div>
+          <button className="modal-close" onClick={onClose}><i data-lucide="x" style={{width:14,height:14}}></i></button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            <div className="mg"><label>Nom complet *</label><input value={form.name} onChange={e=>set('name',e.target.value)} required /></div>
+            <div className="mg"><label>Secteur / Magasin *</label><input value={form.sector} onChange={e=>set('sector',e.target.value)} required /></div>
+            <div className="mg-row">
+              <div className="mg"><label>Ville *</label>
+                <select value={form.ville} onChange={e=>{set('ville',e.target.value);set('teamLead','');}}>
+                  {VILLES.map(v=><option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <div className="mg"><label>Téléphone</label><input value={form.phone} onChange={e=>set('phone',e.target.value)} placeholder="+212 6 XX XX XX XX" /></div>
+            </div>
+            <div className="mg"><label>Team Lead *</label>
+              <select value={form.teamLead} onChange={e=>set('teamLead',e.target.value)} required>
+                <option value="">— Sélectionner —</option>
+                {tlsForVille.map(name=><option key={name} value={name}>{name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="modal-ft">
+            <button type="button" className="btn btn-ghost" onClick={onClose}>Annuler</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              <i data-lucide="save" style={{width:15,height:15}}></i>
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ── ADD ANIMATEUR MODAL (MANAGER) ── */
+function AddAnimateurMgrModal({ animateurs, onClose, onCreated }) {
+  const [form, setForm] = useState({ name:'', sector:'', ville:'Casablanca', teamLead:'', phone:'' });
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState('');
+  const set = (k,v) => setForm(f => ({...f,[k]:v}));
+
+  const tlsForVille = useMemo(() =>
+    Object.keys(TL_NAME_TO_EMAIL).filter(name => {
+      const tlVille = animateurs.find(a => a.teamLead === name)?.ville;
+      return !tlVille || tlVille === form.ville;
+    }).sort(),
+  [form.ville, animateurs]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault(); setError('');
+    if (!form.name.trim() || !form.sector.trim() || !form.teamLead) {
+      setError('Nom, secteur et team lead sont obligatoires.'); return;
+    }
+    setSaving(true);
+    const maxId = animateurs.length > 0 ? Math.max(...animateurs.map(a => a.id)) : 124;
+    const newAnim = {
+      id: maxId + 1, name: form.name.trim(), sector: form.sector.trim(),
+      ville: form.ville, teamLead: form.teamLead, phone: form.phone || '',
+    };
+    await LS.addAnimateur(newAnim);
+    onCreated(); onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target===e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-hd">
+          <div className="modal-title">Ajouter un animateur</div>
+          <button className="modal-close" onClick={onClose}><i data-lucide="x" style={{width:14,height:14}}></i></button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            {error && <div className="form-error">{error}</div>}
+            <div className="mg"><label>Nom complet *</label><input placeholder="Prénom Nom" value={form.name} onChange={e=>set('name',e.target.value)} required /></div>
+            <div className="mg"><label>Secteur / Magasin *</label><input placeholder="Ex: Hay Salam 1" value={form.sector} onChange={e=>set('sector',e.target.value)} required /></div>
+            <div className="mg-row">
+              <div className="mg"><label>Ville *</label>
+                <select value={form.ville} onChange={e=>{set('ville',e.target.value);set('teamLead','');}}>
+                  {VILLES.map(v=><option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <div className="mg"><label>Téléphone</label><input value={form.phone} onChange={e=>set('phone',e.target.value)} placeholder="+212 6 XX XX XX XX" /></div>
+            </div>
+            <div className="mg"><label>Team Lead *</label>
+              <select value={form.teamLead} onChange={e=>set('teamLead',e.target.value)} required>
+                <option value="">— Sélectionner —</option>
+                {tlsForVille.map(name=><option key={name} value={name}>{name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="modal-ft">
+            <button type="button" className="btn btn-ghost" onClick={onClose}>Annuler</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              <i data-lucide="user-plus" style={{width:15,height:15}}></i>
+              {saving ? 'Ajout…' : 'Ajouter'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ── ANIMATEURS VIEW ── */
+function AnimateursView({ animateurs }) {
+  const [search,      setSearch]      = useState('');
+  const [filterVille, setFilterVille] = useState('Toutes');
+  const [filterTL,    setFilterTL]    = useState('Tous');
+  const [editTarget,  setEditTarget]  = useState(null);
+  const [showAdd,     setShowAdd]     = useState(false);
+  const [toast,       setToast]       = useState('');
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
+
+  const teamLeadsForVille = useMemo(() => {
+    const src = filterVille === 'Toutes' ? animateurs : animateurs.filter(a => a.ville === filterVille);
+    return [...new Set(src.map(a => a.teamLead))].sort();
+  }, [animateurs, filterVille]);
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return animateurs.filter(a => {
+      const matchQ = !q || a.name.toLowerCase().includes(q) || a.sector.toLowerCase().includes(q);
+      const matchV = filterVille === 'Toutes' || a.ville === filterVille;
+      const matchT = filterTL === 'Tous' || a.teamLead === filterTL;
+      return matchQ && matchV && matchT;
+    });
+  }, [animateurs, search, filterVille, filterTL]);
+
+  const handleDelete = async (anim) => {
+    if (!window.confirm(`Supprimer ${anim.name} de l'équipe ?`)) return;
+    await LS.deleteAnimateur(anim.id);
+    showToast(`${anim.name} supprimé`);
+  };
+
+  const villeCount = [...new Set(animateurs.map(a => a.ville))].length;
+
+  return (
+    <>
+      {editTarget && (
+        <EditAnimateurMgrModal
+          animateur={editTarget} animateurs={animateurs}
+          onClose={() => setEditTarget(null)}
+          onSaved={() => showToast(`${editTarget.name} mis à jour`)} />
+      )}
+      {showAdd && (
+        <AddAnimateurMgrModal
+          animateurs={animateurs}
+          onClose={() => setShowAdd(false)}
+          onCreated={() => showToast('Animateur ajouté avec succès')} />
+      )}
+      {toast && (
+        <div style={{position:'fixed',bottom:24,right:24,background:'#1E293B',color:'white',padding:'10px 18px',borderRadius:10,fontSize:13,fontWeight:600,zIndex:200,boxShadow:'0 8px 24px rgba(0,0,0,0.2)'}}>
+          {toast}
+        </div>
+      )}
+
+      <div className="section-hd">
+        <div>
+          <div className="section-title">Gestion des animateurs</div>
+          <div className="section-sub">{animateurs.length} animateurs · {villeCount} ville{villeCount!==1?'s':''}</div>
+        </div>
+        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
+          <i data-lucide="user-plus" style={{width:15,height:15}}></i>Ajouter un animateur
+        </button>
+      </div>
+
+      <div className="table-card">
+        <div className="table-toolbar">
+          <div className="table-search">
+            <i data-lucide="search" className="table-search-icon" style={{width:15,height:15}}></i>
+            <input placeholder="Nom, secteur..." value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            <select style={{height:36,padding:'0 10px',border:'1.5px solid var(--neutral-200)',borderRadius:8,fontSize:13,background:'white',fontFamily:'var(--font-sans)',cursor:'pointer'}}
+              value={filterVille} onChange={e => { setFilterVille(e.target.value); setFilterTL('Tous'); }}>
+              <option value="Toutes">Toutes les villes</option>
+              {[...new Set(animateurs.map(a=>a.ville))].sort().map(v => (
+                <option key={v} value={v}>{v} ({animateurs.filter(a=>a.ville===v).length})</option>
+              ))}
+            </select>
+            <select style={{height:36,padding:'0 10px',border:'1.5px solid var(--neutral-200)',borderRadius:8,fontSize:13,background:'white',fontFamily:'var(--font-sans)',cursor:'pointer'}}
+              value={filterTL} onChange={e => setFilterTL(e.target.value)}>
+              <option value="Tous">Tous les Team Leads</option>
+              {teamLeadsForVille.map(tl => <option key={tl} value={tl}>{tl}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {filtered.length === 0 ? (
+          <div className="empty">
+            <i data-lucide="users" style={{width:48,height:48,opacity:0.25}}></i>
+            <div className="empty-text">Aucun animateur trouvé</div>
+          </div>
+        ) : (
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>#</th><th>Animateur</th><th>Secteur</th><th>Ville</th><th>Team Lead</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(anim => {
+                const color = CITY_COLORS[anim.ville] || '#64748B';
+                return (
+                  <tr key={anim.id}>
+                    <td><span className="mono">{anim.id}</span></td>
+                    <td>
+                      <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        <div className="av" style={{background:avatarColor(anim.name),width:28,height:28,fontSize:11}}>
+                          {initials(anim.name)}
+                        </div>
+                        <span style={{fontWeight:600,color:'var(--neutral-900)'}}>{anim.name}</span>
+                      </div>
+                    </td>
+                    <td style={{fontSize:12,color:'var(--neutral-600)',maxWidth:180}}>{anim.sector}</td>
+                    <td>
+                      <span style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:color+'20',color}}>
+                        {anim.ville}
+                      </span>
+                    </td>
+                    <td style={{fontSize:12,color:'var(--neutral-700)',fontWeight:500}}>{anim.teamLead}</td>
+                    <td>
+                      <div style={{display:'flex',gap:6}}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setEditTarget(anim)} title="Modifier / Réaffecter">
+                          <i data-lucide="pencil" style={{width:13,height:13}}></i>
+                        </button>
+                        <button className="btn btn-danger btn-sm" onClick={() => handleDelete(anim)} title="Supprimer">
+                          <i data-lucide="trash-2" style={{width:13,height:13}}></i>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
+  );
+}
+
 /* ── APP ── */
 function App() {
-  const [loggedIn,  setLoggedIn]  = useState(() => localStorage.getItem('ptg_manager_session') === '1');
-  const [view,      setView]      = useState('dashboard');
-  const [accounts,  setAccounts]  = useState([]);
-  const [sessions,  setSessions]  = useState({});
-  const [pointages, setPointages] = useState([]);
+  const [loggedIn,    setLoggedIn]    = useState(() => localStorage.getItem('ptg_manager_session') === '1');
+  const [view,        setView]        = useState('dashboard');
+  const [accounts,    setAccounts]    = useState([]);
+  const [sessions,    setSessions]    = useState({});
+  const [pointages,   setPointages]   = useState([]);
+  const [animateurs,  setAnimateurs]  = useState(ANIMATEURS_DB);
 
   useEffect(() => { lucide.createIcons(); });
 
@@ -1625,28 +1920,31 @@ function App() {
 
   useEffect(() => {
     if (!loggedIn) return;
-    LS.seedAccounts(); // crée les comptes TL manquants au premier lancement
-    const refAcc = db.ref('ptg/accounts');
-    const refSes = db.ref('ptg/sessions');
-    const refPtg = db.ref('ptg/pointages');
-    refAcc.on('value', snap => { _accounts  = snap.exists() ? Object.values(snap.val()) : []; setAccounts([..._accounts]); });
-    refSes.on('value', snap => { _sessions  = snap.exists() ? snap.val() : {};              setSessions({..._sessions}); });
-    refPtg.on('value', snap => { _pointages = snap.exists() ? Object.values(snap.val()) : []; setPointages([..._pointages]); });
-    return () => { refAcc.off('value'); refSes.off('value'); refPtg.off('value'); };
+    LS.seedAnimateurs().then(() => LS.seedAccounts());
+    const refAcc  = db.ref('ptg/accounts');
+    const refSes  = db.ref('ptg/sessions');
+    const refPtg  = db.ref('ptg/pointages');
+    const refAnim = db.ref('ptg/animateurs');
+    refAcc.on('value',  snap => { _accounts   = snap.exists() ? Object.values(snap.val()) : [];                                      setAccounts([..._accounts]); });
+    refSes.on('value',  snap => { _sessions   = snap.exists() ? snap.val() : {};                                                     setSessions({..._sessions}); });
+    refPtg.on('value',  snap => { _pointages  = snap.exists() ? Object.values(snap.val()) : [];                                      setPointages([..._pointages]); });
+    refAnim.on('value', snap => { _animateurs = snap.exists() ? Object.values(snap.val()).sort((a,b) => a.id - b.id) : [...ANIMATEURS_DB]; setAnimateurs([..._animateurs]); });
+    return () => { refAcc.off('value'); refSes.off('value'); refPtg.off('value'); refAnim.off('value'); };
   }, [loggedIn]);
 
   if (!loggedIn) return <LoginPage onLogin={(remember) => { if (remember) localStorage.setItem('ptg_manager_session', '1'); setLoggedIn(true); }} />;
 
   const liveCount  = accounts.filter(a => LS.isLive(a.email)).length;
   const todayPtgN  = pointages.filter(p => p.date === new Date().toDateString()).length;
-  const PAGE_TITLES = { dashboard:'Dashboard', accounts:'Comptes Team Leads', activity:'Journal des pointages', weekly:'Présence hebdomadaire' };
+  const PAGE_TITLES = { dashboard:'Dashboard', accounts:'Comptes Team Leads', activity:'Journal des pointages', weekly:'Présence hebdomadaire', animateurs:'Gestion des animateurs' };
   const pageTitle  = PAGE_TITLES[view] || 'Dashboard';
 
   const navItems = [
-    { key:'dashboard', icon:'layout-dashboard', label:'Dashboard',         badge:0 },
-    { key:'accounts',  icon:'users',             label:'Comptes',           badge:accounts.length },
-    { key:'activity',  icon:'clipboard-list',    label:'Journal',           badge:todayPtgN },
-    { key:'weekly',    icon:'calendar-days',     label:'Présence hebdo',    badge:0 },
+    { key:'dashboard',  icon:'layout-dashboard', label:'Dashboard',         badge:0 },
+    { key:'accounts',   icon:'users',            label:'Comptes',           badge:accounts.length },
+    { key:'animateurs', icon:'user-cog',         label:'Animateurs',        badge:animateurs.length },
+    { key:'activity',   icon:'clipboard-list',   label:'Journal',           badge:todayPtgN },
+    { key:'weekly',     icon:'calendar-days',    label:'Présence hebdo',    badge:0 },
   ];
 
   return (
@@ -1706,10 +2004,11 @@ function App() {
         </div>
 
         <div className="content">
-          {view === 'dashboard' && <DashboardView accounts={accounts} sessions={sessions} pointages={pointages} onRefresh={refresh} />}
-          {view === 'accounts'  && <AccountsView  accounts={accounts} sessions={sessions} onRefresh={refresh} />}
-          {view === 'activity'  && <ActivityView  pointages={pointages} accounts={accounts} />}
-          {view === 'weekly'    && <WeeklyPresenceView pointages={pointages} accounts={accounts} />}
+          {view === 'dashboard'  && <DashboardView accounts={accounts} sessions={sessions} pointages={pointages} onRefresh={refresh} animateurs={animateurs} />}
+          {view === 'accounts'   && <AccountsView  accounts={accounts} sessions={sessions} onRefresh={refresh} />}
+          {view === 'animateurs' && <AnimateursView animateurs={animateurs} />}
+          {view === 'activity'   && <ActivityView  pointages={pointages} accounts={accounts} />}
+          {view === 'weekly'     && <WeeklyPresenceView pointages={pointages} accounts={accounts} animateurs={animateurs} />}
         </div>
       </div>
     </div>

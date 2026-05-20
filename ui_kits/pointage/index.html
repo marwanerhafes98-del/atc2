@@ -1300,6 +1300,24 @@ function App() {
       });
     });
 
+    // Écoute Firebase pour les changements d'animateurs (réaffectations manager)
+    const animRef = db.ref('ptg/animateurs');
+    const animHandler = animRef.on('value', snap => {
+      if (!snap.exists()) return;
+      const newBase = Object.values(snap.val()).sort((a, b) => a.id - b.id);
+      setAnimateurs(prev => {
+        const statusMap = {};
+        prev.forEach(a => { statusMap[a.id] = { status: a.status, pointedAt: a.pointedAt, note: a.note }; });
+        return newBase.map(a => ({
+          ...a,
+          status:    statusMap[a.id]?.status    || 'nonpointe',
+          pointedAt: statusMap[a.id]?.pointedAt || null,
+          note:      statusMap[a.id]?.note      || undefined,
+        }));
+      });
+      nextId.current = Math.max(...newBase.map(a => a.id), 124) + 1;
+    });
+
     // Écoute Firebase en temps réel pour restaurer/sync les pointages du jour
     const ref = db.ref('ptg/pointages');
     const handler = ref.on('value', snap => {
@@ -1325,6 +1343,7 @@ function App() {
     window.addEventListener('beforeunload', onUnload);
     return () => {
       accRef.off('value', accHandler);
+      animRef.off('value', animHandler);
       ref.off('value', handler);
       clearInterval(ping);
       window.removeEventListener('beforeunload', onUnload);
@@ -1360,21 +1379,24 @@ function App() {
     const id = nextId.current++;
     const newAnim = {
       id, name: form.name.trim(), sector: form.sector.trim(),
-      ville: form.ville, phone: form.phone || '—',
-      teamLead: form.teamLead || '—',
-      status: 'nonpointe', pointedAt: null,
+      ville: form.ville, phone: form.phone || '',
+      teamLead: form.teamLead || user.name,
     };
-    setAnimateurs(prev => [...prev, newAnim]);
+    db.ref(`ptg/animateurs/${id}`).set(newAnim);
+    setAnimateurs(prev => [...prev, { ...newAnim, status:'nonpointe', pointedAt:null, note:undefined }]);
     showToast(`${form.name} ajouté`, 'success');
   };
 
   const handleEditAnimateur = (id, data) => {
+    const { status, pointedAt, note, ...persistable } = data;
+    db.ref(`ptg/animateurs/${id}`).update(persistable);
     setAnimateurs(prev => prev.map(a => a.id === id ? { ...a, ...data } : a));
     setSelectedAnimateur(prev => prev && prev.id === id ? { ...prev, ...data } : prev);
     showToast('Informations mises à jour', 'success');
   };
 
   const handleDeleteAnimateur = (id) => {
+    db.ref(`ptg/animateurs/${id}`).remove();
     setAnimateurs(prev => prev.filter(a => a.id !== id));
     setSelectedAnimateur(null);
     showToast('Animateur supprimé', 'info');
