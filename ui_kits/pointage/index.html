@@ -12,687 +12,1208 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
-    * {
-      box-sizing: border-box;
-      -webkit-tap-highlight-color: transparent;
-    }
-    
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: var(--font-sans);
-      background: var(--neutral-50);
-      overscroll-behavior: none;
-    }
-    
-    #root {
-      width: 100%;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-    
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { margin:0; padding:0; font-family:var(--font-sans); background:var(--neutral-100); overscroll-behavior:none; }
+    #root { width:100%; min-height:100vh; display:flex; flex-direction:column; }
+
     .mobile-container {
-      max-width: 414px;
-      margin: 0 auto;
-      width: 100%;
-      min-height: 100vh;
-      background: white;
-      box-shadow: 0 0 40px rgba(0,0,0,0.08);
-      display: flex;
-      flex-direction: column;
-      position: relative;
+      max-width:414px; margin:0 auto; width:100%; min-height:100vh;
+      background:white; box-shadow:0 0 40px rgba(0,0,0,0.1);
+      display:flex; flex-direction:column; position:relative;
     }
-    
+
+    /* STATUS BAR */
     .status-bar {
-      height: 44px;
-      background: var(--primary-600);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-weight: 700;
-      font-size: 17px;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      letter-spacing: 0.3px;
+      height:52px; background:var(--primary-600);
+      display:flex; align-items:center; justify-content:space-between;
+      padding:0 16px; color:white; position:sticky; top:0; z-index:100;
     }
-    
-    .main-content {
-      flex: 1;
-      overflow-y: auto;
-      padding-bottom: 80px;
-    }
-    
+    .status-bar-title { font-weight:800; font-size:17px; letter-spacing:0.3px; position:absolute; left:50%; transform:translateX(-50%); white-space:nowrap; }
+    .status-bar-btn { background:transparent; border:none; color:white; display:flex; align-items:center; gap:4px; font-size:15px; font-weight:600; cursor:pointer; padding:8px 0; opacity:0.92; }
+    .status-bar-icon-btn { background:rgba(255,255,255,0.15); border:none; color:white; border-radius:var(--radius-full); width:34px; height:34px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+    .status-bar-spacer { width:70px; }
+
+    /* MAIN CONTENT */
+    .main-content { flex:1; overflow-y:auto; padding-bottom:80px; }
+
+    /* BOTTOM NAV */
     .bottom-nav {
-      position: fixed;
-      bottom: 0;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 100%;
-      max-width: 414px;
-      height: 64px;
-      background: white;
-      border-top: 1px solid var(--neutral-200);
-      display: flex;
-      z-index: 90;
-      box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+      position:fixed; bottom:0; left:50%; transform:translateX(-50%);
+      width:100%; max-width:414px; height:68px; background:white;
+      border-top:1px solid var(--neutral-200); display:flex; z-index:90;
+      box-shadow:0 -4px 16px rgba(0,0,0,0.06);
     }
-    
-    .nav-item {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 4px;
-      border: none;
-      background: transparent;
-      color: var(--neutral-500);
-      font-size: 11px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: color 150ms;
-      padding: 8px;
-    }
-    
-    .nav-item.active {
-      color: var(--primary-600);
-    }
-    
-    .nav-item:active {
-      background: var(--neutral-50);
-    }
-    
-    /* Login Screen */
-    .login-screen {
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      padding: 24px;
-      background: linear-gradient(135deg, var(--primary-600) 0%, var(--primary-800) 100%);
-    }
-    
-    .login-logo {
-      margin: 60px auto 40px;
-      text-align: center;
-    }
-    
-    .login-logo-circle {
-      width: 80px;
-      height: 80px;
-      background: white;
-      border-radius: var(--radius-full);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 16px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-    }
-    
-    .login-title {
-      color: white;
-      font-size: 28px;
-      font-weight: 800;
-      margin-bottom: 8px;
-      letter-spacing: 0.5px;
-    }
-    
-    .login-subtitle {
-      color: rgba(255,255,255,0.8);
-      font-size: 15px;
-    }
-    
-    .login-form {
-      background: white;
-      border-radius: var(--radius-xl);
-      padding: 24px;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.15);
-    }
-    
-    .form-group {
-      margin-bottom: 16px;
-    }
-    
-    .form-label {
-      display: block;
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--neutral-700);
-      margin-bottom: 8px;
-    }
-    
-    .form-input {
-      width: 100%;
-      height: 48px;
-      padding: 0 16px;
-      border: 1.5px solid var(--neutral-200);
-      border-radius: var(--radius-md);
-      font-size: 16px;
-      font-family: var(--font-sans);
-      transition: all 150ms;
-    }
-    
-    .form-input:focus {
-      outline: none;
-      border-color: var(--primary-600);
-      box-shadow: 0 0 0 3px var(--primary-100);
-    }
-    
-    .btn-login {
-      width: 100%;
-      height: 52px;
-      background: var(--primary-600);
-      color: white;
-      border: none;
-      border-radius: var(--radius-md);
-      font-size: 16px;
-      font-weight: 700;
-      cursor: pointer;
-      margin-top: 8px;
-      box-shadow: 0 2px 8px rgba(0, 82, 204, 0.3);
-      transition: all 150ms;
-    }
-    
-    .btn-login:active {
-      transform: scale(0.98);
-    }
-    
-    /* Animateurs List */
-    .list-header {
-      padding: 20px 16px 12px;
-      background: white;
-      border-bottom: 1px solid var(--neutral-100);
-      position: sticky;
-      top: 44px;
-      z-index: 50;
-    }
-    
-    .list-title {
-      font-size: 28px;
-      font-weight: 800;
-      margin-bottom: 4px;
-      color: var(--neutral-900);
-    }
-    
-    .list-subtitle {
-      font-size: 14px;
-      color: var(--neutral-500);
-    }
-    
-    .search-bar {
-      margin: 16px;
-      position: relative;
-    }
-    
-    .search-input {
-      width: 100%;
-      height: 44px;
-      padding: 0 16px 0 44px;
-      border: 1.5px solid var(--neutral-200);
-      border-radius: var(--radius-lg);
-      font-size: 16px;
-      background: var(--neutral-50);
-    }
-    
-    .search-icon {
-      position: absolute;
-      left: 14px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: var(--neutral-400);
-    }
-    
-    .animateur-item {
-      padding: 16px;
-      border-bottom: 1px solid var(--neutral-100);
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      background: white;
-      cursor: pointer;
-      transition: background 150ms;
-    }
-    
-    .animateur-item:active {
-      background: var(--neutral-50);
-    }
-    
-    .avatar {
-      width: 48px;
-      height: 48px;
-      border-radius: var(--radius-full);
-      background: var(--primary-500);
-      color: white;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 16px;
-      flex-shrink: 0;
-    }
-    
-    .animateur-info {
-      flex: 1;
-      min-width: 0;
-    }
-    
-    .animateur-name {
-      font-weight: 600;
-      font-size: 16px;
-      margin-bottom: 3px;
-      color: var(--neutral-900);
-    }
-    
-    .animateur-sector {
-      font-size: 13px;
-      color: var(--neutral-500);
-    }
-    
-    .status-badge {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 5px 10px;
-      border-radius: var(--radius-sm);
-      font-size: 12px;
-      font-weight: 600;
-      flex-shrink: 0;
-    }
-    
-    .status-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: var(--radius-full);
-    }
-    
-    .status-disponible {
-      background: var(--success-100);
-      color: var(--success-700);
-    }
-    .status-disponible .status-dot { background: var(--success-500); }
-    
-    .status-mission {
-      background: var(--primary-100);
-      color: var(--primary-700);
-    }
-    .status-mission .status-dot { background: var(--primary-500); }
-    
-    .status-absent {
-      background: var(--error-100);
-      color: var(--error-700);
-    }
-    .status-absent .status-dot { background: var(--error-500); }
-    
-    .status-offline {
-      background: var(--neutral-100);
-      color: var(--neutral-700);
-    }
-    .status-offline .status-dot { background: var(--neutral-400); }
-    
-    /* Pointage Form */
-    .pointage-container {
-      padding: 20px 16px;
-    }
-    
-    .pointage-card {
-      background: white;
-      border-radius: var(--radius-xl);
-      padding: 20px;
-      box-shadow: var(--shadow-md);
-      margin-bottom: 16px;
-    }
-    
-    .pointage-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 20px;
-      padding-bottom: 16px;
-      border-bottom: 1px solid var(--neutral-100);
-    }
-    
-    .btn-action {
-      width: 100%;
-      height: 52px;
-      border: none;
-      border-radius: var(--radius-md);
-      font-size: 16px;
-      font-weight: 700;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      transition: all 150ms;
-      margin-bottom: 12px;
-    }
-    
-    .btn-success {
-      background: var(--success-600);
-      color: white;
-      box-shadow: 0 2px 8px rgba(15, 133, 64, 0.3);
-    }
-    
-    .btn-danger {
-      background: var(--error-500);
-      color: white;
-      box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
-    }
-    
-    .btn-action:active {
-      transform: scale(0.98);
-    }
-    
-    .gps-info {
-      background: var(--info-50);
-      padding: 12px;
-      border-radius: var(--radius-md);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 13px;
-      color: var(--info-700);
-    }
-    
-    .gps-coords {
-      font-family: var(--font-mono);
-      font-size: 12px;
-    }
-    
-    /* Map View */
-    .map-container {
-      width: 100%;
-      height: calc(100vh - 44px - 64px);
-    }
-    
-    #map {
-      width: 100%;
-      height: 100%;
-    }
+    .nav-item { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; border:none; background:transparent; color:var(--neutral-400); font-size:10px; font-weight:600; cursor:pointer; transition:color 150ms; padding:8px 4px; letter-spacing:0.3px; }
+    .nav-item.active { color:var(--primary-600); }
+    .nav-item:active { background:var(--neutral-50); }
+    .nav-badge { position:absolute; top:-2px; right:-4px; background:var(--error-500); color:white; font-size:9px; font-weight:700; min-width:16px; height:16px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 3px; }
+    .nav-icon-wrap { position:relative; display:inline-flex; }
+
+    /* LOGIN */
+    .login-screen { min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; background:linear-gradient(160deg, var(--primary-700) 0%, var(--primary-900) 100%); }
+    .login-logo { text-align:center; margin-bottom:40px; }
+    .login-logo-circle { width:88px; height:88px; background:white; border-radius:var(--radius-full); display:flex; align-items:center; justify-content:center; margin:0 auto 20px; box-shadow:0 8px 32px rgba(0,0,0,0.2); }
+    .login-title { color:white; font-size:26px; font-weight:800; letter-spacing:1px; margin-bottom:6px; }
+    .login-subtitle { color:rgba(255,255,255,0.65); font-size:13px; font-weight:500; letter-spacing:2px; text-transform:uppercase; }
+    .login-form { width:100%; background:white; border-radius:var(--radius-xl); padding:28px 24px; box-shadow:0 16px 48px rgba(0,0,0,0.2); }
+    .form-group { margin-bottom:16px; }
+    .form-label { display:block; font-size:12px; font-weight:700; color:var(--neutral-600); margin-bottom:7px; text-transform:uppercase; letter-spacing:0.5px; }
+    .form-input { width:100%; height:50px; padding:0 16px; border:1.5px solid var(--neutral-200); border-radius:var(--radius-md); font-size:16px; font-family:var(--font-sans); color:var(--neutral-900); background:var(--neutral-50); transition:all 150ms; }
+    .form-input:focus { outline:none; border-color:var(--primary-600); background:white; box-shadow:0 0 0 3px var(--primary-100); }
+    .form-select { width:100%; height:50px; padding:0 16px; border:1.5px solid var(--neutral-200); border-radius:var(--radius-md); font-size:15px; font-family:var(--font-sans); color:var(--neutral-900); background:var(--neutral-50); appearance:none; cursor:pointer; }
+    .form-select:focus { outline:none; border-color:var(--primary-600); }
+    .select-wrap { position:relative; }
+    .select-wrap::after { content:''; position:absolute; right:14px; top:50%; transform:translateY(-50%); border:5px solid transparent; border-top-color:var(--neutral-400); pointer-events:none; margin-top:3px; }
+    .btn-login { width:100%; height:52px; background:var(--primary-600); color:white; border:none; border-radius:var(--radius-md); font-size:15px; font-weight:700; cursor:pointer; margin-top:8px; letter-spacing:0.5px; box-shadow:0 4px 16px rgba(0,82,204,0.35); transition:all 150ms; }
+    .btn-login:active { transform:scale(0.98); }
+    .login-hint { font-size:12px; color:var(--neutral-400); text-align:center; margin-top:16px; }
+
+    /* FILTER DROPDOWNS */
+    .filter-dropdowns-row { display:flex; gap:10px; padding:8px 16px 12px; background:white; }
+    .filter-dropdown-wrap { flex:1; position:relative; display:flex; align-items:center; }
+    .dropdown-icon { position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--primary-600); pointer-events:none; z-index:1; }
+    .dropdown-arrow { position:absolute; right:10px; top:50%; transform:translateY(-50%); color:var(--neutral-400); pointer-events:none; }
+    .filter-select { width:100%; height:40px; padding:0 30px 0 32px; border:1.5px solid var(--neutral-200); border-radius:var(--radius-md); font-size:13px; font-weight:600; font-family:var(--font-sans); color:var(--neutral-800); background:var(--neutral-50); appearance:none; cursor:pointer; transition:all 150ms; }
+    .filter-select:focus { outline:none; border-color:var(--primary-500); background:white; box-shadow:0 0 0 3px var(--primary-100); }
+    .filter-select option { font-weight:500; }
+
+    /* STATS */
+    .stats-bar { display:flex; gap:8px; overflow-x:auto; scrollbar-width:none; padding:10px 16px; background:var(--neutral-50); border-bottom:1px solid var(--neutral-100); }
+    .stats-bar::-webkit-scrollbar { display:none; }
+    .stat-chip { display:flex; align-items:center; gap:5px; padding:6px 11px; border-radius:var(--radius-lg); font-size:11px; font-weight:700; white-space:nowrap; flex-shrink:0; }
+    .stat-chip-dot { width:7px; height:7px; border-radius:var(--radius-full); }
+    .stat-present { background:#DCFCE7; color:#15803D; } .stat-present .stat-chip-dot { background:#22C55E; }
+    .stat-absent  { background:#FEE2E2; color:#B91C1C; } .stat-absent  .stat-chip-dot { background:#EF4444; }
+    .stat-malade  { background:#FEF3C7; color:#B45309; } .stat-malade  .stat-chip-dot { background:#F59E0B; }
+    .stat-demission { background:#F3E8FF; color:#6B21A8; } .stat-demission .stat-chip-dot { background:#A855F7; }
+    .stat-nonpointe { background:var(--neutral-100); color:var(--neutral-600); } .stat-nonpointe .stat-chip-dot { background:var(--neutral-400); }
+
+    /* LIST HEADER */
+    .list-header { padding:14px 16px 0; background:white; position:sticky; top:52px; z-index:50; border-bottom:1px solid var(--neutral-100); }
+    .list-top-row { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:10px; }
+    .list-title { font-size:22px; font-weight:800; color:var(--neutral-900); margin-bottom:2px; }
+    .list-subtitle { font-size:12px; color:var(--neutral-500); }
+    .date-chip { background:var(--primary-50); color:var(--primary-700); font-size:11px; font-weight:600; padding:5px 10px; border-radius:var(--radius-md); white-space:nowrap; }
+    .search-row { display:flex; gap:8px; padding-bottom:10px; }
+    .search-bar { flex:1; position:relative; }
+    .search-input { width:100%; height:40px; padding:0 12px 0 38px; border:1.5px solid var(--neutral-200); border-radius:var(--radius-lg); font-size:15px; background:var(--neutral-50); color:var(--neutral-900); font-family:var(--font-sans); }
+    .search-input:focus { outline:none; border-color:var(--primary-400); background:white; }
+    .search-icon { position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--neutral-400); pointer-events:none; }
+
+    /* FILTER CHIPS */
+    .filter-scroll { display:flex; gap:7px; overflow-x:auto; scrollbar-width:none; padding:0 16px 10px; background:white; }
+    .filter-scroll::-webkit-scrollbar { display:none; }
+    .filter-chip { display:flex; align-items:center; gap:4px; padding:5px 11px; border-radius:var(--radius-full); font-size:11px; font-weight:600; border:1.5px solid var(--neutral-200); background:white; color:var(--neutral-500); cursor:pointer; white-space:nowrap; flex-shrink:0; transition:all 120ms; }
+    .filter-chip.active { border-color:var(--primary-600); background:var(--primary-600); color:white; }
+
+    /* SECTION DIVIDER */
+    .section-label { padding:8px 16px 5px; font-size:10px; font-weight:700; color:var(--neutral-400); text-transform:uppercase; letter-spacing:0.8px; background:var(--neutral-50); border-bottom:1px solid var(--neutral-100); }
+
+    /* ANIMATEUR ITEM */
+    .animateur-item { padding:13px 16px; border-bottom:1px solid var(--neutral-100); display:flex; align-items:center; gap:11px; background:white; cursor:pointer; transition:background 120ms; }
+    .animateur-item:active { background:var(--neutral-50); }
+    .avatar { width:44px; height:44px; border-radius:var(--radius-full); color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; flex-shrink:0; position:relative; }
+    .avatar-status-dot { position:absolute; bottom:1px; right:1px; width:11px; height:11px; border-radius:var(--radius-full); border:2px solid white; }
+    .animateur-info { flex:1; min-width:0; }
+    .animateur-name { font-weight:600; font-size:14px; margin-bottom:2px; color:var(--neutral-900); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .animateur-meta { font-size:11px; color:var(--neutral-500); display:flex; align-items:center; gap:5px; }
+    .animateur-time { font-size:10px; color:var(--neutral-400); margin-top:1px; }
+    .animateur-phone { font-size:11px; color:var(--neutral-400); margin-top:1px; font-family:var(--font-mono); }
+
+    .status-badge { display:flex; align-items:center; gap:5px; padding:4px 8px; border-radius:var(--radius-sm); font-size:10px; font-weight:700; flex-shrink:0; white-space:nowrap; }
+    .status-dot { width:6px; height:6px; border-radius:var(--radius-full); }
+    .s-present  { background:#DCFCE7; color:#15803D; } .s-present  .status-dot { background:#22C55E; }
+    .s-absent   { background:#FEE2E2; color:#B91C1C; } .s-absent   .status-dot { background:#EF4444; }
+    .s-malade   { background:#FEF3C7; color:#B45309; } .s-malade   .status-dot { background:#F59E0B; }
+    .s-demission{ background:#F3E8FF; color:#7C3AED; } .s-demission .status-dot { background:#A855F7; }
+    .s-nonpointe{ background:var(--neutral-100); color:var(--neutral-500); } .s-nonpointe .status-dot { background:var(--neutral-400); }
+
+    .empty-state { padding:48px 24px; text-align:center; color:var(--neutral-400); }
+    .empty-state-text { font-size:14px; font-weight:500; margin-top:12px; }
+
+    /* POINTAGE FORM */
+    .pointage-container { padding:0 0 20px; }
+    .pointage-hero { background:linear-gradient(135deg, var(--primary-600), var(--primary-800)); padding:24px 20px 28px; display:flex; flex-direction:column; align-items:center; gap:10px; }
+    .pointage-avatar { width:68px; height:68px; border-radius:var(--radius-full); color:white; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:22px; border:3px solid rgba(255,255,255,0.4); }
+    .pointage-name { font-size:20px; font-weight:800; color:white; text-align:center; }
+    .pointage-sub { font-size:12px; color:rgba(255,255,255,0.7); display:flex; align-items:center; gap:5px; }
+    .pointage-body { padding:16px; }
+    .section-title { font-size:10px; font-weight:700; color:var(--neutral-400); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:10px; }
+    .status-grid { display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-bottom:16px; }
+    .status-btn { height:68px; border:2px solid transparent; border-radius:var(--radius-lg); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; cursor:pointer; font-size:12px; font-weight:700; transition:all 150ms; background:var(--neutral-50); color:var(--neutral-600); }
+    .status-btn:active { transform:scale(0.96); }
+    .status-btn.selected { border-color:currentColor; }
+    .status-btn.btn-present   { color:#15803D; } .status-btn.btn-present.selected   { background:#DCFCE7; }
+    .status-btn.btn-absent    { color:#B91C1C; } .status-btn.btn-absent.selected    { background:#FEE2E2; }
+    .status-btn.btn-malade    { color:#B45309; } .status-btn.btn-malade.selected    { background:#FEF3C7; }
+    .status-btn.btn-demission { color:#7C3AED; } .status-btn.btn-demission.selected { background:#F3E8FF; }
+    .note-area { width:100%; min-height:72px; padding:10px 12px; border:1.5px solid var(--neutral-200); border-radius:var(--radius-md); font-size:14px; font-family:var(--font-sans); resize:none; color:var(--neutral-800); background:var(--neutral-50); transition:all 150ms; margin-bottom:14px; }
+    .note-area:focus { outline:none; border-color:var(--primary-400); background:white; }
+    .gps-card { background:#EFF6FF; border:1px solid #BFDBFE; border-radius:var(--radius-md); padding:11px 13px; display:flex; align-items:center; gap:11px; margin-bottom:16px; }
+    .gps-label { font-size:11px; font-weight:700; color:#1D4ED8; margin-bottom:1px; }
+    .gps-coords { font-family:var(--font-mono); font-size:10px; color:#3B82F6; }
+    .gps-dot { width:10px; height:10px; border-radius:var(--radius-full); background:#22C55E; box-shadow:0 0 0 3px rgba(34,197,94,0.2); flex-shrink:0; }
+    .gps-dot.waiting { background:#F59E0B; box-shadow:0 0 0 3px rgba(245,158,11,0.2); }
+    .btn-confirm { width:100%; height:52px; background:var(--primary-600); color:white; border:none; border-radius:var(--radius-md); font-size:15px; font-weight:700; cursor:pointer; box-shadow:0 4px 16px rgba(0,82,204,0.3); transition:all 150ms; display:flex; align-items:center; justify-content:center; gap:8px; }
+    .btn-confirm:active { transform:scale(0.98); }
+    .btn-confirm:disabled { background:var(--neutral-300); box-shadow:none; cursor:not-allowed; }
+
+    /* ADD ANIMATEUR MODAL */
+    .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:200; display:flex; align-items:flex-end; justify-content:center; }
+    .modal-sheet { background:white; border-radius:var(--radius-xl) var(--radius-xl) 0 0; width:100%; max-width:414px; max-height:90vh; overflow-y:auto; padding:0 0 24px; animation:slideUp 0.25s ease; }
+    @keyframes slideUp { from { transform:translateY(100%); } to { transform:translateY(0); } }
+    .modal-handle { width:36px; height:4px; background:var(--neutral-200); border-radius:2px; margin:12px auto 0; }
+    .modal-header { padding:16px 20px 12px; border-bottom:1px solid var(--neutral-100); display:flex; align-items:center; justify-content:space-between; }
+    .modal-title { font-size:18px; font-weight:800; color:var(--neutral-900); }
+    .modal-close { background:var(--neutral-100); border:none; border-radius:var(--radius-full); width:32px; height:32px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--neutral-500); }
+    .modal-body { padding:16px 20px; }
+    .modal-footer { padding:0 20px; }
+    .form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+    /* TOAST */
+    .toast { position:fixed; bottom:84px; left:50%; transform:translateX(-50%); color:white; font-size:13px; font-weight:600; padding:11px 18px; border-radius:var(--radius-lg); box-shadow:0 8px 24px rgba(0,0,0,0.2); z-index:300; white-space:nowrap; display:flex; align-items:center; gap:8px; animation:fadeInUp 0.2s ease; max-width:340px; }
+    @keyframes fadeInUp { from { transform:translateX(-50%) translateY(10px); opacity:0; } to { transform:translateX(-50%) translateY(0); opacity:1; } }
+    .toast.success { background:#166534; }
+    .toast.error   { background:#991B1B; }
+    .toast.warning { background:#92400E; }
+    .toast.info    { background:#1E40AF; }
+    .toast.neutral { background:var(--neutral-900); }
+
+    /* MAP */
+    .map-container { width:100%; height:calc(100vh - 52px - 68px); }
+    #map { width:100%; height:100%; }
+
+    /* HISTORY */
+    .history-item { padding:13px 16px; border-bottom:1px solid var(--neutral-100); display:flex; align-items:center; gap:11px; background:white; }
+    .history-icon { width:38px; height:38px; border-radius:var(--radius-full); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .history-info { flex:1; min-width:0; }
+    .history-name { font-weight:600; font-size:14px; color:var(--neutral-900); }
+    .history-detail { font-size:12px; color:var(--neutral-500); margin-top:1px; }
+    .history-time { font-size:11px; color:var(--neutral-400); font-weight:500; flex-shrink:0; }
+
+    /* PROFILE */
+    .profile-header { background:linear-gradient(135deg, var(--primary-600), var(--primary-800)); padding:28px 20px 24px; text-align:center; }
+    .profile-avatar { width:76px; height:76px; border-radius:var(--radius-full); background:rgba(255,255,255,0.2); border:3px solid rgba(255,255,255,0.5); display:flex; align-items:center; justify-content:center; margin:0 auto 14px; font-size:26px; font-weight:800; color:white; }
+    .profile-name { color:white; font-size:19px; font-weight:800; margin-bottom:3px; }
+    .profile-role { color:rgba(255,255,255,0.7); font-size:12px; font-weight:500; letter-spacing:1px; text-transform:uppercase; }
+    .profile-card { margin:14px 16px; background:white; border-radius:var(--radius-xl); overflow:hidden; box-shadow:var(--shadow-sm); border:1px solid var(--neutral-100); }
+    .profile-row { padding:14px 16px; border-bottom:1px solid var(--neutral-100); display:flex; align-items:center; gap:13px; }
+    .profile-row:last-child { border-bottom:none; }
+    .profile-row-icon { color:var(--neutral-400); flex-shrink:0; }
+    .profile-row-label { font-size:10px; color:var(--neutral-400); font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:2px; }
+    .profile-row-value { font-size:14px; font-weight:600; color:var(--neutral-800); }
+    .btn-logout { margin:0 16px 16px; width:calc(100% - 32px); height:46px; background:white; border:1.5px solid var(--error-300); color:var(--error-600); border-radius:var(--radius-md); font-size:14px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; transition:all 150ms; }
+    .btn-logout:active { background:var(--error-50); }
+
+    /* FAB */
+    .fab { position:fixed; bottom:84px; right:calc(50% - 207px + 16px); width:52px; height:52px; background:var(--primary-600); border:none; border-radius:var(--radius-full); color:white; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 4px 16px rgba(0,82,204,0.4); z-index:80; transition:all 150ms; }
+    .fab:active { transform:scale(0.94); }
+    @media (max-width:414px) { .fab { right:16px; } }
+
+    /* LOGIN TABS */
+    .login-tabs { display:flex; margin-bottom:16px; background:rgba(255,255,255,0.15); border-radius:var(--radius-lg); padding:4px; gap:4px; }
+    .login-tab { flex:1; height:40px; border:none; border-radius:var(--radius-md); font-size:14px; font-weight:700; cursor:pointer; background:transparent; color:rgba(255,255,255,0.7); transition:all 150ms; font-family:var(--font-sans); }
+    .login-tab.active { background:white; color:var(--primary-700); box-shadow:0 2px 8px rgba(0,0,0,0.1); }
+    .login-error { background:#FEE2E2; border:1px solid #FECACA; color:#991B1B; padding:10px 14px; border-radius:var(--radius-md); font-size:13px; font-weight:600; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+    .login-success { background:#DCFCE7; border:1px solid #BBF7D0; color:#166534; padding:10px 14px; border-radius:var(--radius-md); font-size:13px; font-weight:600; margin-bottom:14px; }
   </style>
 </head>
 <body>
-  <div id="root"></div>
-  
-  <script type="text/babel">
-    const { useState, useEffect } = React;
-    
-    // Mock data
-    const animateurs = [
-      { id: 1, name: 'Karim Mansouri', initials: 'KM', sector: 'Secteur Centre', city: 'Casablanca', status: 'disponible', lat: 33.5731, lng: -7.5898 },
-      { id: 2, name: 'Sara Bennani', initials: 'SB', sector: 'Secteur Nord', city: 'Casablanca', status: 'mission', lat: 33.5950, lng: -7.6187 },
-      { id: 3, name: 'Ahmed El Amrani', initials: 'AE', sector: 'Secteur Sud', city: 'Casablanca', status: 'offline', lat: 33.5500, lng: -7.6000 },
-      { id: 4, name: 'Fatima Zahra', initials: 'FZ', sector: 'Secteur Est', city: 'Casablanca', status: 'disponible', lat: 33.5850, lng: -7.5700 },
-      { id: 5, name: 'Youssef Alami', initials: 'YA', sector: 'Secteur Ouest', city: 'Casablanca', status: 'absent', lat: 33.5680, lng: -7.6100 },
-      { id: 6, name: 'Nadia Idrissi', initials: 'NI', sector: 'Secteur Centre', city: 'Casablanca', status: 'mission', lat: 33.5780, lng: -7.5950 },
-    ];
-    
-    function LoginScreen({ onLogin }) {
-      const [email, setEmail] = useState('');
-      const [password, setPassword] = useState('');
-      
-      const handleSubmit = (e) => {
-        e.preventDefault();
-        onLogin();
-      };
-      
-      return (
-        <div className="login-screen">
-          <div className="login-logo">
-            <div className="login-logo-circle">
-              <i data-lucide="clock" style={{ width: 40, height: 40, color: 'var(--primary-600)' }}></i>
-            </div>
-            <div className="login-title">OUTILS POINTAGE</div>
-            <div className="login-subtitle">Team Lead</div>
-          </div>
-          
-          <form className="login-form" onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label className="form-label">Email</label>
-              <input
-                type="email"
-                className="form-input"
-                placeholder="teamlead@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            
-            <div className="form-group">
-              <label className="form-label">Mot de passe</label>
-              <input
-                type="password"
-                className="form-input"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-            
-            <button type="submit" className="btn-login">
-              Se connecter
-            </button>
-          </form>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+/* ── TEAM LEADS DATA ── */
+const TEAM_LEADS_DB = {
+  'y.boualaihi@labelvie.ma':   { name: 'Y. Boualaihi',        ville: 'Agadir',      initials: 'YB' },
+  'm.elbousiydy@labelvie.ma':  { name: 'Elbousiydy Mohammed', ville: 'Beni Mellal', initials: 'EM' },
+  'm.sandoud@labelvie.ma':     { name: 'Mohammed Sandoud',    ville: 'Casablanca',  initials: 'MS' },
+  'd.elharche@labelvie.ma':    { name: 'D. Elharche',         ville: 'Fes',         initials: 'DE' },
+  'a.mimmous@labelvie.ma':     { name: 'Abdessadek Mimmous',  ville: 'Marrakech',   initials: 'AM' },
+  'a.bouichi@labelvie.ma':     { name: 'A. Bouichi',          ville: 'Meknes',      initials: 'AB' },
+  'm.elhaissat@labelvie.ma':   { name: 'Mehdi Elhaissat',     ville: 'Casablanca',  initials: 'ME' },
+  'h.aboulouarit@labelvie.ma': { name: 'Hicham Aboulouarit', ville: 'Rabat',       initials: 'HA' },
+  'm.elghezaouy@labelvie.ma':  { name: 'M. Elghezaouy',      ville: 'Tanger',      initials: 'MG' },
+  's.benmira@labelvie.ma':     { name: 'Benmira Smail',       ville: 'Tanger',      initials: 'BS' },
+};
+
+/* ── CITY GPS CENTERS ── */
+const CITY_CENTERS = {
+  'Agadir':      { lat: 30.4278, lng: -9.5981 },
+  'Beni Mellal': { lat: 32.3372, lng: -6.3498 },
+  'Casablanca':  { lat: 33.5731, lng: -7.5898 },
+  'Fes':         { lat: 34.0181, lng: -5.0078 },
+  'Marrakech':   { lat: 31.6295, lng: -7.9811 },
+  'Meknes':      { lat: 33.8957, lng: -5.5499 },
+  'Rabat':       { lat: 34.0209, lng: -6.8416 },
+  'Tanger':      { lat: 35.7595, lng: -5.8330 },
+};
+
+/* ── ANIMATEURS DATABASE ── */
+const ANIMATEURS_DB = [
+  // ── AGADIR ──
+  { id:1,  name:'Aboutarik Oussama',   sector:'Dchaira 2',       ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 10 53 5..' },
+  { id:2,  name:'Abouazid Baderdin',   sector:'Talbourjt & Hi',  ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 88 16 ..' },
+  { id:3,  name:'Addouz Hamza',        sector:'Inzegane 2',      ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 103 40 ..' },
+  { id:4,  name:'Agnaou Ismail',       sector:'Dchaira 1',       ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 104 28 ..' },
+  { id:5,  name:'Bella Hamza',         sector:'Tassila 5',       ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 99 93 ..' },
+  { id:6,  name:'Biskrane Yassine',    sector:'Tassila 4',       ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 96 72 ..' },
+  { id:7,  name:'Bouhnine Reda',       sector:'Tassila 1',       ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 84 88 ..' },
+  { id:8,  name:'Boukar Mohamed Amine',sector:'Inzegane 2',      ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 102 14 ..' },
+  { id:9,  name:'Bouras Imad',         sector:'Inzegane 2',      ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 90 91 ..' },
+  { id:10, name:'Dakhta Lahoucine',    sector:'Inzegane 1',      ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 101 07 ..' },
+  { id:11, name:'El Fahimi Ayoub',     sector:"L'abatoire 3",    ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 92 44 ..' },
+  { id:12, name:'El Hanafi Idriss',    sector:"L'abatoire 5",    ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 94 58 ..' },
+  { id:13, name:'Ghaidour Youssef',    sector:'Talbourjt & Hi',  ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 89 23 ..' },
+  { id:14, name:'Hemri Hamza',         sector:'Tassila 4',       ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 98 86 ..' },
+  { id:15, name:'Idlhaj Mohamed',      sector:'Dakhla 1',        ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 86 02 ..' },
+  { id:16, name:'Ismail Kamal',        sector:'Tassila 4',       ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 89 89 ..' },
+  { id:17, name:'Lakssier Mohamed',    sector:'Tassila 1',       ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 95 65 ..' },
+  { id:18, name:'Maatalla Aymane',     sector:'Inzegane 3',      ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 103 21 ..' },
+  { id:19, name:'Najah Ilyasse',       sector:"L'abatoire 4",    ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 93 51 ..' },
+  { id:20, name:'Ounaceur Abdellah',   sector:"L'abatoire 1",    ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 90 30 ..' },
+  { id:21, name:'Rissafi Oussama',     sector:"L'abatoire 2",    ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 91 37 ..' },
+  { id:22, name:'Senhaji Yassine',     sector:'Inzegane 2',      ville:'Agadir',      teamLead:'Y. Boualaihi',       phone:'+212 6 102 44 ..' },
+
+  // ── BENI MELLAL ──
+  { id:23, name:'Ait Lahcen Ouahmad',  sector:'Ouled Mbar',      ville:'Beni Mellal', teamLead:'Elbousiydy Mohammed', phone:'+212 6 108 56 ..' },
+  { id:24, name:'Amine Benbakhouch',   sector:'Ouled Mbar',      ville:'Beni Mellal', teamLead:'Elbousiydy Mohammed', phone:'+212 6 119 33 ..' },
+  { id:25, name:'Barmaki Mehdi',       sector:'Ouled Mbar',      ville:'Beni Mellal', teamLead:'Elbousiydy Mohammed', phone:'+212 6 109 63 ..' },
+  { id:26, name:'Bit Said',            sector:'Riad Salam 1',    ville:'Beni Mellal', teamLead:'Elbousiydy Mohammed', phone:'+212 6 107 49 ..' },
+  { id:27, name:'Bouhout Hamza',       sector:'Ouled Mbar',      ville:'Beni Mellal', teamLead:'Elbousiydy Mohammed', phone:'+212 6 115 05 ..' },
+  { id:28, name:'Boulkerch Mouaad',    sector:'Riad Salam 4',    ville:'Beni Mellal', teamLead:'Elbousiydy Mohammed', phone:'+212 6 116 12 ..' },
+  { id:29, name:'Elmoumni Salah',      sector:'Ouled Mbar',      ville:'Beni Mellal', teamLead:'Elbousiydy Mohammed', phone:'+212 6 106 42 ..' },
+  { id:30, name:'En-Nhaila Mustapha',  sector:'Riad Salam 2',    ville:'Beni Mellal', teamLead:'Elbousiydy Mohammed', phone:'+212 6 111 77 ..' },
+  { id:31, name:'Erradi Khayati',      sector:'Riad Salam 1',    ville:'Beni Mellal', teamLead:'Elbousiydy Mohammed', phone:'+212 6 112 84 ..' },
+  { id:32, name:'Farhat Brahim',       sector:'Riad Salam 1',    ville:'Beni Mellal', teamLead:'Elbousiydy Mohammed', phone:'+212 6 113 91 ..' },
+  { id:33, name:'Hanan Ahmed',         sector:'Ouled Mbar',      ville:'Beni Mellal', teamLead:'Elbousiydy Mohammed', phone:'+212 6 117 19 ..' },
+  { id:34, name:'Karkouch Adil',       sector:'Riad Salam 2',    ville:'Beni Mellal', teamLead:'Elbousiydy Mohammed', phone:'+212 6 110 11 ..' },
+  { id:35, name:'Klass Jawad',         sector:'Riad Salam 4',    ville:'Beni Mellal', teamLead:'Elbousiydy Mohammed', phone:'+212 6 118 55 ..' },
+
+  // ── CASABLANCA ──
+  { id:36, name:'Imad Tahik',          sector:'Ouifa 1 NV',      ville:'Casablanca',  teamLead:'Mohammed Sandoud',    phone:'+212 6 03 21 ..' },
+  { id:37, name:'Mahdi Daferi',        sector:'Roche Noir',      ville:'Casablanca',  teamLead:'Mohammed Sandoud',    phone:'+212 6 02 14 ..' },
+  { id:38, name:'Mahdi Dihaj',         sector:'Mohamadia C',     ville:'Casablanca',  teamLead:'Mohammed Sandoud',    phone:'+212 6 04 28 ..' },
+  { id:39, name:'Zakaria Tahiri',      sector:'Ain Harrouda',    ville:'Casablanca',  teamLead:'Mohammed Sandoud',    phone:'+212 6 01 07 ..' },
+  { id:40, name:'Abderrazak Echchakiri',sector:'Centre Ville N', ville:'Casablanca',  teamLead:'Mohammed Sandoud',    phone:'+212 6 13 91 ..' },
+  { id:41, name:'Ali Safri',           sector:'Haj Fateh',       ville:'Casablanca',  teamLead:'Mohammed Sandoud',    phone:'+212 6 05 86 ..' },
+  { id:42, name:'Haitam Mouad',        sector:'Ain Sbaa NV',     ville:'Casablanca',  teamLead:'Mohammed Sandoud',    phone:'+212 6 16 12 ..' },
+  { id:43, name:'Hamza Hatimi',        sector:'Emile Zola NV',   ville:'Casablanca',  teamLead:'Mohammed Sandoud',    phone:'+212 6 08 56 ..' },
+  { id:44, name:'Hassan Mahouane',     sector:'Barchid NV',      ville:'Casablanca',  teamLead:'Mohammed Sandoud',    phone:'+212 6 17 19 ..' },
+  { id:45, name:'Jaafar Faddouli',     sector:'Derb Sultan N',   ville:'Casablanca',  teamLead:'Mohammed Sandoud',    phone:'+212 6 09 63 ..' },
+  { id:46, name:'Mohammed Ezzoubi',    sector:'Ouifa 2 NV',      ville:'Casablanca',  teamLead:'Mohammed Sandoud',    phone:'+212 6 10 70 ..' },
+  { id:47, name:'Mouad Bakhouche',     sector:'Haj Fateh',       ville:'Casablanca',  teamLead:'Mohammed Sandoud',    phone:'+212 6 12 63 ..' },
+  { id:48, name:'Mouhsine Atmar',      sector:'Arrahma NV',      ville:'Casablanca',  teamLead:'Mohammed Sandoud',    phone:'+212 6 11 77 ..' },
+  { id:49, name:'Ousama Gadil',        sector:'Khouzama NV',     ville:'Casablanca',  teamLead:'Mohammed Sandoud',    phone:'+212 6 12 84 ..' },
+  { id:50, name:'Youssef Zidabi',      sector:'Sidi Moumen',     ville:'Casablanca',  teamLead:'Mohammed Sandoud',    phone:'+212 6 14 98 ..' },
+  // Mehdi Elhaissat team (Casablanca - Oqba zone)
+  { id:51, name:'Hassan Garras',       sector:'Hay Mly Rachid',  ville:'Casablanca',  teamLead:'Mehdi Elhaissat',     phone:'+212 6 22 54 ..' },
+  { id:52, name:'Mohamed Amine Maache',sector:'Tit Mellil',      ville:'Casablanca',  teamLead:'Mehdi Elhaissat',     phone:'+212 6 20 40 ..' },
+  { id:53, name:'Mohamed Bouadel',     sector:'Ain Chok 2',      ville:'Casablanca',  teamLead:'Mehdi Elhaissat',     phone:'+212 6 25 75 ..' },
+  { id:54, name:'Mohamed Ellousa',     sector:'Ben Msik',        ville:'Casablanca',  teamLead:'Mehdi Elhaissat',     phone:'+212 6 12 68 ..' },
+  { id:55, name:'Mouhcine Raji',       sector:'Lalla Mariam',    ville:'Casablanca',  teamLead:'Mehdi Elhaissat',     phone:'+212 6 19 33 ..' },
+  { id:56, name:'Nour Mouline',        sector:'Ain Chok 3',      ville:'Casablanca',  teamLead:'Mehdi Elhaissat',     phone:'+212 6 21 11 ..' },
+  { id:57, name:'Saidi Ichaki',        sector:'Sbata 1',         ville:'Casablanca',  teamLead:'Mehdi Elhaissat',     phone:'+212 6 18 40 ..' },
+
+  // ── FES ──
+  { id:58, name:'Abd Ellah Tiyal',     sector:'Bab Fotouhi St',  ville:'Fes',         teamLead:'D. Elharche',         phone:'+212 6 13 41 ..' },
+  { id:59, name:'Amine Bel Haj',       sector:'Amin Bel Haj',    ville:'Fes',         teamLead:'D. Elharche',         phone:'+212 6 56 92 ..' },
+  { id:60, name:'Ismail Allatifi',     sector:'Ain Qadous NV',   ville:'Fes',         teamLead:'D. Elharche',         phone:'+212 6 58 06 ..' },
+  { id:61, name:'Jaafar Benkiran',     sector:'Ben Souda NV',    ville:'Fes',         teamLead:'D. Elharche',         phone:'+212 6 60 20 ..' },
+  { id:62, name:'Med Eddini',          sector:'Zouagha NV',      ville:'Fes',         teamLead:'D. Elharche',         phone:'+212 6 65 55 ..' },
+  { id:63, name:'Med Meftah',          sector:'Mont Fleuri N',   ville:'Fes',         teamLead:'D. Elharche',         phone:'+212 6 54 78 ..' },
+  { id:64, name:'Med Dekaki',          sector:'Oued Fes NV',     ville:'Fes',         teamLead:'D. Elharche',         phone:'+212 6 55 85 ..' },
+  { id:65, name:'Mehdi Amzini',        sector:'Ain Taouijat N',  ville:'Fes',         teamLead:'D. Elharche',         phone:'+212 6 63 41 ..' },
+  { id:66, name:'Mehdi Meftah',        sector:'Ain Chkef NV',    ville:'Fes',         teamLead:'D. Elharche',         phone:'+212 6 53 57 ..' },
+  { id:67, name:'Nourddine El Oualydy',sector:'Bab Fotouhi N',   ville:'Fes',         teamLead:'D. Elharche',         phone:'+212 6 62 34 ..' },
+  { id:68, name:'Sabil Ennamli',       sector:'Ain Chekaf NV',   ville:'Fes',         teamLead:'D. Elharche',         phone:'+212 6 21 77 ..' },
+  { id:69, name:'Tarik Brahmi',        sector:'Ouled Tayeb F',   ville:'Fes',         teamLead:'D. Elharche',         phone:'+212 6 64 48 ..' },
+
+  // ── MARRAKECH ──
+  { id:70, name:'Hicham El Naciry',    sector:'Saada Marrakech', ville:'Marrakech',   teamLead:'Abdessadek Mimmous',  phone:'+212 6 122 54 ..' },
+  { id:71, name:'Mourad Chraibi',      sector:'Hay Sinaa NV',    ville:'Marrakech',   teamLead:'Abdessadek Mimmous',  phone:'+212 6 122 54 ..' },
+  { id:72, name:'Othmane Elidrissi',   sector:'Saada & Douar',   ville:'Marrakech',   teamLead:'Abdessadek Mimmous',  phone:'+212 6 121 47 ..' },
+  { id:73, name:'Maroujan Aljoun',     sector:'Massira Marrak',  ville:'Marrakech',   teamLead:'Abdessadek Mimmous',  phone:'+212 6 130 10 ..' },
+  { id:74, name:'Khalil Annan',        sector:'Annakhil',        ville:'Marrakech',   teamLead:'Abdessadek Mimmous',  phone:'+212 6 120 40 ..' },
+  { id:75, name:'Omar Ihrar',          sector:'Mihamid',         ville:'Marrakech',   teamLead:'Abdessadek Mimmous',  phone:'+212 6 126 82 ..' },
+  { id:76, name:'Alaa Alaoui',         sector:'Massira Marrak',  ville:'Marrakech',   teamLead:'Abdessadek Mimmous',  phone:'+212 6 123 61 ..' },
+  { id:77, name:'Mohamed Khali',       sector:'Massira Marrak',  ville:'Marrakech',   teamLead:'Abdessadek Mimmous',  phone:'+212 6 123 12 ..' },
+  { id:78, name:'Medina Animateur',    sector:'Medina',          ville:'Marrakech',   teamLead:'Abdessadek Mimmous',  phone:'+212 6 125 75 ..' },
+
+  // ── MEKNES ──
+  { id:79, name:'Bouziane Omar',       sector:'Hemria 5',        ville:'Meknes',      teamLead:'A. Bouichi',          phone:'+212 6 77 39 ..' },
+  { id:80, name:'Brahim Agrat',        sector:'Hemria 4',        ville:'Meknes',      teamLead:'A. Bouichi',          phone:'+212 6 76 32 ..' },
+  { id:81, name:'El Hamdouchi Adnan',  sector:'Hay Salam 5',     ville:'Meknes',      teamLead:'A. Bouichi',          phone:'+212 6 71 97 ..' },
+  { id:82, name:'Elbaid Nourddine',    sector:'Hemria 1',        ville:'Meknes',      teamLead:'A. Bouichi',          phone:'+212 6 73 11 ..' },
+  { id:83, name:'Sabahnnahi Walid',    sector:'Hemria 1',        ville:'Meknes',      teamLead:'A. Bouichi',          phone:'+212 6 65 56 ..' },
+  { id:84, name:'Essalhi Radouane',    sector:'Hay Salam 7',     ville:'Meknes',      teamLead:'A. Bouichi',          phone:'+212 6 72 04 ..' },
+  { id:85, name:'Ezzayati Azddine',    sector:'Hay Salam 3',     ville:'Meknes',      teamLead:'A. Bouichi',          phone:'+212 6 69 83 ..' },
+  { id:86, name:'Hamza Sidaouan',      sector:'Wislan 2',        ville:'Meknes',      teamLead:'A. Bouichi',          phone:'+212 6 81 67 ..' },
+  { id:87, name:'Imad Benmoussa',      sector:'Hay Salam 1',     ville:'Meknes',      teamLead:'A. Bouichi',          phone:'+212 6 67 69 ..' },
+  { id:88, name:'Loukili Yassin',      sector:'Hemria 6',        ville:'Meknes',      teamLead:'A. Bouichi',          phone:'+212 6 78 46 ..' },
+  { id:89, name:'Marouian Alaoui',     sector:'Hemria 3',        ville:'Meknes',      teamLead:'A. Bouichi',          phone:'+212 6 76 83 ..' },
+  { id:90, name:'Mohamed Amin Alioui', sector:'Hemria 7',        ville:'Meknes',      teamLead:'A. Bouichi',          phone:'+212 6 79 53 ..' },
+  { id:91, name:'Mouhssine Carreau',   sector:'Hay Salam 2',     ville:'Meknes',      teamLead:'A. Bouichi',          phone:'+212 6 78 76 ..' },
+  { id:92, name:'Sallahdine Babakhyi', sector:'Wislan 1',        ville:'Meknes',      teamLead:'A. Bouichi',          phone:'+212 6 80 60 ..' },
+  { id:93, name:'Sghir Ismail',        sector:'Hay Salam 4',     ville:'Meknes',      teamLead:'A. Bouichi',          phone:'+212 6 70 90 ..' },
+  { id:94, name:'Youssef Tahir',       sector:'Hay Salam 6',     ville:'Meknes',      teamLead:'A. Bouichi',          phone:'+212 6 62 76 ..' },
+
+  // ── RABAT ──
+  { id:95,  name:'Adam Lakhal',        sector:'Temara 1 NV',     ville:'Rabat',       teamLead:'Hicham Aboulouarit',  phone:'+212 6 38 66 ..' },
+  { id:96,  name:'Karim Abou Elhassane',sector:'Karia NV',       ville:'Rabat',       teamLead:'Hicham Aboulouarit',  phone:'+212 6 27 89 ..' },
+  { id:97,  name:'Mohamed Et Tanje',   sector:'Yacout El Ma',    ville:'Rabat',       teamLead:'Hicham Aboulouarit',  phone:'+212 6 35 45 ..' },
+  { id:98,  name:'Mohammed Senhali',   sector:'Skhirat NV',      ville:'Rabat',       teamLead:'Hicham Aboulouarit',  phone:'+212 6 37 59 ..' },
+  { id:99,  name:'Mouad Saoudi',       sector:'Sale Hay Essa',   ville:'Rabat',       teamLead:'Hicham Aboulouarit',  phone:'+212 6 33 31 ..' },
+  { id:100, name:'Mouane Fannnani',    sector:'Yasmine',         ville:'Rabat',       teamLead:'Hicham Aboulouarit',  phone:'+212 6 38 52 ..' },
+  { id:101, name:'Said El Mesbahy',    sector:'Rabat El Meu',    ville:'Rabat',       teamLead:'Hicham Aboulouarit',  phone:'+212 6 26 82 ..' },
+  { id:102, name:'Ziyad Madroumi',     sector:'Sale Hay Essa',   ville:'Rabat',       teamLead:'Hicham Aboulouarit',  phone:'+212 6 34 38 ..' },
+  { id:103, name:'Yahya Hatim',        sector:'Sale Hay Essa',   ville:'Rabat',       teamLead:'Hicham Aboulouarit',  phone:'+212 6 32 43 ..' },
+  { id:104, name:'Sale Al Qaria',      sector:'Sale Al Qaria F', ville:'Rabat',       teamLead:'Hicham Aboulouarit',  phone:'+212 6 30 10 ..' },
+  { id:105, name:'Sale Hay Animateur', sector:'Sale Hay Al M',   ville:'Rabat',       teamLead:'Hicham Aboulouarit',  phone:'+212 6 31 77 ..' },
+
+  // ── TANGER ──
+  { id:106, name:'Ayoub Jayja',        sector:'Martil & Mdiq',   ville:'Tanger',      teamLead:'Benmira Smail',       phone:'+212 6 50 50 ..' },
+  { id:107, name:'Mohamed Elbouhiaouia',sector:'Mesnana-Bou',    ville:'Tanger',      teamLead:'M. Elghezaouy',       phone:'+212 6 42 94 ..' },
+  { id:108, name:'Mohamed Zaaboul',    sector:'Tassila NV',      ville:'Tanger',      teamLead:'M. Elghezaouy',       phone:'+212 6 42 94 ..' },
+  { id:109, name:'Tanger El Bali Anim',sector:'Tanger El Bali',  ville:'Tanger',      teamLead:'Benmira Smail',       phone:'+212 6 49 43 ..' },
+];
+
+/* ── HELPERS ── */
+function getInitials(name) {
+  const p = name.trim().split(/\s+/);
+  return p.length >= 2 ? (p[0][0] + p[1][0]).toUpperCase() : name.substring(0,2).toUpperCase();
+}
+
+function getCoord(ville, id) {
+  const c = CITY_CENTERS[ville] || CITY_CENTERS['Casablanca'];
+  const seed = id * 0.00137;
+  return {
+    lat: c.lat + (Math.sin(seed * 7.3) * 0.025),
+    lng: c.lng + (Math.cos(seed * 5.1) * 0.025),
+  };
+}
+
+const AVATAR_COLORS = ['#0052CC','#0EA5E9','#8B5CF6','#EC4899','#14B8A6','#F97316','#EF4444','#64748B'];
+
+const STATUS_META = {
+  present:   { label:'Présent',   cls:'s-present',   dotColor:'#22C55E', mapColor:'#16A34A', icon:'check-circle' },
+  absent:    { label:'Absent',    cls:'s-absent',    dotColor:'#EF4444', mapColor:'#DC2626', icon:'x-circle' },
+  malade:    { label:'Malade',    cls:'s-malade',    dotColor:'#F59E0B', mapColor:'#D97706', icon:'thermometer' },
+  demission: { label:'Démission', cls:'s-demission', dotColor:'#A855F7', mapColor:'#7C3AED', icon:'user-minus' },
+  nonpointe: { label:'Non pointé',cls:'s-nonpointe', dotColor:'#94A3B8', mapColor:'#64748B', icon:'clock' },
+};
+
+const NOW_TIME = () => new Date().toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+
+/* ── LOCALSTORAGE AUTH ── */
+const LS = {
+  getAccounts() { try { return JSON.parse(localStorage.getItem('ptg_accounts')) || []; } catch { return []; } },
+  saveAccounts(a) { localStorage.setItem('ptg_accounts', JSON.stringify(a)); },
+  getSessions() { try { return JSON.parse(localStorage.getItem('ptg_sessions')) || {}; } catch { return {}; } },
+  saveSessions(s) { localStorage.setItem('ptg_sessions', JSON.stringify(s)); },
+
+  initAccounts() {
+    if (this.getAccounts().length > 0) return;
+    const defaults = Object.entries(TEAM_LEADS_DB).map(([email, d], i) => ({
+      id: i + 1, email, password: '1234',
+      name: d.name, ville: d.ville, initials: d.initials,
+      createdAt: new Date().toISOString(), createdBy: 'system'
+    }));
+    this.saveAccounts(defaults);
+  },
+
+  login(email, password) {
+    const acc = this.getAccounts().find(a => a.email.toLowerCase() === email.toLowerCase().trim());
+    if (!acc) return { error: 'Email introuvable. Créez un compte.' };
+    if (acc.password !== password) return { error: 'Mot de passe incorrect.' };
+    return { account: acc };
+  },
+
+  register(name, email, password, ville) {
+    if (!name.trim()) return { error: 'Entrez votre nom complet.' };
+    if (password.length < 4) return { error: 'Mot de passe trop court (min. 4 caractères).' };
+    const accounts = this.getAccounts();
+    if (accounts.find(a => a.email.toLowerCase() === email.toLowerCase().trim()))
+      return { error: 'Cet email est déjà enregistré.' };
+    const acc = {
+      id: Date.now(), email: email.toLowerCase().trim(), password,
+      name: name.trim(), ville, initials: getInitials(name.trim()),
+      createdAt: new Date().toISOString(), createdBy: 'self'
+    };
+    this.saveAccounts([...accounts, acc]);
+    return { account: acc };
+  },
+
+  startSession(user) {
+    const now = new Date().toISOString();
+    const s = this.getSessions();
+    s[user.email] = { name: user.name, ville: user.ville, initials: user.initials || getInitials(user.name), loginAt: now, lastPing: now, isActive: true };
+    this.saveSessions(s);
+  },
+
+  pingSession(email) {
+    const s = this.getSessions();
+    if (s[email]) { s[email].lastPing = new Date().toISOString(); this.saveSessions(s); }
+  },
+
+  endSession(email) {
+    const s = this.getSessions();
+    if (s[email]) { s[email].isActive = false; s[email].logoutAt = new Date().toISOString(); this.saveSessions(s); }
+  },
+
+  writePointage(teamLeadEmail, entry) {
+    try {
+      const arr = JSON.parse(localStorage.getItem('ptg_pointages')) || [];
+      arr.push({ ...entry, teamLeadEmail, date: new Date().toDateString(), ts: new Date().toISOString() });
+      if (arr.length > 500) arr.splice(0, arr.length - 500);
+      localStorage.setItem('ptg_pointages', JSON.stringify(arr));
+    } catch {}
+  }
+};
+
+/* ── TOAST ── */
+function Toast({ message, type, onDone }) {
+  useEffect(() => { const t = setTimeout(onDone, 2600); return () => clearTimeout(t); }, []);
+  return <div className={`toast ${type}`}>{message}</div>;
+}
+
+/* ── LOGIN ── */
+function LoginScreen({ onLogin }) {
+  const [mode, setMode]       = useState('login');
+  const [email, setEmail]     = useState('');
+  const [password, setPwd]    = useState('');
+  const [name, setName]       = useState('');
+  const [ville, setVille]     = useState('Casablanca');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError]     = useState('');
+
+  const VILLES = [...new Set(ANIMATEURS_DB.map(a => a.ville))].sort();
+  const switchMode = (m) => { setMode(m); setError(''); };
+
+  const handleLogin = (e) => {
+    e.preventDefault(); setError('');
+    const res = LS.login(email, password);
+    if (res.error) { setError(res.error); return; }
+    onLogin(res.account);
+  };
+
+  const handleRegister = (e) => {
+    e.preventDefault(); setError('');
+    if (password !== confirm) { setError('Les mots de passe ne correspondent pas.'); return; }
+    const res = LS.register(name, email, password, ville);
+    if (res.error) { setError(res.error); return; }
+    onLogin(res.account);
+  };
+
+  return (
+    <div className="login-screen">
+      <div className="login-logo">
+        <div className="login-logo-circle">
+          <i data-lucide="clipboard-check" style={{ width:44, height:44, color:'var(--primary-600)' }}></i>
         </div>
-      );
-    }
-    
-    function AnimateursList({ animateurs, onSelectAnimateur }) {
-      const [search, setSearch] = useState('');
-      
-      const filtered = animateurs.filter(a => 
-        a.name.toLowerCase().includes(search.toLowerCase()) ||
-        a.sector.toLowerCase().includes(search.toLowerCase())
-      );
-      
-      const statusLabels = {
-        disponible: 'Disponible',
-        mission: 'En mission',
-        absent: 'Absent',
-        offline: 'Hors ligne'
-      };
-      
-      const avatarColors = ['var(--primary-500)', 'var(--success-500)', 'var(--info-500)', 'var(--warning-500)'];
-      
-      return (
-        <>
-          <div className="list-header">
-            <div className="list-title">Animateurs</div>
-            <div className="list-subtitle">{filtered.length} personnes • Casablanca</div>
+        <div className="login-title">OUTILS POINTAGE</div>
+        <div className="login-subtitle">Team Lead</div>
+      </div>
+
+      <div className="login-tabs">
+        <button type="button" className={`login-tab ${mode==='login'?'active':''}`} onClick={() => switchMode('login')}>Se connecter</button>
+        <button type="button" className={`login-tab ${mode==='register'?'active':''}`} onClick={() => switchMode('register')}>Créer un compte</button>
+      </div>
+
+      {mode === 'login' ? (
+        <form className="login-form" onSubmit={handleLogin}>
+          {error && <div className="login-error"><i data-lucide="alert-circle" style={{ width:15, height:15 }}></i>{error}</div>}
+          <div className="form-group">
+            <label className="form-label">Email</label>
+            <input type="email" className="form-input" placeholder="teamlead@labelvie.ma"
+              value={email} onChange={e => setEmail(e.target.value)} required />
           </div>
-          
-          <div className="search-bar">
-            <i data-lucide="search" className="search-icon" style={{ width: 20, height: 20 }}></i>
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Rechercher..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+          <div className="form-group">
+            <label className="form-label">Mot de passe</label>
+            <input type="password" className="form-input" placeholder="••••••••"
+              value={password} onChange={e => setPwd(e.target.value)} required />
           </div>
-          
+          <button type="submit" className="btn-login">Se connecter</button>
+          <div className="login-hint">Comptes pré-enregistrés : mot de passe = 1234</div>
+        </form>
+      ) : (
+        <form className="login-form" onSubmit={handleRegister}>
+          {error && <div className="login-error"><i data-lucide="alert-circle" style={{ width:15, height:15 }}></i>{error}</div>}
+          <div className="form-group">
+            <label className="form-label">Nom complet</label>
+            <input type="text" className="form-input" placeholder="Prénom Nom"
+              value={name} onChange={e => setName(e.target.value)} required />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Email professionnel</label>
+            <input type="email" className="form-input" placeholder="teamlead@labelvie.ma"
+              value={email} onChange={e => setEmail(e.target.value)} required />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Ville</label>
+            <div className="select-wrap">
+              <select className="form-select" value={ville} onChange={e => setVille(e.target.value)}>
+                {VILLES.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Mot de passe</label>
+            <input type="password" className="form-input" placeholder="Min. 4 caractères"
+              value={password} onChange={e => setPwd(e.target.value)} required />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Confirmer mot de passe</label>
+            <input type="password" className="form-input" placeholder="••••••••"
+              value={confirm} onChange={e => setConfirm(e.target.value)} required />
+          </div>
+          <button type="submit" className="btn-login">Créer mon compte</button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+/* ── CITY SELECTOR ── */
+function CitySelector({ cities, selected, onSelect, counts }) {
+  return (
+    <div className="city-bar">
+      <button className={`city-chip ${selected === 'Toutes' ? 'active' : ''}`} onClick={() => onSelect('Toutes')}>
+        Toutes
+        <span className="city-chip-count">({Object.values(counts).reduce((a,b)=>a+b,0)})</span>
+      </button>
+      {cities.map(c => (
+        <button key={c} className={`city-chip ${selected === c ? 'active' : ''}`} onClick={() => onSelect(c)}>
+          {c}
+          {counts[c] && <span className="city-chip-count">({counts[c]})</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ── ANIMATEUR ROW ── */
+function AnimateurRow({ animateur: a, onSelect }) {
+  const meta = STATUS_META[a.status] || STATUS_META.nonpointe;
+  const color = AVATAR_COLORS[a.id % AVATAR_COLORS.length];
+  return (
+    <div className="animateur-item" onClick={() => onSelect(a)}>
+      <div className="avatar" style={{ background: color }}>
+        {getInitials(a.name)}
+        <span className="avatar-status-dot" style={{ background: meta.dotColor }}></span>
+      </div>
+      <div className="animateur-info">
+        <div className="animateur-name">{a.name}</div>
+        <div className="animateur-meta">
+          <i data-lucide="map-pin" style={{ width:11, height:11 }}></i>
+          <span>{a.sector}</span>
+          <span>·</span>
+          <span>{a.ville}</span>
+        </div>
+        <div className="animateur-phone">{a.phone}</div>
+        {a.pointedAt && <div className="animateur-time">Pointé à {a.pointedAt}{a.note ? ` · ${a.note}` : ''}</div>}
+      </div>
+      <div className={`status-badge ${meta.cls}`}>
+        <span className="status-dot"></span>
+        {meta.label}
+      </div>
+    </div>
+  );
+}
+
+/* ── ANIMATEURS LIST ── */
+function AnimateursList({ animateurs, onSelectAnimateur, defaultVille }) {
+  const [search,         setSearch]         = useState('');
+  const [statusFilter,   setStatusFilter]   = useState('tous');
+  const [selectedCity,   setSelectedCity]   = useState(defaultVille || 'Toutes');
+  const [selectedSector, setSelectedSector] = useState('Tous');
+
+  // ── Filtre 1 : VILLE ──
+  const cities = [...new Set(animateurs.map(a => a.ville))].sort();
+  const byCity = selectedCity === 'Toutes'
+    ? animateurs
+    : animateurs.filter(a => a.ville === selectedCity);
+
+  // ── Filtre 2 : SECTEUR / MAGASIN ──
+  const sectors = ['Tous', ...new Set(byCity.map(a => a.sector))].sort((a,b) => a === 'Tous' ? -1 : b === 'Tous' ? 1 : a.localeCompare(b));
+  const bySector = selectedSector === 'Tous'
+    ? byCity
+    : byCity.filter(a => a.sector === selectedSector);
+
+  // ── Stats (sur le résultat des 2 filtres géographiques) ──
+  const counts = {
+    present:   bySector.filter(a => a.status === 'present').length,
+    absent:    bySector.filter(a => a.status === 'absent').length,
+    malade:    bySector.filter(a => a.status === 'malade').length,
+    demission: bySector.filter(a => a.status === 'demission').length,
+    nonpointe: bySector.filter(a => a.status === 'nonpointe').length,
+  };
+
+  // ── Filtre 3 : STATUT ──
+  const statusFilters = [
+    { key:'tous',      label:`Tous (${bySector.length})` },
+    { key:'nonpointe', label:`Non pointés (${counts.nonpointe})` },
+    { key:'present',   label:`Présents (${counts.present})` },
+    { key:'absent',    label:`Absents (${counts.absent})` },
+    { key:'malade',    label:`Malades (${counts.malade})` },
+    { key:'demission', label:`Démissions (${counts.demission})` },
+  ];
+
+  const filtered = bySector.filter(a => {
+    const q = search.toLowerCase();
+    const matchSearch = a.name.toLowerCase().includes(q) || a.sector.toLowerCase().includes(q) || a.phone.includes(q);
+    const matchStatus = statusFilter === 'tous' || a.status === statusFilter;
+    return matchSearch && matchStatus;
+  });
+
+  const sorted = [...filtered].sort((a,b) => {
+    if (a.status === 'nonpointe' && b.status !== 'nonpointe') return -1;
+    if (b.status === 'nonpointe' && a.status !== 'nonpointe') return 1;
+    return 0;
+  });
+
+  const nonPointes = sorted.filter(a => a.status === 'nonpointe');
+  const pointes    = sorted.filter(a => a.status !== 'nonpointe');
+
+  const handleCityChange = (v) => {
+    setSelectedCity(v);
+    setSelectedSector('Tous');
+    setStatusFilter('tous');
+  };
+
+  const subtitle = [
+    selectedCity !== 'Toutes' ? selectedCity : null,
+    selectedSector !== 'Tous' ? selectedSector : null,
+  ].filter(Boolean).join(' · ') || 'Toutes les villes';
+
+  return (
+    <>
+      {/* ── HEADER STICKY ── */}
+      <div className="list-header">
+        <div className="list-top-row">
           <div>
-            {filtered.map((a, idx) => (
-              <div key={a.id} className="animateur-item" onClick={() => onSelectAnimateur(a)}>
-                <div className="avatar" style={{ background: avatarColors[idx % avatarColors.length] }}>
-                  {a.initials}
-                </div>
-                <div className="animateur-info">
-                  <div className="animateur-name">{a.name}</div>
-                  <div className="animateur-sector">{a.sector} • {a.city}</div>
-                </div>
-                <div className={`status-badge status-${a.status}`}>
-                  <span className="status-dot"></span>
-                  {statusLabels[a.status]}
-                </div>
-              </div>
-            ))}
+            <div className="list-title">Animateurs</div>
+            <div className="list-subtitle">{sorted.length} résultat{sorted.length>1?'s':''} · {subtitle}</div>
           </div>
-        </>
-      );
-    }
-    
-    function PointageForm({ animateur, onBack }) {
-      const avatarColors = ['var(--primary-500)', 'var(--success-500)', 'var(--info-500)', 'var(--warning-500)'];
-      const color = avatarColors[animateur.id % avatarColors.length];
-      
-      return (
-        <div className="pointage-container">
-          <div className="pointage-card">
-            <div className="pointage-header">
-              <div className="avatar" style={{ background: color }}>
-                {animateur.initials}
-              </div>
-              <div className="animateur-info">
-                <div className="animateur-name">{animateur.name}</div>
-                <div className="animateur-sector">{animateur.sector}</div>
-              </div>
-            </div>
-            
-            <button className="btn-action btn-success">
-              <i data-lucide="check-circle" style={{ width: 20, height: 20 }}></i>
-              Marquer présent
-            </button>
-            
-            <button className="btn-action btn-danger">
-              <i data-lucide="x-circle" style={{ width: 20, height: 20 }}></i>
-              Marquer absent
-            </button>
-            
-            <div className="gps-info">
-              <i data-lucide="navigation" style={{ width: 18, height: 18 }}></i>
-              <div>
-                <div style={{ fontWeight: 600 }}>Position GPS détectée</div>
-                <div className="gps-coords">{animateur.lat.toFixed(4)}, {animateur.lng.toFixed(4)}</div>
-              </div>
-            </div>
+          <div className="date-chip">{new Date().toLocaleDateString('fr-FR',{day:'numeric',month:'short'})}</div>
+        </div>
+
+        {/* Recherche */}
+        <div className="search-row">
+          <div className="search-bar">
+            <i data-lucide="search" className="search-icon" style={{ width:17, height:17 }}></i>
+            <input type="text" className="search-input" placeholder="Nom, secteur, téléphone..."
+              value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          
-          <button 
-            onClick={onBack}
-            style={{
-              width: '100%',
-              height: 44,
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--neutral-600)',
-              fontWeight: 600,
-              cursor: 'pointer'
-            }}
-          >
-            Retour à la liste
+        </div>
+
+        {/* Filtres Ville + Secteur — listes déroulantes */}
+        <div className="filter-dropdowns-row">
+          <div className="filter-dropdown-wrap">
+            <i data-lucide="map-pin" className="dropdown-icon" style={{ width:14, height:14 }}></i>
+            <select className="filter-select" value={selectedCity} onChange={e => handleCityChange(e.target.value)}>
+              <option value="Toutes">Toutes les villes</option>
+              {cities.map(c => (
+                <option key={c} value={c}>{c} ({animateurs.filter(a=>a.ville===c).length})</option>
+              ))}
+            </select>
+            <i data-lucide="chevron-down" className="dropdown-arrow" style={{ width:14, height:14 }}></i>
+          </div>
+
+          <div className="filter-dropdown-wrap">
+            <i data-lucide="store" className="dropdown-icon" style={{ width:14, height:14 }}></i>
+            <select className="filter-select" value={selectedSector}
+              onChange={e => { setSelectedSector(e.target.value); setStatusFilter('tous'); }}>
+              <option value="Tous">Tous les secteurs</option>
+              {sectors.filter(s => s !== 'Tous').map(s => (
+                <option key={s} value={s}>{s} ({byCity.filter(a=>a.sector===s).length})</option>
+              ))}
+            </select>
+            <i data-lucide="chevron-down" className="dropdown-arrow" style={{ width:14, height:14 }}></i>
+          </div>
+        </div>
+      </div>
+
+      {/* ── STATS ── */}
+      <div className="stats-bar">
+        <div className="stat-chip stat-present"><span className="stat-chip-dot"></span>{counts.present} Présents</div>
+        <div className="stat-chip stat-absent"><span className="stat-chip-dot"></span>{counts.absent} Absents</div>
+        <div className="stat-chip stat-malade"><span className="stat-chip-dot"></span>{counts.malade} Malades</div>
+        <div className="stat-chip stat-demission"><span className="stat-chip-dot"></span>{counts.demission} Démissions</div>
+        <div className="stat-chip stat-nonpointe"><span className="stat-chip-dot"></span>{counts.nonpointe} Non pointés</div>
+      </div>
+
+      {/* ── FILTRE STATUT ── */}
+      <div className="filter-scroll">
+        {statusFilters.map(f => (
+          <button key={f.key} className={`filter-chip ${statusFilter === f.key ? 'active' : ''}`}
+            onClick={() => setStatusFilter(f.key)}>
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {sorted.length === 0 && (
+        <div className="empty-state">
+          <i data-lucide="search-x" style={{ width:48, height:48, opacity:0.3 }}></i>
+          <div className="empty-state-text">Aucun animateur trouvé</div>
+        </div>
+      )}
+
+      {statusFilter === 'tous' && nonPointes.length > 0 && (
+        <><div className="section-label">À pointer — {nonPointes.length}</div>
+        {nonPointes.map(a => <AnimateurRow key={a.id} animateur={a} onSelect={onSelectAnimateur} />)}</>
+      )}
+      {statusFilter === 'tous' && pointes.length > 0 && (
+        <><div className="section-label">Pointés — {pointes.length}</div>
+        {pointes.map(a => <AnimateurRow key={a.id} animateur={a} onSelect={onSelectAnimateur} />)}</>
+      )}
+      {statusFilter !== 'tous' && sorted.map(a => <AnimateurRow key={a.id} animateur={a} onSelect={onSelectAnimateur} />)}
+    </>
+  );
+}
+
+/* ── POINTAGE FORM ── */
+function PointageForm({ animateur, onBack, onConfirm }) {
+  const [selected, setSelected] = useState(animateur.status !== 'nonpointe' ? animateur.status : null);
+  const [note, setNote]         = useState(animateur.note || '');
+  const [gpsReady, setGpsReady] = useState(false);
+  const [coords, setCoords]     = useState(null);
+
+  useEffect(() => {
+    const c = getCoord(animateur.ville, animateur.id);
+    const t = setTimeout(() => { setCoords(c); setGpsReady(true); }, 900);
+    return () => clearTimeout(t);
+  }, []);
+
+  const color     = AVATAR_COLORS[animateur.id % AVATAR_COLORS.length];
+  const needsNote = ['absent','malade','demission'].includes(selected);
+
+  const statusBtns = [
+    { key:'present',   label:'Présent',   icon:'check-circle', cls:'btn-present' },
+    { key:'absent',    label:'Absent',    icon:'x-circle',     cls:'btn-absent' },
+    { key:'malade',    label:'Malade',    icon:'thermometer',  cls:'btn-malade' },
+    { key:'demission', label:'Démission', icon:'user-minus',   cls:'btn-demission' },
+  ];
+
+  return (
+    <div className="pointage-container">
+      <div className="pointage-hero">
+        <div className="pointage-avatar" style={{ background:color }}>{getInitials(animateur.name)}</div>
+        <div className="pointage-name">{animateur.name}</div>
+        <div className="pointage-sub"><i data-lucide="map-pin" style={{ width:13, height:13 }}></i>{animateur.sector} · {animateur.ville}</div>
+        <div className="pointage-sub"><i data-lucide="phone" style={{ width:13, height:13 }}></i>{animateur.phone}</div>
+        <div className="pointage-sub" style={{ opacity:0.6 }}>{animateur.teamLead}</div>
+      </div>
+
+      <div className="pointage-body">
+        <div className="section-title">Statut du jour</div>
+        <div className="status-grid">
+          {statusBtns.map(btn => (
+            <button key={btn.key} className={`status-btn ${btn.cls} ${selected === btn.key ? 'selected' : ''}`}
+              onClick={() => setSelected(btn.key)}>
+              <i data-lucide={btn.icon} style={{ width:22, height:22 }}></i>
+              {btn.label}
+            </button>
+          ))}
+        </div>
+
+        {needsNote && (
+          <>
+            <div className="section-title">
+              {selected === 'demission' ? 'Remarque (date effective...)' : selected === 'malade' ? 'Remarque (durée, certificat...)' : "Raison de l'absence"}
+            </div>
+            <textarea className="note-area" value={note} onChange={e => setNote(e.target.value)}
+              placeholder={selected === 'demission' ? 'Démission effective le...' : selected === 'malade' ? 'Arrêt maladie jusqu\'au...' : 'Raison...'} />
+          </>
+        )}
+
+        <div className="section-title">Localisation</div>
+        <div className="gps-card">
+          <span className={`gps-dot ${!gpsReady ? 'waiting' : ''}`}></span>
+          <div style={{ flex:1 }}>
+            <div className="gps-label">{gpsReady ? 'Position GPS détectée' : 'Recherche GPS...'}</div>
+            {coords && <div className="gps-coords">{coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}</div>}
+          </div>
+          <i data-lucide="navigation" style={{ width:16, height:16, color:'#3B82F6' }}></i>
+        </div>
+
+        <button className="btn-confirm" disabled={!selected}
+          onClick={() => onConfirm(animateur.id, selected, note, coords)}>
+          <i data-lucide="check" style={{ width:20, height:20 }}></i>
+          {selected ? `Confirmer — ${STATUS_META[selected].label}` : 'Choisir un statut'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── ADD ANIMATEUR MODAL ── */
+function AddAnimateurModal({ onClose, onAdd, defaultVille }) {
+  const cities = [...new Set(ANIMATEURS_DB.map(a => a.ville))].sort();
+  const [form, setForm] = useState({
+    name: '', sector: '', ville: defaultVille || 'Casablanca',
+    phone: '', teamLead: ''
+  });
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!form.name.trim() || !form.sector.trim()) return;
+    onAdd(form);
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-sheet">
+        <div className="modal-handle"></div>
+        <div className="modal-header">
+          <div className="modal-title">Ajouter un animateur</div>
+          <button className="modal-close" onClick={onClose}>
+            <i data-lucide="x" style={{ width:16, height:16 }}></i>
           </button>
         </div>
-      );
-    }
-    
-    function MapView({ animateurs }) {
-      useEffect(() => {
-        const map = L.map('map').setView([33.5731, -7.5898], 13);
-        
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '© OpenStreetMap'
-        }).addTo(map);
-        
-        const statusColors = {
-          disponible: '#12A150',
-          mission: '#0065FF',
-          absent: '#EF4444',
-          offline: '#8B949E'
-        };
-        
-        animateurs.forEach(a => {
-          const color = statusColors[a.status];
-          const marker = L.circleMarker([a.lat, a.lng], {
-            radius: 10,
-            fillColor: color,
-            color: 'white',
-            weight: 3,
-            fillOpacity: 0.9
-          }).addTo(map);
-          
-          marker.bindPopup(`<strong>${a.name}</strong><br>${a.sector}`);
-        });
-        
-        return () => map.remove();
-      }, []);
-      
-      return <div id="map"></div>;
-    }
-    
-    function App() {
-      const [isLoggedIn, setIsLoggedIn] = useState(false);
-      const [currentView, setCurrentView] = useState('list');
-      const [selectedAnimateur, setSelectedAnimateur] = useState(null);
-      
-      useEffect(() => {
-        lucide.createIcons();
-      });
-      
-      if (!isLoggedIn) {
-        return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
-      }
-      
-      return (
-        <div className="mobile-container">
-          <div className="status-bar">OUTILS POINTAGE</div>
-          
-          <div className="main-content">
-            {currentView === 'list' && !selectedAnimateur && (
-              <AnimateursList 
-                animateurs={animateurs} 
-                onSelectAnimateur={setSelectedAnimateur}
-              />
-            )}
-            
-            {currentView === 'list' && selectedAnimateur && (
-              <PointageForm 
-                animateur={selectedAnimateur}
-                onBack={() => setSelectedAnimateur(null)}
-              />
-            )}
-            
-            {currentView === 'map' && (
-              <div className="map-container">
-                <MapView animateurs={animateurs} />
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            <div className="form-group">
+              <label className="form-label">Nom complet *</label>
+              <input className="form-input" placeholder="Prénom Nom" value={form.name}
+                onChange={e => set('name', e.target.value)} required />
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Ville *</label>
+                <div className="select-wrap">
+                  <select className="form-select" value={form.ville} onChange={e => set('ville', e.target.value)}>
+                    {cities.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
               </div>
-            )}
+              <div className="form-group">
+                <label className="form-label">Téléphone</label>
+                <input className="form-input" placeholder="+212 6 XX XX XX XX"
+                  value={form.phone} onChange={e => set('phone', e.target.value)} />
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Secteur *</label>
+              <input className="form-input" placeholder="Ex: Hay Salam 1, Tassila 2..."
+                value={form.sector} onChange={e => set('sector', e.target.value)} required />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Team Lead</label>
+              <input className="form-input" placeholder="Nom du responsable"
+                value={form.teamLead} onChange={e => set('teamLead', e.target.value)} />
+            </div>
           </div>
-          
-          <div className="bottom-nav">
-            <button 
-              className={`nav-item ${currentView === 'list' ? 'active' : ''}`}
-              onClick={() => { setCurrentView('list'); setSelectedAnimateur(null); }}
-            >
-              <i data-lucide="users" style={{ width: 24, height: 24 }}></i>
-              Animateurs
-            </button>
-            <button 
-              className={`nav-item ${currentView === 'map' ? 'active' : ''}`}
-              onClick={() => { setCurrentView('map'); setSelectedAnimateur(null); }}
-            >
-              <i data-lucide="map" style={{ width: 24, height: 24 }}></i>
-              Carte
-            </button>
-            <button className="nav-item">
-              <i data-lucide="clock" style={{ width: 24, height: 24 }}></i>
-              Historique
-            </button>
-            <button className="nav-item">
-              <i data-lucide="user" style={{ width: 24, height: 24 }}></i>
-              Profil
+          <div className="modal-footer">
+            <button type="submit" className="btn-confirm">
+              <i data-lucide="user-plus" style={{ width:18, height:18 }}></i>
+              Ajouter l'animateur
             </button>
           </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ── MAP VIEW ── */
+function MapView({ animateurs }) {
+  useEffect(() => {
+    const first = animateurs[0];
+    const center = first ? getCoord(first.ville, first.id) : { lat:33.5731, lng:-7.5898 };
+    const map = L.map('map').setView([center.lat, center.lng], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'© OpenStreetMap' }).addTo(map);
+    animateurs.forEach(a => {
+      const meta = STATUS_META[a.status] || STATUS_META.nonpointe;
+      const c    = getCoord(a.ville, a.id);
+      const m    = L.circleMarker([c.lat, c.lng], { radius:11, fillColor:meta.mapColor, color:'white', weight:3, fillOpacity:0.9 }).addTo(map);
+      m.bindPopup(`<strong>${a.name}</strong><br><small>${a.sector} · ${a.ville}</small><br><span style="color:${meta.mapColor};font-weight:700">${meta.label}</span>`);
+    });
+    return () => map.remove();
+  }, [animateurs]);
+  return <div id="map"></div>;
+}
+
+/* ── HISTORY VIEW ── */
+function HistoryView({ userEmail }) {
+  const [allPtgs, setAllPtgs] = React.useState([]);
+
+  React.useEffect(() => {
+    const load = () => {
+      try {
+        const saved = JSON.parse(localStorage.getItem('ptg_pointages')) || [];
+        setAllPtgs(saved.filter(p => p.teamLeadEmail === userEmail));
+      } catch { setAllPtgs([]); }
+    };
+    load();
+    const t = setInterval(load, 5000);
+    return () => clearInterval(t);
+  }, [userEmail]);
+
+  // Group by date, most recent first
+  const byDate = {};
+  [...allPtgs].reverse().forEach(p => {
+    const key = p.date || '—';
+    if (!byDate[key]) byDate[key] = [];
+    byDate[key].push(p);
+  });
+  const dates = Object.keys(byDate);
+
+  const fmtDate = (ds) => {
+    try {
+      const d = new Date(ds);
+      const today = new Date().toDateString();
+      if (ds === today) return "Aujourd'hui";
+      const yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
+      if (ds === yesterday.toDateString()) return 'Hier';
+      return d.toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long' });
+    } catch { return ds; }
+  };
+
+  if (dates.length === 0) return (
+    <div className="empty-state" style={{ padding:'64px 24px' }}>
+      <i data-lucide="clock" style={{ width:56, height:56, opacity:0.25 }}></i>
+      <div className="empty-state-text">Aucun pointage enregistré</div>
+      <div style={{ fontSize:13, color:'var(--neutral-400)', marginTop:6 }}>Les pointages apparaîtront ici</div>
+    </div>
+  );
+
+  return (
+    <>
+      <div style={{ padding:'14px 16px 10px', background:'white', borderBottom:'1px solid var(--neutral-100)' }}>
+        <div style={{ fontSize:22, fontWeight:800, color:'var(--neutral-900)', marginBottom:2 }}>Historique</div>
+        <div style={{ fontSize:12, color:'var(--neutral-500)' }}>{allPtgs.length} pointage{allPtgs.length>1?'s':''} · {dates.length} jour{dates.length>1?'s':''}</div>
+      </div>
+      {dates.map(ds => (
+        <React.Fragment key={ds}>
+          <div style={{ padding:'8px 16px 5px', fontSize:11, fontWeight:700, color:'var(--neutral-500)', textTransform:'uppercase', letterSpacing:'0.6px', background:'var(--neutral-50)', borderBottom:'1px solid var(--neutral-100)', display:'flex', justifyContent:'space-between' }}>
+            <span>{fmtDate(ds)}</span>
+            <span style={{ color:'var(--neutral-400)', fontWeight:600 }}>{byDate[ds].length} pointage{byDate[ds].length>1?'s':''}</span>
+          </div>
+          {byDate[ds].map((h,i) => {
+            const meta = STATUS_META[h.status] || STATUS_META.nonpointe;
+            return (
+              <div key={i} className="history-item">
+                <div className="history-icon" style={{ background:meta.mapColor+'25' }}>
+                  <i data-lucide={meta.icon} style={{ width:18, height:18, color:meta.mapColor }}></i>
+                </div>
+                <div className="history-info">
+                  <div className="history-name">{h.animateurName}</div>
+                  <div className="history-detail">{h.sector || h.ville} · <span style={{ color:meta.mapColor, fontWeight:700 }}>{meta.label}</span>{h.note ? ` · ${h.note}` : ''}</div>
+                </div>
+                <div className="history-time">{h.time || '—'}</div>
+              </div>
+            );
+          })}
+        </React.Fragment>
+      ))}
+    </>
+  );
+}
+
+/* ── PROFILE VIEW ── */
+function ProfileView({ user, animateurs, onLogout }) {
+  const total   = animateurs.length;
+  const pointed = animateurs.filter(a => a.status !== 'nonpointe').length;
+  return (
+    <>
+      <div className="profile-header">
+        <div className="profile-avatar">{user.initials || 'TL'}</div>
+        <div className="profile-name">{user.name}</div>
+        <div className="profile-role">Team Lead</div>
+      </div>
+      <div className="profile-card">
+        <div className="profile-row">
+          <i data-lucide="mail" className="profile-row-icon" style={{ width:18, height:18 }}></i>
+          <div><div className="profile-row-label">Email</div><div className="profile-row-value">{user.email}</div></div>
         </div>
-      );
-    }
-    
-    ReactDOM.render(<App />, document.getElementById('root'));
-  </script>
+        <div className="profile-row">
+          <i data-lucide="map-pin" className="profile-row-icon" style={{ width:18, height:18 }}></i>
+          <div><div className="profile-row-label">Zone</div><div className="profile-row-value">{user.ville || 'Toutes les villes'}</div></div>
+        </div>
+        <div className="profile-row">
+          <i data-lucide="users" className="profile-row-icon" style={{ width:18, height:18 }}></i>
+          <div><div className="profile-row-label">Animateurs</div><div className="profile-row-value">{total} total · {pointed} pointés aujourd'hui</div></div>
+        </div>
+        <div className="profile-row">
+          <i data-lucide="calendar" className="profile-row-icon" style={{ width:18, height:18 }}></i>
+          <div><div className="profile-row-label">Date</div><div className="profile-row-value">{new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div></div>
+        </div>
+      </div>
+      <button className="btn-logout" onClick={onLogout}>
+        <i data-lucide="log-out" style={{ width:17, height:17 }}></i>Se déconnecter
+      </button>
+    </>
+  );
+}
+
+/* ── APP ── */
+function App() {
+  const [user, setUser]       = useState(null);
+  const [currentView, setCurrentView] = useState('list');
+  const [animateurs, setAnimateurs]   = useState(
+    ANIMATEURS_DB.map(a => ({ ...a, status:'nonpointe', pointedAt:null, note:undefined }))
+  );
+  const [selectedAnimateur, setSelectedAnimateur] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [toast,   setToast]   = useState(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const nextId = useRef(ANIMATEURS_DB.length + 1);
+
+  useEffect(() => { lucide.createIcons(); });
+
+  // Session + restauration des pointages du jour à la connexion
+  useEffect(() => {
+    if (!user) return;
+    LS.initAccounts();
+    LS.startSession(user);
+
+    // Restaurer les statuts + historique du jour depuis localStorage
+    const todayStr = new Date().toDateString();
+    try {
+      const saved = JSON.parse(localStorage.getItem('ptg_pointages')) || [];
+      const todayMine = saved.filter(p => p.teamLeadEmail === user.email && p.date === todayStr);
+      if (todayMine.length > 0) {
+        setAnimateurs(prev => prev.map(a => {
+          const matches = todayMine.filter(p => p.animateurId === a.id || p.animateurName === a.name);
+          if (!matches.length) return a;
+          const last = matches[matches.length - 1];
+          return { ...a, status: last.status, note: last.note || undefined, pointedAt: last.time || '—' };
+        }));
+        setHistory(todayMine.map(p => ({
+          animateurId: p.animateurId, animateurName: p.animateurName,
+          ville: p.ville, status: p.status, note: p.note, time: p.time || '—'
+        })));
+      }
+    } catch {}
+
+    // Ping de session toutes les 30 secondes
+    const ping = setInterval(() => LS.pingSession(user.email), 30000);
+    // Fin de session à la fermeture de l'onglet
+    const onUnload = () => LS.endSession(user.email);
+    window.addEventListener('beforeunload', onUnload);
+    return () => {
+      clearInterval(ping);
+      window.removeEventListener('beforeunload', onUnload);
+    };
+  }, [user]);
+
+  const showToast = (msg, type='neutral') => setToast({ msg, type });
+
+  const handleConfirmPointage = (id, status, note, coords) => {
+    const time = NOW_TIME();
+    const a    = animateurs.find(a => a.id === id);
+    setAnimateurs(prev => prev.map(x => x.id === id ? { ...x, status, note:note||undefined, pointedAt:time } : x));
+    const entry = { animateurId:id, animateurName:a.name, ville:a.ville, sector:a.sector, status, note, time };
+    setHistory(prev => [...prev, entry]);
+    LS.writePointage(user.email, entry);
+    const toastType = { present:'success', absent:'error', malade:'warning', demission:'info' };
+    showToast(`${a.name} — ${STATUS_META[status].label}`, toastType[status]);
+    setSelectedAnimateur(null);
+  };
+
+  const handleAddAnimateur = (form) => {
+    const id = nextId.current++;
+    const newAnim = {
+      id, name: form.name.trim(), sector: form.sector.trim(),
+      ville: form.ville, phone: form.phone || '—',
+      teamLead: form.teamLead || '—',
+      status: 'nonpointe', pointedAt: null,
+    };
+    setAnimateurs(prev => [...prev, newAnim]);
+    showToast(`${form.name} ajouté`, 'success');
+  };
+
+  if (!user) return <LoginScreen onLogin={setUser} />;
+
+  const visibleAnimateurs = user.ville
+    ? animateurs.filter(a => a.ville === user.ville)
+    : animateurs;
+  const unpointed = visibleAnimateurs.filter(a => a.status === 'nonpointe').length;
+  const barTitle  = selectedAnimateur ? 'Pointage' :
+    { list:'Animateurs', map:'Carte', history:'Historique', profile:'Profil' }[currentView];
+
+  return (
+    <div className="mobile-container">
+      <div className="status-bar">
+        {selectedAnimateur
+          ? <button className="status-bar-btn" onClick={() => setSelectedAnimateur(null)}>
+              <i data-lucide="chevron-left" style={{ width:20, height:20 }}></i>Retour
+            </button>
+          : <div className="status-bar-spacer"></div>
+        }
+        <div className="status-bar-title">{barTitle}</div>
+        {!selectedAnimateur && currentView === 'list'
+          ? <button className="status-bar-icon-btn" onClick={() => setShowAdd(true)} title="Ajouter animateur">
+              <i data-lucide="user-plus" style={{ width:18, height:18 }}></i>
+            </button>
+          : <div className="status-bar-spacer"></div>
+        }
+      </div>
+
+      <div className="main-content">
+        {currentView === 'list' && !selectedAnimateur && (
+          <AnimateursList
+            animateurs={visibleAnimateurs}
+            onSelectAnimateur={setSelectedAnimateur}
+            defaultVille={user.ville}
+          />
+        )}
+        {currentView === 'list' && selectedAnimateur && (
+          <PointageForm animateur={selectedAnimateur} onBack={() => setSelectedAnimateur(null)} onConfirm={handleConfirmPointage} />
+        )}
+        {currentView === 'map' && (
+          <div className="map-container">
+            <MapView animateurs={user.ville ? animateurs.filter(a=>a.ville===user.ville) : animateurs} />
+          </div>
+        )}
+        {currentView === 'history' && <HistoryView userEmail={user.email} />}
+        {currentView === 'profile' && <ProfileView user={user} animateurs={visibleAnimateurs} onLogout={() => setUser(null)} />}
+      </div>
+
+      {!selectedAnimateur && (
+        <div className="bottom-nav">
+          {[
+            { key:'list',    icon:'users',   label:'Animateurs', badge:unpointed },
+            { key:'map',     icon:'map',     label:'Carte',      badge:0 },
+            { key:'history', icon:'clock',   label:'Historique', badge:(() => { try { const s=JSON.parse(localStorage.getItem('ptg_pointages'))||[]; return s.filter(p=>p.teamLeadEmail===user.email&&p.date===new Date().toDateString()).length; } catch{return 0;} })() },
+            { key:'profile', icon:'user',    label:'Profil',     badge:0 },
+          ].map(item => (
+            <button key={item.key} className={`nav-item ${currentView === item.key ? 'active' : ''}`}
+              onClick={() => setCurrentView(item.key)}>
+              <div className="nav-icon-wrap">
+                <i data-lucide={item.icon} style={{ width:22, height:22 }}></i>
+                {item.badge > 0 && <span className="nav-badge">{item.badge}</span>}
+              </div>
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!selectedAnimateur && currentView === 'list' && (
+        <button className="fab" onClick={() => setShowAdd(true)} title="Ajouter animateur">
+          <i data-lucide="plus" style={{ width:26, height:26 }}></i>
+        </button>
+      )}
+
+      {showAdd && (
+        <AddAnimateurModal
+          onClose={() => setShowAdd(false)}
+          onAdd={handleAddAnimateur}
+          defaultVille={user.ville}
+        />
+      )}
+
+      {toast && <Toast message={toast.msg} type={toast.type} onDone={() => setToast(null)} />}
+    </div>
+  );
+}
+
+ReactDOM.render(<App />, document.getElementById('root'));
+</script>
 </body>
 </html>
