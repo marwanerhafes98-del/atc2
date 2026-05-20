@@ -965,57 +965,86 @@ function MapView({ animateurs }) {
 /* ── HISTORY VIEW ── */
 function HistoryView({ userEmail }) {
   const [allPtgs, setAllPtgs] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error,   setError]   = React.useState(null);
 
   React.useEffect(() => {
     const ref = db.ref('ptg/pointages');
-    const handler = ref.on('value', snap => {
-      const all = snap.exists() ? Object.values(snap.val()) : [];
-      setAllPtgs(all.filter(p => p.teamLeadEmail === userEmail));
-    });
-    return () => ref.off('value', handler);
+    const onSuccess = (snap) => {
+      try {
+        const raw = snap.exists() ? snap.val() : {};
+        const all = Object.values(raw || {}).filter(p => p && typeof p === 'object');
+        setAllPtgs(all.filter(p => p.teamLeadEmail === userEmail));
+      } catch (e) {
+        setAllPtgs([]);
+      }
+      setLoading(false);
+    };
+    const onError = (e) => {
+      setError('Erreur de connexion Firebase. Vérifiez les règles de sécurité.');
+      setLoading(false);
+    };
+    ref.on('value', onSuccess, onError);
+    return () => ref.off('value', onSuccess);
   }, [userEmail]);
 
-  // Group by date, most recent first
+  if (loading) return (
+    <div style={{ padding:'64px 24px', textAlign:'center', color:'#94A3B8' }}>
+      <i data-lucide="loader" style={{ width:40, height:40, opacity:0.4 }}></i>
+      <div style={{ fontSize:13, marginTop:12 }}>Chargement de l'historique...</div>
+    </div>
+  );
+
+  if (error) return (
+    <div style={{ padding:'32px 20px', textAlign:'center', color:'#DC2626', background:'#FEE2E2', margin:16, borderRadius:12 }}>
+      <div style={{ fontSize:13, fontWeight:600 }}>{error}</div>
+    </div>
+  );
+
   const byDate = {};
-  [...allPtgs].reverse().forEach(p => {
-    const key = p.date || '—';
-    if (!byDate[key]) byDate[key] = [];
-    byDate[key].push(p);
-  });
+  try {
+    [...allPtgs].reverse().forEach(p => {
+      const key = p.date || '—';
+      if (!byDate[key]) byDate[key] = [];
+      byDate[key].push(p);
+    });
+  } catch (e) {}
   const dates = Object.keys(byDate);
 
   const fmtDate = (ds) => {
     try {
-      const d = new Date(ds);
       const today = new Date().toDateString();
       if (ds === today) return "Aujourd'hui";
       const yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
       if (ds === yesterday.toDateString()) return 'Hier';
+      const d = new Date(ds);
+      if (isNaN(d.getTime())) return ds;
       return d.toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long' });
     } catch { return ds; }
   };
 
   if (dates.length === 0) return (
-    <div className="empty-state" style={{ padding:'64px 24px' }}>
+    <div style={{ padding:'64px 24px', textAlign:'center', color:'#94A3B8' }}>
       <i data-lucide="clock" style={{ width:56, height:56, opacity:0.25 }}></i>
-      <div className="empty-state-text">Aucun pointage enregistré</div>
-      <div style={{ fontSize:13, color:'var(--neutral-400)', marginTop:6 }}>Les pointages apparaîtront ici</div>
+      <div style={{ fontSize:14, fontWeight:500, marginTop:12 }}>Aucun pointage enregistré</div>
+      <div style={{ fontSize:13, color:'#94A3B8', marginTop:6 }}>Les pointages apparaîtront ici</div>
     </div>
   );
 
   return (
     <>
-      <div style={{ padding:'14px 16px 10px', background:'white', borderBottom:'1px solid var(--neutral-100)' }}>
-        <div style={{ fontSize:22, fontWeight:800, color:'var(--neutral-900)', marginBottom:2 }}>Historique</div>
-        <div style={{ fontSize:12, color:'var(--neutral-500)' }}>{allPtgs.length} pointage{allPtgs.length>1?'s':''} · {dates.length} jour{dates.length>1?'s':''}</div>
+      <div style={{ padding:'14px 16px 10px', background:'white', borderBottom:'1px solid #E2E8F0' }}>
+        <div style={{ fontSize:22, fontWeight:800, color:'#0F172A', marginBottom:2 }}>Historique</div>
+        <div style={{ fontSize:12, color:'#64748B' }}>{allPtgs.length} pointage{allPtgs.length>1?'s':''} · {dates.length} jour{dates.length>1?'s':''}</div>
       </div>
       {dates.map(ds => (
         <React.Fragment key={ds}>
-          <div style={{ padding:'8px 16px 5px', fontSize:11, fontWeight:700, color:'var(--neutral-500)', textTransform:'uppercase', letterSpacing:'0.6px', background:'var(--neutral-50)', borderBottom:'1px solid var(--neutral-100)', display:'flex', justifyContent:'space-between' }}>
+          <div style={{ padding:'8px 16px 5px', fontSize:11, fontWeight:700, color:'#64748B', textTransform:'uppercase', letterSpacing:'0.6px', background:'#F8FAFC', borderBottom:'1px solid #E2E8F0', display:'flex', justifyContent:'space-between' }}>
             <span>{fmtDate(ds)}</span>
-            <span style={{ color:'var(--neutral-400)', fontWeight:600 }}>{byDate[ds].length} pointage{byDate[ds].length>1?'s':''}</span>
+            <span style={{ color:'#94A3B8', fontWeight:600 }}>{(byDate[ds]||[]).length} pointage{(byDate[ds]||[]).length>1?'s':''}</span>
           </div>
-          {byDate[ds].map((h,i) => {
+          {(byDate[ds]||[]).map((h,i) => {
+            if (!h) return null;
             const meta = STATUS_META[h.status] || STATUS_META.nonpointe;
             return (
               <div key={i} className="history-item">
@@ -1023,8 +1052,8 @@ function HistoryView({ userEmail }) {
                   <i data-lucide={meta.icon} style={{ width:18, height:18, color:meta.mapColor }}></i>
                 </div>
                 <div className="history-info">
-                  <div className="history-name">{h.animateurName}</div>
-                  <div className="history-detail">{h.sector || h.ville} · <span style={{ color:meta.mapColor, fontWeight:700 }}>{meta.label}</span>{h.note ? ` · ${h.note}` : ''}</div>
+                  <div className="history-name">{h.animateurName || '—'}</div>
+                  <div className="history-detail">{h.sector || h.ville || '—'} · <span style={{ color:meta.mapColor, fontWeight:700 }}>{meta.label}</span>{h.note ? ` · ${h.note}` : ''}</div>
                 </div>
                 <div className="history-time">{h.time || '—'}</div>
               </div>
