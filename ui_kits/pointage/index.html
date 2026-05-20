@@ -133,7 +133,13 @@
 
     /* POINTAGE FORM */
     .pointage-container { padding:0 0 20px; }
-    .pointage-hero { background:linear-gradient(135deg, var(--primary-600), var(--primary-800)); padding:24px 20px 28px; display:flex; flex-direction:column; align-items:center; gap:10px; }
+    .pointage-hero { background:linear-gradient(135deg, var(--primary-600), var(--primary-800)); padding:24px 20px 28px; display:flex; flex-direction:column; align-items:center; gap:10px; position:relative; }
+    .hero-edit-btn { position:absolute; top:14px; right:14px; background:rgba(255,255,255,0.18); border:none; color:white; border-radius:var(--radius-full); width:36px; height:36px; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:background 150ms; }
+    .hero-edit-btn:active { background:rgba(255,255,255,0.3); }
+    .btn-delete-outline { width:100%; height:48px; background:transparent; color:#EF4444; border:1.5px solid #FECACA; border-radius:var(--radius-md); font-size:14px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; margin-top:12px; transition:all 150ms; }
+    .btn-delete-outline:active { background:#FEF2F2; }
+    .btn-delete-solid { width:100%; height:48px; background:#EF4444; color:white; border:none; border-radius:var(--radius-md); font-size:14px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; margin-top:6px; }
+    .btn-cancel-del { width:100%; height:40px; background:transparent; color:var(--neutral-500); border:1.5px solid var(--neutral-200); border-radius:var(--radius-md); font-size:13px; font-weight:600; cursor:pointer; margin-top:6px; }
     .pointage-avatar { width:68px; height:68px; border-radius:var(--radius-full); color:white; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:22px; border:3px solid rgba(255,255,255,0.4); }
     .pointage-name { font-size:20px; font-weight:800; color:white; text-align:center; }
     .pointage-sub { font-size:12px; color:rgba(255,255,255,0.7); display:flex; align-items:center; gap:5px; }
@@ -805,12 +811,86 @@ function AnimateursList({ animateurs, onSelectAnimateur, defaultVille }) {
   );
 }
 
+/* ── EDIT ANIMATEUR MODAL ── */
+function EditAnimateurModal({ animateur, onClose, onSave }) {
+  const cities = [...new Set(ANIMATEURS_DB.map(a => a.ville))].sort();
+  const [form, setForm] = useState({
+    name: animateur.name, sector: animateur.sector,
+    ville: animateur.ville, phone: animateur.phone || '',
+    teamLead: animateur.teamLead || '',
+  });
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!form.name.trim() || !form.sector.trim()) return;
+    onSave(form);
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-sheet">
+        <div className="modal-handle"></div>
+        <div className="modal-header">
+          <div className="modal-title">Modifier l'animateur</div>
+          <button className="modal-close" onClick={onClose}>
+            <i data-lucide="x" style={{ width:16, height:16 }}></i>
+          </button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            <div className="form-group">
+              <label className="form-label">Nom complet *</label>
+              <input className="form-input" value={form.name}
+                onChange={e => set('name', e.target.value)} required />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Secteur *</label>
+              <input className="form-input" value={form.sector}
+                onChange={e => set('sector', e.target.value)} required />
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Ville</label>
+                <div className="select-wrap">
+                  <select className="form-select" value={form.ville} onChange={e => set('ville', e.target.value)}>
+                    {cities.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Téléphone</label>
+                <input className="form-input" value={form.phone}
+                  onChange={e => set('phone', e.target.value)} />
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Team Lead</label>
+              <input className="form-input" value={form.teamLead}
+                onChange={e => set('teamLead', e.target.value)} />
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="submit" className="btn-confirm">
+              <i data-lucide="save" style={{ width:18, height:18 }}></i>
+              Enregistrer les modifications
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 /* ── POINTAGE FORM ── */
-function PointageForm({ animateur, onBack, onConfirm }) {
+function PointageForm({ animateur, onBack, onConfirm, onEdit, onDelete }) {
   const [selected, setSelected] = useState(animateur.status !== 'nonpointe' ? animateur.status : null);
   const [note, setNote]         = useState(animateur.note || '');
   const [gpsReady, setGpsReady] = useState(false);
   const [coords, setCoords]     = useState(null);
+  const [showEdit, setShowEdit]     = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
 
   useEffect(() => {
     const c = getCoord(animateur.ville, animateur.id);
@@ -831,6 +911,9 @@ function PointageForm({ animateur, onBack, onConfirm }) {
   return (
     <div className="pointage-container">
       <div className="pointage-hero">
+        <button className="hero-edit-btn" onClick={() => setShowEdit(true)} title="Modifier">
+          <i data-lucide="pencil" style={{ width:16, height:16 }}></i>
+        </button>
         <div className="pointage-avatar" style={{ background:color }}>{getInitials(animateur.name)}</div>
         <div className="pointage-name">{animateur.name}</div>
         <div className="pointage-sub"><i data-lucide="map-pin" style={{ width:13, height:13 }}></i>{animateur.sector} · {animateur.ville}</div>
@@ -875,7 +958,33 @@ function PointageForm({ animateur, onBack, onConfirm }) {
           <i data-lucide="check" style={{ width:20, height:20 }}></i>
           {selected ? `Confirmer — ${STATUS_META[selected].label}` : 'Choisir un statut'}
         </button>
+
+        {!confirmDel ? (
+          <button className="btn-delete-outline" onClick={() => setConfirmDel(true)}>
+            <i data-lucide="trash-2" style={{ width:16, height:16 }}></i>
+            Supprimer cet animateur
+          </button>
+        ) : (
+          <>
+            <div style={{ textAlign:'center', fontSize:13, color:'#EF4444', fontWeight:700, marginTop:14 }}>
+              Confirmer la suppression de {animateur.name} ?
+            </div>
+            <button className="btn-delete-solid" onClick={() => onDelete(animateur.id)}>
+              <i data-lucide="trash-2" style={{ width:16, height:16 }}></i>
+              Oui, supprimer définitivement
+            </button>
+            <button className="btn-cancel-del" onClick={() => setConfirmDel(false)}>Annuler</button>
+          </>
+        )}
       </div>
+
+      {showEdit && (
+        <EditAnimateurModal
+          animateur={animateur}
+          onClose={() => setShowEdit(false)}
+          onSave={data => onEdit(animateur.id, data)}
+        />
+      )}
     </div>
   );
 }
@@ -1209,6 +1318,18 @@ function App() {
     showToast(`${form.name} ajouté`, 'success');
   };
 
+  const handleEditAnimateur = (id, data) => {
+    setAnimateurs(prev => prev.map(a => a.id === id ? { ...a, ...data } : a));
+    setSelectedAnimateur(prev => prev && prev.id === id ? { ...prev, ...data } : prev);
+    showToast('Informations mises à jour', 'success');
+  };
+
+  const handleDeleteAnimateur = (id) => {
+    setAnimateurs(prev => prev.filter(a => a.id !== id));
+    setSelectedAnimateur(null);
+    showToast('Animateur supprimé', 'info');
+  };
+
   if (!user) return <LoginScreen onLogin={handleLogin} />;
 
   const visibleAnimateurs = user.ville
@@ -1245,7 +1366,7 @@ function App() {
           />
         )}
         {currentView === 'list' && selectedAnimateur && (
-          <PointageForm animateur={selectedAnimateur} onBack={() => setSelectedAnimateur(null)} onConfirm={handleConfirmPointage} />
+          <PointageForm animateur={selectedAnimateur} onBack={() => setSelectedAnimateur(null)} onConfirm={handleConfirmPointage} onEdit={handleEditAnimateur} onDelete={handleDeleteAnimateur} />
         )}
         {currentView === 'map' && (
           <div className="map-container">
