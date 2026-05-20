@@ -209,6 +209,20 @@
 </head>
 <body>
 <div id="root"></div>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<script>
+  firebase.initializeApp({
+    apiKey: "AIzaSyCfkKFashCIi045vY4M3m0SdlLRkbYkGfo",
+    authDomain: "pointage-801ec.firebaseapp.com",
+    databaseURL: "https://pointage-801ec-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "pointage-801ec",
+    storageBucket: "pointage-801ec.firebasestorage.app",
+    messagingSenderId: "999051005104",
+    appId: "1:999051005104:web:be4c97a86e1bacb7d4ff75"
+  });
+  const db = firebase.database();
+</script>
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
@@ -430,25 +444,29 @@ function exportCSV(animList, todayPtgs, filterVille, filterTLName) {
   URL.revokeObjectURL(url);
 }
 
-/* ── LOCALSTORAGE ── */
+/* ── FIREBASE DATA LAYER ── */
+let _accounts  = [];
+let _sessions  = {};
+let _pointages = [];
+const encodeKey = (email) => email.replace(/\./g, '_').replace(/@/g, '__at__');
+
 const LS = {
-  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
-  set(k,v) { localStorage.setItem(k, JSON.stringify(v)); },
-  getAccounts()  { return this.get('ptg_accounts')  || []; },
-  getSessions()  { return this.get('ptg_sessions')  || {}; },
-  getPointages() { return this.get('ptg_pointages') || []; },
+  getAccounts()  { return _accounts; },
+  getSessions()  {
+    const result = {};
+    Object.values(_sessions).forEach(s => { if (s && s.email) result[s.email] = s; });
+    return result;
+  },
+  getPointages() { return _pointages; },
 
   isLive(email) {
-    const s = this.getSessions()[email];
+    const s = _sessions[encodeKey(email)];
     if (!s || !s.isActive) return false;
     return (Date.now() - new Date(s.lastPing)) < 120000;
   },
 
-  saveAccounts(a) { this.set('ptg_accounts', a); },
-
-  addAccount(form) {
-    const accounts = this.getAccounts();
-    if (accounts.find(a => a.email.toLowerCase() === form.email.toLowerCase()))
+  async addAccount(form) {
+    if (_accounts.find(a => a.email.toLowerCase() === form.email.toLowerCase()))
       return { error: 'Cet email est déjà enregistré.' };
     const acc = {
       id: Date.now(), name: form.name.trim(),
@@ -456,25 +474,27 @@ const LS = {
       ville: form.ville, initials: initials(form.name.trim()),
       createdAt: new Date().toISOString(), createdBy: 'manager'
     };
-    this.saveAccounts([...accounts, acc]);
+    await db.ref(`ptg/accounts/${acc.id}`).set(acc);
     return { account: acc };
   },
 
-  deleteAccount(id) {
-    const before = this.getAccounts();
-    const found = before.find(a => a.id === id);
-    this.saveAccounts(before.filter(a => a.id !== id));
-    if (found) { const s = this.getSessions(); delete s[found.email]; this.set('ptg_sessions', s); }
+  async deleteAccount(id) {
+    const acc = _accounts.find(a => a.id === id);
+    await db.ref(`ptg/accounts/${id}`).remove();
+    if (acc) await db.ref(`ptg/sessions/${encodeKey(acc.email)}`).remove();
   },
 
-  resetPassword(id, newPwd) {
-    this.saveAccounts(this.getAccounts().map(a => a.id === id ? { ...a, password: newPwd } : a));
+  async resetPassword(id, newPwd) {
+    await db.ref(`ptg/accounts/${id}/password`).set(newPwd);
   },
 
-  updateAccount(id, data) {
-    this.saveAccounts(this.getAccounts().map(a =>
-      a.id === id ? { ...a, ...data, initials: initials((data.name || a.name).trim()) } : a
-    ));
+  async updateAccount(id, data) {
+    const acc = _accounts.find(a => a.id === id);
+    if (!acc) return;
+    await db.ref(`ptg/accounts/${id}`).update({
+      ...data,
+      initials: initials((data.name || acc.name).trim())
+    });
   }
 };
 
@@ -524,12 +544,12 @@ function AddAccountModal({ onClose, onCreated }) {
   const [error, setError] = useState('');
   const set = (k,v) => setForm(f => ({...f,[k]:v}));
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault(); setError('');
     if (!form.name.trim()) { setError('Entrez le nom.'); return; }
     if (form.password.length < 4) { setError('Mot de passe trop court (min 4 chars).'); return; }
     if (form.password !== form.confirm) { setError('Mots de passe différents.'); return; }
-    const res = LS.addAccount(form);
+    const res = await LS.addAccount(form);
     if (res.error) { setError(res.error); return; }
     onCreated(res.account);
     onClose();
@@ -573,14 +593,14 @@ function EditAccountModal({ account, onClose, onSaved }) {
   const [error, setError] = useState('');
   const set = (k,v) => setForm(f => ({...f,[k]:v}));
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault(); setError('');
     if (!form.name.trim()) { setError('Le nom est obligatoire.'); return; }
     if (form.pwd && form.pwd.length < 4) { setError('Mot de passe trop court (min 4 chars).'); return; }
     if (form.pwd && form.pwd !== form.confirm) { setError('Les mots de passe ne correspondent pas.'); return; }
     const data = { name: form.name.trim(), ville: form.ville };
     if (form.pwd) data.password = form.pwd;
-    LS.updateAccount(account.id, data);
+    await LS.updateAccount(account.id, data);
     onSaved(); onClose();
   };
 
@@ -933,10 +953,9 @@ function AccountsView({ accounts, sessions, onRefresh }) {
     return matchQ && matchV && matchS;
   });
 
-  const handleDelete = (acc) => {
+  const handleDelete = async (acc) => {
     if (!window.confirm(`Supprimer le compte de ${acc.name} ?`)) return;
-    LS.deleteAccount(acc.id);
-    onRefresh();
+    await LS.deleteAccount(acc.id);
     showToast(`Compte ${acc.name} supprimé`);
   };
 
@@ -1435,20 +1454,20 @@ function App() {
 
   useEffect(() => { lucide.createIcons(); });
 
-  const refresh = useCallback(() => {
-    setAccounts(LS.getAccounts());
-    setSessions(LS.getSessions());
-    setPointages(LS.getPointages());
-  }, []);
+  const refresh = useCallback(() => {}, []);
 
   useEffect(() => {
     if (!loggedIn) return;
-    refresh();
-    const t = setInterval(() => { refresh(); }, 10000);
-    return () => clearInterval(t);
+    const refAcc = db.ref('ptg/accounts');
+    const refSes = db.ref('ptg/sessions');
+    const refPtg = db.ref('ptg/pointages');
+    refAcc.on('value', snap => { _accounts  = snap.exists() ? Object.values(snap.val()) : []; setAccounts([..._accounts]); });
+    refSes.on('value', snap => { _sessions  = snap.exists() ? snap.val() : {};              setSessions({..._sessions}); });
+    refPtg.on('value', snap => { _pointages = snap.exists() ? Object.values(snap.val()) : []; setPointages([..._pointages]); });
+    return () => { refAcc.off('value'); refSes.off('value'); refPtg.off('value'); };
   }, [loggedIn]);
 
-  if (!loggedIn) return <LoginPage onLogin={() => { setLoggedIn(true); refresh(); }} />;
+  if (!loggedIn) return <LoginPage onLogin={() => setLoggedIn(true)} />;
 
   const liveCount  = accounts.filter(a => LS.isLive(a.email)).length;
   const todayPtgN  = pointages.filter(p => p.date === new Date().toDateString()).length;

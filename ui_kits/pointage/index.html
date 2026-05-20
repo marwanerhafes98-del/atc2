@@ -220,6 +220,20 @@
 </head>
 <body>
 <div id="root"></div>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<script>
+  firebase.initializeApp({
+    apiKey: "AIzaSyCfkKFashCIi045vY4M3m0SdlLRkbYkGfo",
+    authDomain: "pointage-801ec.firebaseapp.com",
+    databaseURL: "https://pointage-801ec-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "pointage-801ec",
+    storageBucket: "pointage-801ec.firebasestorage.app",
+    messagingSenderId: "999051005104",
+    appId: "1:999051005104:web:be4c97a86e1bacb7d4ff75"
+  });
+  const db = firebase.database();
+</script>
 <script type="text/babel">
 const { useState, useEffect, useRef } = React;
 
@@ -405,34 +419,37 @@ const STATUS_META = {
 
 const NOW_TIME = () => new Date().toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
 
-/* ── LOCALSTORAGE AUTH ── */
-const LS = {
-  getAccounts() { try { return JSON.parse(localStorage.getItem('ptg_accounts')) || []; } catch { return []; } },
-  saveAccounts(a) { localStorage.setItem('ptg_accounts', JSON.stringify(a)); },
-  getSessions() { try { return JSON.parse(localStorage.getItem('ptg_sessions')) || {}; } catch { return {}; } },
-  saveSessions(s) { localStorage.setItem('ptg_sessions', JSON.stringify(s)); },
+/* ── FIREBASE AUTH ── */
+const encodeKey = (email) => email.replace(/\./g, '_').replace(/@/g, '__at__');
 
-  initAccounts() {
-    if (this.getAccounts().length > 0) return;
+const LS = {
+  async initAccounts() {
+    const snap = await db.ref('ptg/accounts').once('value');
+    if (snap.exists() && Object.keys(snap.val()).length > 0) return;
     const defaults = Object.entries(TEAM_LEADS_DB).map(([email, d], i) => ({
       id: i + 1, email, password: '1234',
       name: d.name, ville: d.ville, initials: d.initials,
       createdAt: new Date().toISOString(), createdBy: 'system'
     }));
-    this.saveAccounts(defaults);
+    const obj = {};
+    defaults.forEach(a => { obj[a.id] = a; });
+    await db.ref('ptg/accounts').set(obj);
   },
 
-  login(email, password) {
-    const acc = this.getAccounts().find(a => a.email.toLowerCase() === email.toLowerCase().trim());
+  async login(email, password) {
+    const snap = await db.ref('ptg/accounts').once('value');
+    const accounts = snap.exists() ? Object.values(snap.val()) : [];
+    const acc = accounts.find(a => a.email.toLowerCase() === email.toLowerCase().trim());
     if (!acc) return { error: 'Email introuvable. Créez un compte.' };
     if (acc.password !== password) return { error: 'Mot de passe incorrect.' };
     return { account: acc };
   },
 
-  register(name, email, password, ville) {
+  async register(name, email, password, ville) {
     if (!name.trim()) return { error: 'Entrez votre nom complet.' };
     if (password.length < 4) return { error: 'Mot de passe trop court (min. 4 caractères).' };
-    const accounts = this.getAccounts();
+    const snap = await db.ref('ptg/accounts').once('value');
+    const accounts = snap.exists() ? Object.values(snap.val()) : [];
     if (accounts.find(a => a.email.toLowerCase() === email.toLowerCase().trim()))
       return { error: 'Cet email est déjà enregistré.' };
     const acc = {
@@ -440,34 +457,38 @@ const LS = {
       name: name.trim(), ville, initials: getInitials(name.trim()),
       createdAt: new Date().toISOString(), createdBy: 'self'
     };
-    this.saveAccounts([...accounts, acc]);
+    await db.ref(`ptg/accounts/${acc.id}`).set(acc);
     return { account: acc };
   },
 
   startSession(user) {
-    const now = new Date().toISOString();
-    const s = this.getSessions();
-    s[user.email] = { name: user.name, ville: user.ville, initials: user.initials || getInitials(user.name), loginAt: now, lastPing: now, isActive: true };
-    this.saveSessions(s);
+    const key = encodeKey(user.email);
+    db.ref(`ptg/sessions/${key}`).set({
+      email: user.email,
+      name: user.name, ville: user.ville,
+      initials: user.initials || getInitials(user.name),
+      loginAt: new Date().toISOString(),
+      lastPing: new Date().toISOString(),
+      isActive: true
+    });
   },
 
   pingSession(email) {
-    const s = this.getSessions();
-    if (s[email]) { s[email].lastPing = new Date().toISOString(); this.saveSessions(s); }
+    db.ref(`ptg/sessions/${encodeKey(email)}/lastPing`).set(new Date().toISOString());
   },
 
   endSession(email) {
-    const s = this.getSessions();
-    if (s[email]) { s[email].isActive = false; s[email].logoutAt = new Date().toISOString(); this.saveSessions(s); }
+    db.ref(`ptg/sessions/${encodeKey(email)}`).update({
+      isActive: false, logoutAt: new Date().toISOString()
+    });
   },
 
   writePointage(teamLeadEmail, entry) {
-    try {
-      const arr = JSON.parse(localStorage.getItem('ptg_pointages')) || [];
-      arr.push({ ...entry, teamLeadEmail, date: new Date().toDateString(), ts: new Date().toISOString() });
-      if (arr.length > 500) arr.splice(0, arr.length - 500);
-      localStorage.setItem('ptg_pointages', JSON.stringify(arr));
-    } catch {}
+    db.ref('ptg/pointages').push({
+      ...entry, teamLeadEmail,
+      date: new Date().toDateString(),
+      ts: new Date().toISOString()
+    });
   }
 };
 
@@ -486,21 +507,25 @@ function LoginScreen({ onLogin }) {
   const [ville, setVille]     = useState('Casablanca');
   const [confirm, setConfirm] = useState('');
   const [error, setError]     = useState('');
+  const [loading, setLoading] = useState(false);
 
   const VILLES = [...new Set(ANIMATEURS_DB.map(a => a.ville))].sort();
   const switchMode = (m) => { setMode(m); setError(''); };
 
-  const handleLogin = (e) => {
-    e.preventDefault(); setError('');
-    const res = LS.login(email, password);
+  const handleLogin = async (e) => {
+    e.preventDefault(); setError(''); setLoading(true);
+    const res = await LS.login(email, password);
+    setLoading(false);
     if (res.error) { setError(res.error); return; }
     onLogin(res.account);
   };
 
-  const handleRegister = (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault(); setError('');
     if (password !== confirm) { setError('Les mots de passe ne correspondent pas.'); return; }
-    const res = LS.register(name, email, password, ville);
+    setLoading(true);
+    const res = await LS.register(name, email, password, ville);
+    setLoading(false);
     if (res.error) { setError(res.error); return; }
     onLogin(res.account);
   };
@@ -533,7 +558,7 @@ function LoginScreen({ onLogin }) {
             <input type="password" className="form-input" placeholder="••••••••"
               value={password} onChange={e => setPwd(e.target.value)} required />
           </div>
-          <button type="submit" className="btn-login">Se connecter</button>
+          <button type="submit" className="btn-login" disabled={loading}>{loading ? 'Connexion...' : 'Se connecter'}</button>
           <div className="login-hint">Comptes pré-enregistrés : mot de passe = 1234</div>
         </form>
       ) : (
@@ -567,7 +592,7 @@ function LoginScreen({ onLogin }) {
             <input type="password" className="form-input" placeholder="••••••••"
               value={confirm} onChange={e => setConfirm(e.target.value)} required />
           </div>
-          <button type="submit" className="btn-login">Créer mon compte</button>
+          <button type="submit" className="btn-login" disabled={loading}>{loading ? 'Création...' : 'Créer mon compte'}</button>
         </form>
       )}
     </div>
@@ -942,15 +967,12 @@ function HistoryView({ userEmail }) {
   const [allPtgs, setAllPtgs] = React.useState([]);
 
   React.useEffect(() => {
-    const load = () => {
-      try {
-        const saved = JSON.parse(localStorage.getItem('ptg_pointages')) || [];
-        setAllPtgs(saved.filter(p => p.teamLeadEmail === userEmail));
-      } catch { setAllPtgs([]); }
-    };
-    load();
-    const t = setInterval(load, 5000);
-    return () => clearInterval(t);
+    const ref = db.ref('ptg/pointages');
+    const handler = ref.on('value', snap => {
+      const all = snap.exists() ? Object.values(snap.val()) : [];
+      setAllPtgs(all.filter(p => p.teamLeadEmail === userEmail));
+    });
+    return () => ref.off('value', handler);
   }, [userEmail]);
 
   // Group by date, most recent first
@@ -1058,9 +1080,10 @@ function App() {
     ANIMATEURS_DB.map(a => ({ ...a, status:'nonpointe', pointedAt:null, note:undefined }))
   );
   const [selectedAnimateur, setSelectedAnimateur] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [toast,   setToast]   = useState(null);
-  const [showAdd, setShowAdd] = useState(false);
+  const [history, setHistory]     = useState([]);
+  const [toast,   setToast]       = useState(null);
+  const [showAdd, setShowAdd]     = useState(false);
+  const [todayCount, setTodayCount] = useState(0);
   const nextId = useRef(ANIMATEURS_DB.length + 1);
 
   useEffect(() => { lucide.createIcons(); });
@@ -1071,31 +1094,28 @@ function App() {
     LS.initAccounts();
     LS.startSession(user);
 
-    // Restaurer les statuts + historique du jour depuis localStorage
+    // Écoute Firebase en temps réel pour restaurer/sync les pointages du jour
     const todayStr = new Date().toDateString();
-    try {
-      const saved = JSON.parse(localStorage.getItem('ptg_pointages')) || [];
-      const todayMine = saved.filter(p => p.teamLeadEmail === user.email && p.date === todayStr);
-      if (todayMine.length > 0) {
+    const ref = db.ref('ptg/pointages');
+    const handler = ref.on('value', snap => {
+      const all = snap.exists() ? Object.values(snap.val()) : [];
+      const mine = all.filter(p => p.teamLeadEmail === user.email && p.date === todayStr);
+      setTodayCount(mine.length);
+      if (mine.length > 0) {
         setAnimateurs(prev => prev.map(a => {
-          const matches = todayMine.filter(p => p.animateurId === a.id || p.animateurName === a.name);
+          const matches = mine.filter(p => p.animateurId === a.id || p.animateurName === a.name);
           if (!matches.length) return a;
           const last = matches[matches.length - 1];
           return { ...a, status: last.status, note: last.note || undefined, pointedAt: last.time || '—' };
         }));
-        setHistory(todayMine.map(p => ({
-          animateurId: p.animateurId, animateurName: p.animateurName,
-          ville: p.ville, status: p.status, note: p.note, time: p.time || '—'
-        })));
       }
-    } catch {}
+    });
 
-    // Ping de session toutes les 30 secondes
     const ping = setInterval(() => LS.pingSession(user.email), 30000);
-    // Fin de session à la fermeture de l'onglet
     const onUnload = () => LS.endSession(user.email);
     window.addEventListener('beforeunload', onUnload);
     return () => {
+      ref.off('value', handler);
       clearInterval(ping);
       window.removeEventListener('beforeunload', onUnload);
     };
@@ -1179,7 +1199,7 @@ function App() {
           {[
             { key:'list',    icon:'users',   label:'Animateurs', badge:unpointed },
             { key:'map',     icon:'map',     label:'Carte',      badge:0 },
-            { key:'history', icon:'clock',   label:'Historique', badge:(() => { try { const s=JSON.parse(localStorage.getItem('ptg_pointages'))||[]; return s.filter(p=>p.teamLeadEmail===user.email&&p.date===new Date().toDateString()).length; } catch{return 0;} })() },
+            { key:'history', icon:'clock',   label:'Historique', badge:todayCount },
             { key:'profile', icon:'user',    label:'Profil',     badge:0 },
           ].map(item => (
             <button key={item.key} className={`nav-item ${currentView === item.key ? 'active' : ''}`}
