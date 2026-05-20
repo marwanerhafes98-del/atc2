@@ -1251,6 +1251,35 @@ function App() {
     LS.initAccounts();
     LS.startSession(user);
 
+    // Surveille le compte de l'utilisateur : déconnexion si supprimé ou mot de passe changé par le manager
+    const accRef = db.ref('ptg/accounts');
+    const accHandler = accRef.on('value', snap => {
+      const accounts = snap.exists() ? Object.values(snap.val() || {}) : [];
+      const current = accounts.find(a => a && a.email && a.email.toLowerCase() === user.email.toLowerCase());
+      if (!current) {
+        // Compte supprimé par le manager
+        LS.endSession(user.email);
+        localStorage.removeItem('ptg_saved_user');
+        setUser(null);
+        return;
+      }
+      if (current.password !== user.password) {
+        // Mot de passe modifié par le manager — forcer la reconnexion
+        LS.endSession(user.email);
+        localStorage.removeItem('ptg_saved_user');
+        setUser(null);
+        return;
+      }
+      // Mise à jour silencieuse si le manager a changé le nom ou la ville
+      setUser(prev => {
+        if (!prev) return prev;
+        if (current.name === prev.name && current.ville === prev.ville) return prev;
+        const updated = { ...prev, name: current.name, ville: current.ville, initials: current.initials || prev.initials };
+        if (localStorage.getItem('ptg_saved_user')) localStorage.setItem('ptg_saved_user', JSON.stringify(updated));
+        return updated;
+      });
+    });
+
     // Écoute Firebase en temps réel pour restaurer/sync les pointages du jour
     const ref = db.ref('ptg/pointages');
     const handler = ref.on('value', snap => {
@@ -1275,6 +1304,7 @@ function App() {
     const onUnload = () => LS.endSession(user.email);
     window.addEventListener('beforeunload', onUnload);
     return () => {
+      accRef.off('value', accHandler);
       ref.off('value', handler);
       clearInterval(ping);
       window.removeEventListener('beforeunload', onUnload);
