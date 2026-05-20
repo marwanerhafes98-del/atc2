@@ -989,9 +989,10 @@ function HistoryView({ userEmail }) {
   }, [userEmail]);
 
   if (loading) return (
-    <div style={{ padding:'64px 24px', textAlign:'center', color:'#94A3B8' }}>
-      <i data-lucide="loader" style={{ width:40, height:40, opacity:0.4 }}></i>
-      <div style={{ fontSize:13, marginTop:12 }}>Chargement de l'historique...</div>
+    <div style={{ padding:'64px 24px', textAlign:'center', color:'#334155', background:'white', minHeight:'100vh' }}>
+      <div style={{ fontSize:32, marginBottom:12 }}>⏳</div>
+      <div style={{ fontSize:15, fontWeight:700, color:'#1E293B' }}>Chargement de l'historique...</div>
+      <div style={{ fontSize:12, color:'#64748B', marginTop:6 }}>Connexion Firebase en cours</div>
     </div>
   );
 
@@ -1114,8 +1115,14 @@ function App() {
   const [showAdd, setShowAdd]     = useState(false);
   const [todayCount, setTodayCount] = useState(0);
   const nextId = useRef(ANIMATEURS_DB.length + 1);
+  const mainRef = useRef(null);
 
   useEffect(() => { lucide.createIcons(); });
+
+  // Scroll to top whenever view or selected animateur changes
+  useEffect(() => {
+    if (mainRef.current) mainRef.current.scrollTop = 0;
+  }, [currentView, selectedAnimateur]);
 
   // Session + restauration des pointages du jour à la connexion
   useEffect(() => {
@@ -1206,7 +1213,7 @@ function App() {
         }
       </div>
 
-      <div className="main-content">
+      <div className="main-content" ref={mainRef}>
         {currentView === 'list' && !selectedAnimateur && (
           <AnimateursList
             animateurs={visibleAnimateurs}
