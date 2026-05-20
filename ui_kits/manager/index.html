@@ -419,46 +419,154 @@ function computeStats(animList, todayPtgs) {
   return s;
 }
 
-/* ── CSV EXPORT ── */
-function exportCSV(animList, todayPtgs, filterVille, filterTLName) {
-  const rows = [...animList].sort((a,b) =>
+/* ── DASHBOARD XLSX EXPORT ── */
+function exportDashboardXLSX(animList, todayPtgs, filterVille, filterTLName) {
+  const now     = new Date();
+  const dateStr = now.toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+  const fileDate = now.toLocaleDateString('fr-FR').replace(/\//g, '-');
+  const scope   = [
+    filterVille   !== 'Toutes' ? `Ville : ${filterVille}`     : null,
+    filterTLName  !== 'Tous'   ? `Team Lead : ${filterTLName}` : null,
+  ].filter(Boolean).join('  |  ') || 'Toutes les villes — Tous les Team Leads';
+
+  const HEADERS = ['N°','Ville','Secteur / Magasin','Animateur','Téléphone','Team Lead','Statut','Heure','Note'];
+  const NCOLS   = HEADERS.length;
+
+  // ── Styles ──
+  const titleS = {
+    font: { bold:true, sz:14, color:{ rgb:'FFFFFF' } },
+    fill: { fgColor:{ rgb:'003580' } },
+    alignment: { horizontal:'center', vertical:'center' },
+  };
+  const subtitleS = {
+    font: { sz:11, color:{ rgb:'FFFFFF' } },
+    fill: { fgColor:{ rgb:'003580' } },
+    alignment: { horizontal:'center', vertical:'center' },
+  };
+  const dateS = {
+    font: { italic:true, sz:10, color:{ rgb:'FFFFFF' } },
+    fill: { fgColor:{ rgb:'003580' } },
+    alignment: { horizontal:'center', vertical:'center' },
+  };
+  const headerS = {
+    font: { bold:true, sz:11, color:{ rgb:'FFFFFF' } },
+    fill: { fgColor:{ rgb:'0052CC' } },
+    alignment: { horizontal:'center', vertical:'center', wrapText:true },
+    border: { bottom:{ style:'thin', color:{ rgb:'BFDBFE' } } },
+  };
+  const STATUS_BG = {
+    present:   { font:{ color:{ rgb:'14532D' } }, fill:{ fgColor:{ rgb:'DCFCE7' } } },
+    absent:    { font:{ color:{ rgb:'7F1D1D' } }, fill:{ fgColor:{ rgb:'FEE2E2' } } },
+    malade:    { font:{ color:{ rgb:'78350F' } }, fill:{ fgColor:{ rgb:'FEF3C7' } } },
+    demission: { font:{ color:{ rgb:'4C1D95' } }, fill:{ fgColor:{ rgb:'F3E8FF' } } },
+    nonpointe: { font:{ color:{ rgb:'475569' } }, fill:{ fgColor:{ rgb:'F1F5F9' } } },
+  };
+  const centerS  = { alignment:{ horizontal:'center', vertical:'center' } };
+  const wrapS    = { alignment:{ horizontal:'left',   vertical:'center', wrapText:true } };
+
+  // ── Data rows ──
+  const sorted = [...animList].sort((a,b) =>
     a.ville.localeCompare(b.ville) || a.sector.localeCompare(b.sector) || a.name.localeCompare(b.name)
-  ).map(a => {
-    const ptg = getPtgForAnim(a, todayPtgs);
-    return {
-      'Ville':     a.ville,
-      'Secteur':   a.sector,
-      'Animateur': a.name,
-      'Téléphone': a.phone || '—',
-      'Team Lead': a.teamLead,
-      'Statut':    ptg ? (STATUS_FR[ptg.status] || ptg.status) : 'Non pointé',
-      'Heure':     ptg?.time || '—',
-      'Note':      ptg?.note || ''
-    };
+  );
+
+  // ── Build sheet data (AOA) ──
+  // Row 0 : title (merged)
+  // Row 1 : date (merged)
+  // Row 2 : scope/filters (merged)
+  // Row 3 : empty spacer
+  // Row 4 : column headers
+  // Row 5+ : data
+  const aoa = [
+    ['RAPPORT DE POINTAGE — OUTILS ATC2', ...Array(NCOLS-1).fill('')],
+    [dateStr,                              ...Array(NCOLS-1).fill('')],
+    [scope,                                ...Array(NCOLS-1).fill('')],
+    Array(NCOLS).fill(''),
+    HEADERS,
+    ...sorted.map((a, i) => {
+      const ptg    = getPtgForAnim(a, todayPtgs);
+      const status = ptg ? ptg.status : 'nonpointe';
+      return [
+        i + 1,
+        a.ville,
+        a.sector,
+        a.name,
+        a.phone || '—',
+        a.teamLead,
+        STATUS_FR[status] || 'Non pointé',
+        ptg?.time || '—',
+        ptg?.note || '',
+      ];
+    }),
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+  // Column widths
+  ws['!cols'] = [
+    { wch:5  },  // N°
+    { wch:14 },  // Ville
+    { wch:22 },  // Secteur
+    { wch:26 },  // Animateur
+    { wch:18 },  // Téléphone
+    { wch:22 },  // Team Lead
+    { wch:13 },  // Statut
+    { wch:8  },  // Heure
+    { wch:32 },  // Note
+  ];
+
+  // Row heights
+  ws['!rows'] = [
+    { hpt:30 }, // title
+    { hpt:18 }, // date
+    { hpt:18 }, // scope
+    { hpt:8  }, // spacer
+    { hpt:22 }, // headers
+  ];
+
+  // Merges : title / date / scope across all columns
+  ws['!merges'] = [
+    { s:{ r:0, c:0 }, e:{ r:0, c:NCOLS-1 } },
+    { s:{ r:1, c:0 }, e:{ r:1, c:NCOLS-1 } },
+    { s:{ r:2, c:0 }, e:{ r:2, c:NCOLS-1 } },
+  ];
+
+  // Freeze header row (row index 4)
+  ws['!freeze'] = { xSplit:0, ySplit:5 };
+
+  // Apply styles to title / date / scope
+  for (let c = 0; c < NCOLS; c++) {
+    const r0 = XLSX.utils.encode_cell({ r:0, c });
+    const r1 = XLSX.utils.encode_cell({ r:1, c });
+    const r2 = XLSX.utils.encode_cell({ r:2, c });
+    if (ws[r0]) ws[r0].s = titleS;
+    if (ws[r1]) ws[r1].s = subtitleS;
+    if (ws[r2]) ws[r2].s = dateS;
+  }
+
+  // Header row styles
+  HEADERS.forEach((_, ci) => {
+    const cell = XLSX.utils.encode_cell({ r:4, c:ci });
+    if (ws[cell]) ws[cell].s = headerS;
   });
 
-  const headers = ['Ville','Secteur','Animateur','Téléphone','Team Lead','Statut','Heure','Note'];
-  const dateStr = new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  const scope = [filterVille !== 'Toutes' ? `Ville: ${filterVille}` : null, filterTLName !== 'Tous' ? `Team Lead: ${filterTLName}` : null].filter(Boolean).join(' | ');
+  // Data row styles
+  sorted.forEach((a, ri) => {
+    const ptg    = getPtgForAnim(a, todayPtgs);
+    const status = ptg ? ptg.status : 'nonpointe';
+    const bg     = STATUS_BG[status] || STATUS_BG.nonpointe;
+    const rowIdx = ri + 5; // offset: 3 header rows + 1 spacer + 1 header = 5
 
-  const lines = [
-    `"Rapport de pointage — ${dateStr}"`,
-    scope ? `"${scope}"` : '',
-    '',
-    headers.map(h => `"${h}"`).join(';'),
-    ...rows.map(r => headers.map(h => `"${String(r[h]).replace(/"/g,'""')}"`).join(';'))
-  ].filter((l, i) => i > 1 || l);
+    HEADERS.forEach((h, ci) => {
+      const cell = XLSX.utils.encode_cell({ r:rowIdx, c:ci });
+      if (!ws[cell]) return;
+      const extra = (ci === 0 || ci === 6 || ci === 7) ? centerS : wrapS;
+      ws[cell].s = { ...bg, ...extra };
+    });
+  });
 
-  const BOM = '﻿';
-  const blob = new Blob([BOM + lines.join('\n')], { type:'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `pointage_${new Date().toLocaleDateString('fr-FR').replace(/\//g,'-')}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Pointage du jour');
+  XLSX.writeFile(wb, `pointage_${fileDate}.xlsx`);
 }
 
 /* ── FIREBASE DATA LAYER ── */
@@ -879,7 +987,7 @@ function DashboardView({ accounts, sessions, pointages, onRefresh }) {
 
   const stats = useMemo(() => computeStats(filteredAnims, filteredPtgs), [filteredAnims, filteredPtgs]);
 
-  const handleExport = () => exportCSV(filteredAnims, filteredPtgs, filterVille, filterTL !== 'Tous' ? filterTL : 'Tous');
+  const handleExport = () => exportDashboardXLSX(filteredAnims, filteredPtgs, filterVille, filterTL !== 'Tous' ? filterTL : 'Tous');
 
   return (
     <>
@@ -909,7 +1017,7 @@ function DashboardView({ accounts, sessions, pointages, onRefresh }) {
 
         <button className="btn btn-success" onClick={handleExport}>
           <i data-lucide="download" style={{width:15,height:15}}></i>
-          Exporter Excel (.csv)
+          Exporter Excel
         </button>
       </div>
 
