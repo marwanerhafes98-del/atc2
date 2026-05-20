@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Outils Pointage ATC2</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0f172a;
+    color: #f1f5f9;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2rem;
+    padding: 2rem;
+  }
+  h1 { font-size: 1.5rem; font-weight: 700; color: #e2e8f0; letter-spacing: 0.05em; }
+  .subtitle { font-size: 0.875rem; color: #94a3b8; }
+  .cards { display: flex; gap: 1.5rem; flex-wrap: wrap; justify-content: center; }
+  .card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 1rem;
+    padding: 2rem 2.5rem;
+    text-decoration: none;
+    color: inherit;
+    text-align: center;
+    width: 220px;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .card:hover { border-color: #6366f1; transform: translateY(-2px); }
+  .card .icon { font-size: 2.5rem; margin-bottom: 1rem; }
+  .card .name { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem; }
+  .card .desc { font-size: 0.8rem; color: #64748b; }
+  .card.pointage { border-color: #1d4ed8; }
+  .card.pointage:hover { border-color: #3b82f6; }
+  .card.manager { border-color: #7c3aed; }
+  .card.manager:hover { border-color: #a78bfa; }
+</style>
+</head>
+<body>
+  <div style="text-align:center">
+    <h1>OUTILS POINTAGE</h1>
+    <p class="subtitle">ATC2 — Système de gestion des présences</p>
+  </div>
+  <div class="cards">
+    <a href="ui_kits/pointage/" class="card pointage">
+      <div class="icon">📋</div>
+      <div class="name">Pointage</div>
+      <div class="desc">Outil pour les Team Leads</div>
+    </a>
+    <a href="ui_kits/manager/" class="card manager">
+      <div class="icon">📊</div>
+      <div class="name">Manager</div>
+      <div class="desc">Dashboard de supervision</div>
+    </a>
+  </div>
+</body>
+</html>
