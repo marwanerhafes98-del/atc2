@@ -1131,10 +1131,10 @@ function App() {
     LS.startSession(user);
 
     // Écoute Firebase en temps réel pour restaurer/sync les pointages du jour
-    const todayStr = new Date().toDateString();
     const ref = db.ref('ptg/pointages');
     const handler = ref.on('value', snap => {
       try {
+        const todayStr = new Date().toDateString(); // recalculated each time so overnight stays work
         const raw = snap.exists() ? snap.val() : {};
         const all = Object.values(raw || {}).filter(p => p && typeof p === 'object');
         const mine = all.filter(p => p.teamLeadEmail === user.email && p.date === todayStr);
