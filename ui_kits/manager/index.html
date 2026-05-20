@@ -634,10 +634,34 @@ const LS = {
   async updateAccount(id, data) {
     const acc = _accounts.find(a => a.id === id);
     if (!acc) return;
+    const oldName = acc.name;
+    const newName = (data.name || oldName).trim();
     await db.ref(`ptg/accounts/${id}`).update({
       ...data,
-      initials: initials((data.name || acc.name).trim())
+      initials: initials(newName)
     });
+    // Cascade: si le nom du TL change, mettre à jour tous ses animateurs
+    if (data.name && newName !== oldName) {
+      const snap = await db.ref('ptg/animateurs').once('value');
+      if (snap.exists()) {
+        const updates = {};
+        Object.entries(snap.val()).forEach(([key, anim]) => {
+          if (anim && anim.teamLead === oldName) updates[`${key}/teamLead`] = newName;
+        });
+        if (Object.keys(updates).length) await db.ref('ptg/animateurs').update(updates);
+      }
+    }
+    // Cascade: si la ville du TL change, mettre à jour tous ses animateurs
+    if (data.ville && data.ville !== acc.ville) {
+      const snap2 = await db.ref('ptg/animateurs').once('value');
+      if (snap2.exists()) {
+        const updates2 = {};
+        Object.entries(snap2.val()).forEach(([key, anim]) => {
+          if (anim && anim.teamLead === newName) updates2[`${key}/ville`] = data.ville;
+        });
+        if (Object.keys(updates2).length) await db.ref('ptg/animateurs').update(updates2);
+      }
+    }
   },
 
   async seedAccounts() {
@@ -1017,11 +1041,11 @@ function DashboardView({ accounts, sessions, pointages, onRefresh, animateurs })
     let list = todayPtgs;
     if (filterVille !== 'Toutes') list = list.filter(p => p.ville === filterVille);
     if (filterTL !== 'Tous') {
-      const tlEmail = TL_NAME_TO_EMAIL[filterTL];
+      const tlEmail = accounts.find(a => a.name === filterTL)?.email;
       if (tlEmail) list = list.filter(p => p.teamLeadEmail === tlEmail);
     }
     return list;
-  }, [todayPtgs, filterVille, filterTL]);
+  }, [todayPtgs, filterVille, filterTL, accounts]);
 
   const stats = useMemo(() => computeStats(filteredAnims, filteredPtgs), [filteredAnims, filteredPtgs]);
 
@@ -1633,7 +1657,7 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
 }
 
 /* ── EDIT ANIMATEUR MODAL (MANAGER) ── */
-function EditAnimateurMgrModal({ animateur, animateurs, onClose, onSaved }) {
+function EditAnimateurMgrModal({ animateur, animateurs, accounts, onClose, onSaved }) {
   const [form, setForm] = useState({
     name: animateur.name, sector: animateur.sector,
     ville: animateur.ville, teamLead: animateur.teamLead, phone: animateur.phone || '',
@@ -1641,12 +1665,17 @@ function EditAnimateurMgrModal({ animateur, animateurs, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const tlsForVille = useMemo(() =>
-    Object.keys(TL_NAME_TO_EMAIL).filter(name => {
-      const tlVille = animateurs.find(a => a.teamLead === name)?.ville;
-      return !tlVille || tlVille === form.ville;
-    }).sort(),
-  [form.ville, animateurs]);
+  // TLs dont la ville correspond à la ville choisie (via leurs animateurs ou leur propre compte)
+  const tlsForVille = useMemo(() => {
+    const fromAccounts = accounts
+      .filter(a => {
+        const tlVille = animateurs.find(x => x.teamLead === a.name)?.ville;
+        return !tlVille || tlVille === form.ville;
+      })
+      .map(a => a.name)
+      .sort();
+    return [...new Set([...fromAccounts])];
+  }, [form.ville, animateurs, accounts]);
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setSaving(true);
@@ -1697,18 +1726,21 @@ function EditAnimateurMgrModal({ animateur, animateurs, onClose, onSaved }) {
 }
 
 /* ── ADD ANIMATEUR MODAL (MANAGER) ── */
-function AddAnimateurMgrModal({ animateurs, onClose, onCreated }) {
+function AddAnimateurMgrModal({ animateurs, accounts, onClose, onCreated }) {
   const [form, setForm] = useState({ name:'', sector:'', ville:'Casablanca', teamLead:'', phone:'' });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
   const set = (k,v) => setForm(f => ({...f,[k]:v}));
 
-  const tlsForVille = useMemo(() =>
-    Object.keys(TL_NAME_TO_EMAIL).filter(name => {
-      const tlVille = animateurs.find(a => a.teamLead === name)?.ville;
-      return !tlVille || tlVille === form.ville;
-    }).sort(),
-  [form.ville, animateurs]);
+  const tlsForVille = useMemo(() => {
+    return accounts
+      .filter(a => {
+        const tlVille = animateurs.find(x => x.teamLead === a.name)?.ville;
+        return !tlVille || tlVille === form.ville;
+      })
+      .map(a => a.name)
+      .sort();
+  }, [form.ville, animateurs, accounts]);
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setError('');
@@ -1766,7 +1798,7 @@ function AddAnimateurMgrModal({ animateurs, onClose, onCreated }) {
 }
 
 /* ── ANIMATEURS VIEW ── */
-function AnimateursView({ animateurs }) {
+function AnimateursView({ animateurs, accounts }) {
   const [search,      setSearch]      = useState('');
   const [filterVille, setFilterVille] = useState('Toutes');
   const [filterTL,    setFilterTL]    = useState('Tous');
@@ -1803,13 +1835,13 @@ function AnimateursView({ animateurs }) {
     <>
       {editTarget && (
         <EditAnimateurMgrModal
-          animateur={editTarget} animateurs={animateurs}
+          animateur={editTarget} animateurs={animateurs} accounts={accounts}
           onClose={() => setEditTarget(null)}
           onSaved={() => showToast(`${editTarget.name} mis à jour`)} />
       )}
       {showAdd && (
         <AddAnimateurMgrModal
-          animateurs={animateurs}
+          animateurs={animateurs} accounts={accounts}
           onClose={() => setShowAdd(false)}
           onCreated={() => showToast('Animateur ajouté avec succès')} />
       )}
@@ -2006,7 +2038,7 @@ function App() {
         <div className="content">
           {view === 'dashboard'  && <DashboardView accounts={accounts} sessions={sessions} pointages={pointages} onRefresh={refresh} animateurs={animateurs} />}
           {view === 'accounts'   && <AccountsView  accounts={accounts} sessions={sessions} onRefresh={refresh} />}
-          {view === 'animateurs' && <AnimateursView animateurs={animateurs} />}
+          {view === 'animateurs' && <AnimateursView animateurs={animateurs} accounts={accounts} />}
           {view === 'activity'   && <ActivityView  pointages={pointages} accounts={accounts} />}
           {view === 'weekly'     && <WeeklyPresenceView pointages={pointages} accounts={accounts} animateurs={animateurs} />}
         </div>
