@@ -13,6 +13,10 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Geo Zoning deps -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
   <style>
     * { box-sizing:border-box; }
     body { margin:0; padding:0; font-family:var(--font-sans); background:var(--neutral-100); }
@@ -268,6 +272,7 @@
       .section-hd { flex-direction:column; align-items:flex-start; gap:8px; }
       .gap-grid { grid-template-columns:1fr 1fr; }
     }
+    @keyframes gz-spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
   </style>
 </head>
 <body>
@@ -2700,6 +2705,574 @@ function AnimateursView({ animateurs, accounts }) {
   );
 }
 
+/* ── GEO ZONING HELPERS ── */
+function gzParseWKT(wkt) {
+  try {
+    const m = wkt.match(/POLYGON\s*\(\((.*?)\)\)/i);
+    if (!m) return null;
+    const coords = m[1].split(',').map(pair => {
+      const [lon, lat] = pair.trim().split(/\s+/).map(Number);
+      return (isNaN(lat) || isNaN(lon)) ? null : [lat, lon];
+    }).filter(Boolean);
+    return coords.length > 0 ? coords : null;
+  } catch { return null; }
+}
+function gzPointInPoly(point, polygon) {
+  const [x, y] = point;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i], [xj, yj] = polygon[j];
+    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+function gzColorByCount(n) {
+  if (n === 0)      return '#e5e7eb';
+  if (n <= 500)     return '#86efac';
+  if (n <= 2000)    return '#fde047';
+  if (n <= 5000)    return '#fdba74';
+  if (n <= 10000)   return '#fb923c';
+  return '#f87171';
+}
+
+/* ── GEO ZONING VIEW ── */
+function GeoZoningView() {
+  const mapDivRef   = useRef(null);
+  const leafRef     = useRef(null);
+  const markersRef  = useRef({});
+  const chartRef    = useRef(null);
+  const canvasRef   = useRef(null);
+  const clientsRef  = useRef(null);
+  const origRef     = useRef(null);
+  const polygonsRef = useRef(null);
+  const resultsRef  = useRef([]);
+  const zCountsRef  = useRef({});
+
+  const [clientsStatus,  setClientsStatus]  = useState('');
+  const [polygonsStatus, setPolygonsStatus] = useState('');
+  const [loading,        setLoading]        = useState(false);
+  const [loadingText,    setLoadingText]    = useState('');
+  const [progress,       setProgress]       = useState(0);
+  const [showProgress,   setShowProgress]   = useState(false);
+  const [msg,            setMsg]            = useState(null);
+  const [stats,          setStats]          = useState(null);
+  const [zoneItems,      setZoneItems]      = useState([]);
+  const [showCards,      setShowCards]      = useState(false);
+  const [showChart,      setShowChart]      = useState(false);
+  const [showLegend,     setShowLegend]     = useState(false);
+  const [canAnalyze,     setCanAnalyze]     = useState(false);
+  const [fZone,          setFZone]          = useState('all');
+  const [fStatuts,       setFStatuts]       = useState([]);
+  const [fGroups,        setFGroups]        = useState([]);
+  const [statutOpts,     setStatutOpts]     = useState([]);
+  const [groupOpts,      setGroupOpts]      = useState([]);
+  const [secteurItems,   setSecteurItems]   = useState([]);
+  const [secteurOpen,    setSecteurOpen]    = useState(false);
+  const [secteurSearch,  setSecteurSearch]  = useState('');
+  const [zoneSearch,     setZoneSearch]     = useState('');
+  const [searchCol,      setSearchCol]      = useState('coords');
+  const [searchVal,      setSearchVal]      = useState('');
+  const [searchResult,   setSearchResult]   = useState(null);
+  const [searchCols,     setSearchCols]     = useState([]);
+
+  useEffect(() => {
+    if (!mapDivRef.current || leafRef.current) return;
+    const map = L.map(mapDivRef.current).setView([33.5731, -7.6176], 6);
+    const carto = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { attribution:'© CartoDB © OpenStreetMap', maxZoom:19, subdomains:'abcd' });
+    const osm   = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'© OpenStreetMap', maxZoom:19 });
+    carto.addTo(map);
+    L.control.layers({ 'CartoDB Voyager':carto, 'OpenStreetMap':osm }, null, { position:'topright' }).addTo(map);
+    leafRef.current = map;
+    return () => { if (leafRef.current) { leafRef.current.remove(); leafRef.current = null; } };
+  }, []);
+
+  useEffect(() => {
+    if (!showChart || !canvasRef.current) return;
+    if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; }
+    const entries = Object.entries(zCountsRef.current).sort((a,b) => b[1]-a[1]);
+    const colors  = entries.map(([z]) => z === 'Hors Zone' ? '#ef4444' : '#667eea');
+    chartRef.current = new Chart(canvasRef.current, {
+      type: 'bar',
+      data: { labels: entries.map(([z]) => z), datasets: [{ label:'Nb clients', data: entries.map(([,c]) => c), backgroundColor:colors, borderColor:colors, borderWidth:2, borderRadius:8 }] },
+      options: { indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } }, scales:{ x:{ beginAtZero:true, title:{ display:true, text:'Nombre de clients' } }, y:{ title:{ display:true, text:'Zones' } } } }
+    });
+  }, [showChart]);
+
+  const showMsg = (type, text) => setMsg({ type, text });
+  const checkReady = (c, p) => setCanAnalyze(!!(c && p && c.length > 0 && p.length > 0));
+
+  const handleClientFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    showMsg('info', 'Chargement des clients...');
+    setClientsStatus('Chargement...');
+    const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+    if (isExcel) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const data = new Uint8Array(ev.target.result);
+          const wb = XLSX.read(data, { type:'array' });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          let rows = XLSX.utils.sheet_to_json(ws, { defval:'' });
+          if (rows.length > 0) {
+            const k = Object.keys(rows[0]);
+            if (k.some(x => x.startsWith('__EMPTY') || x.includes('Filtres'))) rows = XLSX.utils.sheet_to_json(ws, { range:1, defval:'' });
+          }
+          processClients(rows, Object.keys(rows[0] || {}));
+        } catch (err) { showMsg('error', 'Erreur Excel: ' + err.message); setClientsStatus(''); }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      Papa.parse(file, {
+        header:true, skipEmptyLines:true,
+        complete: (r) => processClients(r.data, r.meta.fields),
+        error:    (err) => { showMsg('error', 'Erreur CSV: ' + err.message); setClientsStatus(''); }
+      });
+    }
+  };
+
+  const processClients = (data, headers) => {
+    const latP = ['custom.fields.latitude','latitude','Latitude','lat','Lat','LAT'];
+    const lonP = ['custom.fields.longitude','longitude','Longitude','lon','Lon','lng','Lng','LON','LNG'];
+    let latCol = latP.find(p => headers.includes(p));
+    let lonCol = lonP.find(p => headers.includes(p));
+    if (!latCol || !lonCol) { showMsg('error', 'Colonnes latitude/longitude non trouvées !'); setClientsStatus(''); return; }
+    const clients = data.filter(row => {
+      const la = parseFloat(row[latCol]), lo = parseFloat(row[lonCol]);
+      return !isNaN(la) && !isNaN(lo) && la >= -90 && la <= 90 && lo >= -180 && lo <= 180;
+    }).map(row => ({
+      firstName: row.firstName || row.prenom || '',
+      lastName:  row.lastName  || row.nom    || '',
+      email:     row.email || '',
+      city:      row['addresses.city'] || row.city || row.ville || '',
+      latitude:  parseFloat(row[latCol]),
+      longitude: parseFloat(row[lonCol]),
+      statutActivation: row['custom.fields.statutActivationATCPlus'] || '',
+      customerGroup:    row['customerGroup.key'] || '',
+      originalData:     row,
+    }));
+    clientsRef.current = clients;
+    origRef.current    = JSON.parse(JSON.stringify(clients));
+    setClientsStatus(`${clients.length.toLocaleString('fr-FR')} clients valides`);
+    showMsg('success', `${clients.length.toLocaleString('fr-FR')} clients chargés`);
+    checkReady(clients, polygonsRef.current);
+    const statuts = [...new Set(clients.map(c => c.statutActivation || ''))].sort();
+    const groups  = [...new Set(clients.map(c => c.customerGroup   || ''))].sort();
+    setStatutOpts(statuts);
+    setGroupOpts(groups);
+    setFStatuts(statuts.includes('activated') ? ['activated'] : statuts.slice(0,1));
+    setFGroups(groups.includes('shop-owners') ? ['shop-owners'] : []);
+  };
+
+  const handlePolygonFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    showMsg('info', 'Chargement des polygones...');
+    Papa.parse(file, {
+      header:true, skipEmptyLines:true,
+      complete: (r) => {
+        const polys = r.data.filter(row => row.nom || row.name).map(poly => {
+          if (poly.WKT) poly.coordinates = gzParseWKT(poly.WKT);
+          poly.nom = poly.nom || poly.name || 'Zone sans nom';
+          return poly;
+        }).filter(p => p.coordinates);
+        polygonsRef.current = polys;
+        setPolygonsStatus(`${polys.length} zones`);
+        showMsg('success', `${polys.length} zones chargées`);
+        checkReady(clientsRef.current, polys);
+        setSecteurItems(polys.map(p => ({ name: p.nom, checked: true })));
+      },
+      error: (err) => showMsg('error', 'Erreur: ' + err.message)
+    });
+  };
+
+  const analyzeData = async () => {
+    const clients = clientsRef.current, polygons = polygonsRef.current;
+    if (!clients || !polygons) return;
+    setLoading(true); setShowProgress(true); setProgress(0); setShowChart(false);
+    showMsg('info', 'Analyse en cours...');
+    await new Promise(r => setTimeout(r, 80));
+    try {
+      if (leafRef.current) {
+        leafRef.current.eachLayer(l => { if (l instanceof L.Polygon || l instanceof L.CircleMarker) leafRef.current.removeLayer(l); });
+      }
+      markersRef.current = {};
+      setProgress(10);
+      const zoneCounts = {}, zoneClients = {};
+      polygons.forEach(z => { zoneCounts[z.nom] = 0; zoneClients[z.nom] = []; });
+      zoneCounts['Hors Zone'] = 0;
+      setProgress(20);
+      setLoadingText(`Assignation de ${clients.length.toLocaleString('fr-FR')} clients...`);
+      const batchSize = 1000;
+      for (let i = 0; i < clients.length; i += batchSize) {
+        clients.slice(i, i + batchSize).forEach(c => {
+          let found = false;
+          for (const z of polygons) {
+            if (z.coordinates && gzPointInPoly([c.latitude, c.longitude], z.coordinates)) {
+              zoneCounts[z.nom]++; c.zone = z.nom; found = true; break;
+            }
+          }
+          if (!found) { zoneCounts['Hors Zone']++; c.zone = 'Hors Zone'; }
+        });
+        setProgress(20 + Math.min((i + batchSize) / clients.length, 1) * 35);
+        await new Promise(r => setTimeout(r, 0));
+      }
+      setProgress(55);
+      setLoadingText('Dessin des polygones...');
+      polygons.forEach(z => {
+        if (!z.coordinates || !leafRef.current) return;
+        L.polygon(z.coordinates, { color:'#333', weight:2, fillColor:gzColorByCount(zoneCounts[z.nom]), fillOpacity:0.4 })
+          .bindPopup(`<b>${z.nom}</b><br>${(zoneCounts[z.nom]||0).toLocaleString('fr-FR')} clients`)
+          .addTo(leafRef.current);
+      });
+      setProgress(65);
+      setLoadingText('Ajout des points clients...');
+      const step = Math.max(1, Math.floor(clients.length / 30000));
+      let added = 0;
+      for (let i = 0; i < clients.length; i += step) {
+        const c = clients[i];
+        if (!leafRef.current) break;
+        const m = L.circleMarker([c.latitude, c.longitude], { radius:5, fillColor:c.zone==='Hors Zone'?'#ef4444':'#10b981', color:'#fff', weight:1.5, opacity:1, fillOpacity:0.8 });
+        const nm = `${c.firstName} ${c.lastName}`.trim() || 'Client';
+        m.bindPopup(`<b>${nm}</b><br>Zone: <b style="color:${c.zone==='Hors Zone'?'#ef4444':'#10b981'}">${c.zone}</b>${c.city?'<br>📍'+c.city:''}`);
+        m.addTo(leafRef.current);
+        markersRef.current[`${c.latitude.toFixed(6)}_${c.longitude.toFixed(6)}`] = m;
+        added++;
+      }
+      setProgress(85);
+      if (clients.length > 0 && leafRef.current) {
+        const pts = clients.filter((_,i) => i % Math.max(1,Math.floor(clients.length/100))===0).map(c => [c.latitude,c.longitude]);
+        if (pts.length > 1) leafRef.current.fitBounds(L.latLngBounds(pts), { padding:[50,50] });
+      }
+      const assigned = clients.length - zoneCounts['Hors Zone'];
+      setStats({ total:clients.length, zones:polygons.length, assigned, horsZone:zoneCounts['Hors Zone'] });
+      setZoneItems(Object.entries(zoneCounts).sort((a,b)=>b[1]-a[1]).map(([name,count])=>({name,count})));
+      if (origRef.current?.length > 0) setSearchCols(Object.keys(origRef.current[0].originalData||{}));
+      resultsRef.current = clients;
+      zCountsRef.current = zoneCounts;
+      setProgress(100);
+      setLoading(false); setShowProgress(false);
+      setShowCards(true); setShowLegend(true);
+      setShowChart(true);
+      showMsg('success', `✓ Analyse terminée ! ${added.toLocaleString('fr-FR')} points affichés`);
+    } catch (err) {
+      setLoading(false); setShowProgress(false);
+      showMsg('error', 'Erreur: ' + err.message);
+    }
+  };
+
+  const applyFilters = () => {
+    const orig = origRef.current, polys = polygonsRef.current;
+    if (!orig || !polys) { showMsg('error', "Chargez d'abord les fichiers"); return; }
+    const checked = secteurItems.filter(s => s.checked).map(s => s.name);
+    const filtered = orig.filter(c => {
+      let zOk = true;
+      if (c.zone) { if (fZone==='in') zOk = c.zone!=='Hors Zone'; else if (fZone==='out') zOk = c.zone==='Hors Zone'; }
+      const sOk = checked.length===0 || !c.zone || checked.includes(c.zone);
+      const stOk = fStatuts.length===0 || fStatuts.includes(c.statutActivation||'');
+      const gOk  = fGroups.length===0  || fGroups.includes(c.customerGroup||'');
+      return zOk && sOk && stOk && gOk;
+    });
+    if (!filtered.length) { showMsg('error', 'Aucun client ne correspond aux filtres'); return; }
+    clientsRef.current = filtered;
+    showMsg('success', `${filtered.length.toLocaleString('fr-FR')} clients filtrés sur ${orig.length.toLocaleString('fr-FR')}`);
+    analyzeData();
+  };
+
+  const downloadCSV = () => {
+    const data = resultsRef.current;
+    if (!data.length) return;
+    const rows = data.map(c => ({ ...c.originalData, Latitude:c.latitude, Longitude:c.longitude, ZONE:c.zone||'Hors Zone' }));
+    const csv = Papa.unparse(rows, { delimiter:',', header:true });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['﻿'+csv], { type:'text/csv;charset=utf-8;' }));
+    a.download = `clients_zones_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    showMsg('success', '✓ CSV téléchargé');
+  };
+
+  const downloadExcelGZ = () => {
+    const data = resultsRef.current;
+    if (!data.length) return;
+    const rows = data.map(c => ({ ...c.originalData, Latitude:c.latitude, Longitude:c.longitude, ZONE:c.zone||'Hors Zone' }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Clients avec Zones');
+    XLSX.writeFile(wb, `clients_zones_${new Date().toISOString().split('T')[0]}.xlsx`);
+    showMsg('success', '✓ Excel téléchargé');
+  };
+
+  const searchClient = () => {
+    const results = resultsRef.current;
+    if (!results.length || !searchVal.trim()) { setSearchResult(null); return; }
+    let found = null;
+    if (searchCol === 'coords') {
+      const parts = searchVal.split(';');
+      if (parts.length === 2) {
+        const sLa = parseFloat(parts[0].trim()), sLo = parseFloat(parts[1].trim());
+        if (!isNaN(sLa) && !isNaN(sLo)) {
+          let minD = Infinity;
+          results.forEach(c => { const d = Math.sqrt((c.latitude-sLa)**2+(c.longitude-sLo)**2); if (d < minD && d < 0.01) { minD = d; found = c; } });
+        }
+      }
+    } else {
+      found = results.find(c => { const v = c.originalData?.[searchCol]; return v && v.toString().toLowerCase().includes(searchVal.toLowerCase()); });
+    }
+    setSearchResult(found ? { ok:true, client:found } : { ok:false });
+    if (found) {
+      const key = `${found.latitude.toFixed(6)}_${found.longitude.toFixed(6)}`;
+      const m = markersRef.current[key];
+      if (m && leafRef.current) {
+        m.setStyle({ fillColor:'#000', radius:10, weight:2 });
+        leafRef.current.setView([found.latitude, found.longitude], 17);
+        setTimeout(() => m.openPopup(), 300);
+      }
+    }
+  };
+
+  const filteredZones    = zoneSearch    ? zoneItems.filter(z => z.name.toLowerCase().includes(zoneSearch.toLowerCase()))    : zoneItems;
+  const filteredSecteurs = secteurSearch ? secteurItems.filter(s => s.name.toLowerCase().includes(secteurSearch.toLowerCase())) : secteurItems;
+
+  const GZ_BTN = { border:'none', borderRadius:10, color:'white', fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8 };
+  const GZ_CARD = { background:'white', padding:24, borderRadius:16, boxShadow:'0 4px 20px rgba(0,0,0,0.08)', border:'1px solid rgba(0,0,0,0.05)' };
+  const GZ_INPUT = { width:'100%', padding:'8px 10px', border:'2px solid #e5e7eb', borderRadius:8, fontSize:'0.9rem', fontFamily:'inherit' };
+
+  return (
+    <div style={{fontFamily:'Segoe UI,Tahoma,Geneva,Verdana,sans-serif', color:'#333'}}>
+      {msg && (
+        <div style={{padding:'12px 16px', borderRadius:8, marginBottom:16, fontSize:13, fontWeight:600,
+          background:msg.type==='error'?'#fee2e2':msg.type==='success'?'#d1fae5':'#dbeafe',
+          color:msg.type==='error'?'#991b1b':msg.type==='success'?'#065f46':'#1e40af',
+          borderLeft:`4px solid ${msg.type==='error'?'#ef4444':msg.type==='success'?'#10b981':'#3b82f6'}`}}>
+          {msg.text}
+        </div>
+      )}
+
+      <div style={{display:'grid', gridTemplateColumns:'360px 1fr', gap:20, alignItems:'start'}}>
+
+        {/* ── Left column ── */}
+        <div style={{display:'flex', flexDirection:'column', gap:16}}>
+
+          {/* Upload */}
+          <div style={GZ_CARD}>
+            <h3 style={{marginBottom:14, fontSize:'1rem', display:'flex', alignItems:'center', gap:8}}>
+              <i className="fas fa-upload" style={{color:'#667eea'}}></i> Upload des fichiers
+            </h3>
+
+            {['client','polygon'].map(type => {
+              const isClient = type === 'client';
+              const status   = isClient ? clientsStatus : polygonsStatus;
+              return (
+                <label key={type} style={{display:'block', position:'relative', border:'2px dashed #667eea', borderRadius:10, padding:16, textAlign:'center', cursor:'pointer', marginBottom:12, background:status&&!status.includes('Charg')?'#f0fff4':'white', transition:'all 0.2s'}}>
+                  <input type="file" accept={isClient?'.csv,.xlsx,.xls':'.csv'} onChange={isClient?handleClientFile:handlePolygonFile} style={{position:'absolute',inset:0,opacity:0,cursor:'pointer'}} />
+                  <div style={{fontSize:'1.8rem',color:'#667eea',marginBottom:6}}><i className={`fas ${isClient?'fa-users':'fa-draw-polygon'}`}></i></div>
+                  <div style={{color:'#667eea',fontWeight:600}}>{isClient ? 'Fichier Clients' : 'Fichier Polygones (CSV)'}</div>
+                  <div style={{color:'#999',fontSize:'0.82rem',marginTop:4}}>{isClient ? 'CSV ou Excel (.xlsx, .xls)' : 'Format : nom, WKT'}</div>
+                  {status && <div style={{color:'#10b981',fontSize:'0.82rem',marginTop:6,fontWeight:600}}>{status}</div>}
+                </label>
+              );
+            })}
+
+            <button onClick={analyzeData} disabled={!canAnalyze}
+              style={{...GZ_BTN, width:'100%', padding:'12px', background:canAnalyze?'linear-gradient(135deg,#667eea,#764ba2)':'#e5e7eb', color:canAnalyze?'white':'#999', cursor:canAnalyze?'pointer':'not-allowed', fontSize:'1rem'}}>
+              <i className="fas fa-rocket"></i> Analyser
+            </button>
+
+            {showProgress && (
+              <div style={{marginTop:12, height:8, background:'#f3f4f6', borderRadius:10, overflow:'hidden'}}>
+                <div style={{height:'100%', background:'linear-gradient(90deg,#667eea,#764ba2)', width:progress+'%', transition:'width 0.3s'}}></div>
+              </div>
+            )}
+          </div>
+
+          {/* Stats */}
+          {showCards && stats && (
+            <div style={GZ_CARD}>
+              <h3 style={{marginBottom:14, fontSize:'1rem', display:'flex', alignItems:'center', gap:8}}>
+                <i className="fas fa-chart-bar" style={{color:'#667eea'}}></i> Statistiques
+              </h3>
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14}}>
+                {[
+                  {val:stats.total.toLocaleString('fr-FR'),    label:'Clients',   bg:'linear-gradient(135deg,#3b82f6,#2563eb)'},
+                  {val:stats.zones,                            label:'Zones',     bg:'linear-gradient(135deg,#f59e0b,#d97706)'},
+                  {val:stats.assigned.toLocaleString('fr-FR'), label:'Assignés',  bg:'linear-gradient(135deg,#10b981,#059669)'},
+                  {val:stats.horsZone.toLocaleString('fr-FR'), label:'Hors Zone', bg:'linear-gradient(135deg,#ef4444,#dc2626)'},
+                ].map(s => (
+                  <div key={s.label} style={{background:s.bg, color:'white', padding:'16px', borderRadius:12, textAlign:'center'}}>
+                    <div style={{fontSize:'1.7rem', fontWeight:'bold', marginBottom:4}}>{s.val}</div>
+                    <div style={{fontSize:'0.85rem', opacity:0.95}}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+              <button onClick={downloadCSV} style={{...GZ_BTN, width:'100%', padding:11, background:'linear-gradient(135deg,#3b82f6,#2563eb)', marginBottom:8}}>
+                <i className="fas fa-download"></i> Télécharger CSV
+              </button>
+              <button onClick={downloadExcelGZ} style={{...GZ_BTN, width:'100%', padding:11, background:'linear-gradient(135deg,#10b981,#059669)'}}>
+                <i className="fas fa-file-excel"></i> Télécharger Excel
+              </button>
+            </div>
+          )}
+
+          {/* Client search */}
+          {showCards && (
+            <div style={GZ_CARD}>
+              <h3 style={{marginBottom:14, fontSize:'1rem', display:'flex', alignItems:'center', gap:8}}>
+                <i className="fas fa-search" style={{color:'#667eea'}}></i> Rechercher un client
+              </h3>
+              <select value={searchCol} onChange={e => { setSearchCol(e.target.value); setSearchVal(''); setSearchResult(null); }} style={{...GZ_INPUT, marginBottom:10}}>
+                <option value="coords">Coordonnées (Lat;Lon)</option>
+                {searchCols.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <input type="text" value={searchVal} onChange={e => setSearchVal(e.target.value)} onKeyDown={e => e.key==='Enter' && searchClient()}
+                placeholder={searchCol==='coords' ? 'Ex: 33.9148;-5.549' : `Rechercher par ${searchCol}...`}
+                style={{...GZ_INPUT, marginBottom:10}} />
+              <button onClick={searchClient} style={{...GZ_BTN, width:'100%', padding:10, background:'linear-gradient(135deg,#667eea,#764ba2)'}}>
+                <i className="fas fa-search"></i> Rechercher
+              </button>
+              {searchResult && (
+                <div style={{marginTop:12, padding:14, background:searchResult.ok?'#f0f9ff':'#fef2f2', borderRadius:8, borderLeft:`4px solid ${searchResult.ok?'#3b82f6':'#ef4444'}`, fontSize:'0.88rem', lineHeight:'1.6'}}>
+                  {searchResult.ok ? (
+                    <>
+                      <div style={{fontWeight:700, color:'#1e40af', marginBottom:6}}>✓ Client trouvé</div>
+                      <div><strong>{`${searchResult.client.firstName} ${searchResult.client.lastName}`.trim()||'Client'}</strong></div>
+                      {searchResult.client.city && <div>📍 {searchResult.client.city}</div>}
+                      <div>🗺 {searchResult.client.latitude.toFixed(5)}, {searchResult.client.longitude.toFixed(5)}</div>
+                      <div><strong style={{color:searchResult.client.zone==='Hors Zone'?'#ef4444':'#10b981'}}>Zone : {searchResult.client.zone}</strong></div>
+                    </>
+                  ) : (
+                    <div style={{color:'#dc2626', fontWeight:600}}>✕ Aucun client trouvé</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Zone list */}
+          {showCards && zoneItems.length > 0 && (
+            <div style={GZ_CARD}>
+              <h3 style={{marginBottom:12, fontSize:'1rem', display:'flex', alignItems:'center', gap:8}}>
+                <i className="fas fa-list" style={{color:'#667eea'}}></i> Clients par zone
+              </h3>
+              <input type="text" value={zoneSearch} onChange={e => setZoneSearch(e.target.value)}
+                placeholder="🔍 Rechercher une zone..." style={{...GZ_INPUT, marginBottom:10}} />
+              <div style={{maxHeight:280, overflowY:'auto'}}>
+                {filteredZones.map(z => (
+                  <div key={z.name} style={{background:'#f8f9ff', padding:'9px 12px', borderRadius:8, marginBottom:8, display:'flex', justifyContent:'space-between', alignItems:'center', borderLeft:`4px solid ${z.name==='Hors Zone'?'#ef4444':'#667eea'}`}}>
+                    <span style={{fontWeight:600, fontSize:'0.88rem'}}>{z.name}</span>
+                    <span style={{background:z.name==='Hors Zone'?'#ef4444':'#667eea', color:'white', padding:'3px 11px', borderRadius:20, fontWeight:'bold', fontSize:'0.82rem'}}>{z.count.toLocaleString('fr-FR')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Right column ── */}
+        <div>
+
+          {/* Filters */}
+          <div style={{...GZ_CARD, marginBottom:16}}>
+            <h3 style={{marginBottom:14, fontSize:'1rem', display:'flex', alignItems:'center', gap:8}}>
+              <i className="fas fa-filter" style={{color:'#667eea'}}></i> Filtres
+            </h3>
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:14}}>
+              <div>
+                <label style={{display:'block', marginBottom:6, fontWeight:600, fontSize:'0.85rem'}}>Localisation</label>
+                <select value={fZone} onChange={e => setFZone(e.target.value)} style={GZ_INPUT}>
+                  <option value="all">Tous les clients</option>
+                  <option value="in">✓ Dans les zones</option>
+                  <option value="out">✗ Hors zone</option>
+                </select>
+              </div>
+              <div>
+                <label style={{display:'block', marginBottom:6, fontWeight:600, fontSize:'0.85rem'}}>Statut Activation</label>
+                <select multiple value={fStatuts} onChange={e => setFStatuts(Array.from(e.target.selectedOptions).map(o => o.value))} style={{...GZ_INPUT, minHeight:70}}>
+                  {statutOpts.map(s => <option key={s} value={s}>{s||'Non défini'}</option>)}
+                </select>
+                <small style={{color:'#888', fontSize:'0.75rem'}}>Ctrl pour multi-sélection</small>
+              </div>
+              <div>
+                <label style={{display:'block', marginBottom:6, fontWeight:600, fontSize:'0.85rem'}}>Groupe Client</label>
+                <select multiple value={fGroups} onChange={e => setFGroups(Array.from(e.target.selectedOptions).map(o => o.value))} style={{...GZ_INPUT, minHeight:70}}>
+                  {groupOpts.map(g => <option key={g} value={g}>{g||'Non défini'}</option>)}
+                </select>
+                <small style={{color:'#888', fontSize:'0.75rem'}}>Ctrl pour multi-sélection</small>
+              </div>
+            </div>
+
+            {/* Secteur collapsible */}
+            <div style={{border:'2px solid #e5e7eb', borderRadius:8, padding:12, background:'#f9fafb', marginBottom:14}}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', cursor:'pointer'}} onClick={() => setSecteurOpen(o => !o)}>
+                <span style={{fontWeight:600, fontSize:'0.9rem'}}><i className="fas fa-draw-polygon" style={{marginRight:6}}></i> Secteurs / Zones</span>
+                <i className={`fas fa-chevron-${secteurOpen?'up':'down'}`} style={{color:'#667eea'}}></i>
+              </div>
+              {secteurOpen && (
+                <div style={{marginTop:10}}>
+                  <input type="text" value={secteurSearch} onChange={e => setSecteurSearch(e.target.value)} placeholder="🔍 Rechercher..." style={{...GZ_INPUT, marginBottom:8}} />
+                  <label style={{display:'flex', alignItems:'center', marginBottom:8, fontWeight:600, cursor:'pointer', fontSize:'0.9rem'}}>
+                    <input type="checkbox" checked={secteurItems.length>0 && secteurItems.every(s=>s.checked)} onChange={e => setSecteurItems(p => p.map(s => ({...s, checked:e.target.checked})))} style={{marginRight:8}} />
+                    Sélectionner tout
+                  </label>
+                  <div style={{maxHeight:170, overflowY:'auto', background:'white', borderRadius:6, padding:8}}>
+                    {filteredSecteurs.length > 0 ? filteredSecteurs.map(s => (
+                      <label key={s.name} style={{display:'flex', alignItems:'center', padding:'3px 0', cursor:'pointer', fontSize:'0.85rem'}}>
+                        <input type="checkbox" checked={s.checked} onChange={e => setSecteurItems(p => p.map(x => x.name===s.name ? {...x, checked:e.target.checked} : x))} style={{marginRight:8}} />
+                        {s.name}
+                      </label>
+                    )) : <p style={{color:'#999', textAlign:'center', padding:14, fontSize:'0.85rem'}}>Chargez les polygones pour voir les secteurs</p>}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button onClick={applyFilters} style={{...GZ_BTN, width:'100%', padding:12, background:'linear-gradient(135deg,#667eea,#764ba2)'}}>
+              <i className="fas fa-filter"></i> Appliquer les filtres
+            </button>
+          </div>
+
+          {/* Map */}
+          <div style={{...GZ_CARD, marginBottom:16}}>
+            <h3 style={{marginBottom:12, fontSize:'1rem', display:'flex', alignItems:'center', gap:8}}>
+              <i className="fas fa-map" style={{color:'#667eea'}}></i> Carte Interactive
+            </h3>
+            {showLegend && stats && (
+              <div style={{background:'#f8f9ff', padding:10, borderRadius:8, marginBottom:12, display:'flex', gap:24, justifyContent:'center', flexWrap:'wrap'}}>
+                {[{color:'#10b981', label:'Dans les zones', val:stats.assigned}, {color:'#ef4444', label:'Hors zone', val:stats.horsZone}].map(l => (
+                  <span key={l.label} style={{display:'flex', alignItems:'center', gap:6}}>
+                    <span style={{width:13, height:13, borderRadius:'50%', background:l.color, border:'2px solid white', boxShadow:'0 2px 4px rgba(0,0,0,0.2)', display:'inline-block'}}></span>
+                    <strong style={{fontSize:'0.88rem'}}>{l.label}</strong>
+                    <span style={{color:l.color, fontWeight:700, fontSize:'0.9rem'}}>{l.val.toLocaleString('fr-FR')}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+            {loading && (
+              <div style={{textAlign:'center', padding:20}}>
+                <div style={{border:'3px solid #f3f3f3', borderTop:'3px solid #667eea', borderRadius:'50%', width:38, height:38, animation:'gz-spin 1s linear infinite', margin:'0 auto 10px'}}></div>
+                <p style={{color:'#667eea', fontWeight:600, fontSize:'0.9rem'}}>{loadingText || 'Chargement...'}</p>
+              </div>
+            )}
+            <div ref={mapDivRef} style={{width:'100%', height:600, borderRadius:10}}></div>
+          </div>
+
+          {/* Chart */}
+          {showChart && (
+            <div style={GZ_CARD}>
+              <h3 style={{marginBottom:12, fontSize:'1rem', display:'flex', alignItems:'center', gap:8}}>
+                <i className="fas fa-chart-bar" style={{color:'#667eea'}}></i> Clients par zone
+              </h3>
+              <div style={{height:420}}>
+                <canvas ref={canvasRef}></canvas>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── APP ── */
 function App() {
   const [loggedIn,    setLoggedIn]    = useState(() => localStorage.getItem('ptg_manager_session') === '1');
@@ -2733,7 +3306,7 @@ function App() {
   const liveCount  = accounts.filter(a => LS.isLive(a.email)).length;
   const todayPtgN  = pointages.filter(p => p.date === new Date().toDateString()).length;
   const LIVE_LOC_THRESH = 120000;
-  const PAGE_TITLES = { dashboard:'Dashboard', accounts:'Comptes Team Leads', animateurs:'Gestion des animateurs', carte:'Localisation en temps réel', activity:'Journal des pointages', weekly:'Présence hebdomadaire' };
+  const PAGE_TITLES = { dashboard:'Dashboard', accounts:'Comptes Team Leads', animateurs:'Gestion des animateurs', carte:'Localisation en temps réel', activity:'Journal des pointages', weekly:'Présence hebdomadaire', geozone:'Geo Zoning' };
   const pageTitle  = PAGE_TITLES[view] || 'Dashboard';
 
   const navItems = [
@@ -2743,6 +3316,7 @@ function App() {
     { key:'carte',      icon:'map-pin',          label:'Carte temps réel',  badge:liveCount },
     { key:'activity',   icon:'clipboard-list',   label:'Journal',           badge:todayPtgN },
     { key:'weekly',     icon:'calendar-days',    label:'Présence hebdo',    badge:0 },
+    { key:'geozone',   icon:'map-pin',          label:'Geo Zoning',        badge:0 },
   ];
 
   return (
@@ -2813,6 +3387,7 @@ function App() {
           {view === 'carte'      && <MapView accounts={accounts} />}
           {view === 'activity'   && <ActivityView  pointages={pointages} accounts={accounts} />}
           {view === 'weekly'     && <WeeklyPresenceView pointages={pointages} accounts={accounts} animateurs={animateurs} />}
+          {view === 'geozone'   && <GeoZoningView />}
         </div>
       </div>
     </div>
