@@ -2225,7 +2225,8 @@ function ImportAnimateursModal({ animateurs, accounts, onClose, onImported }) {
         const toUpdate=[], toCreate=[], errors=[];
         rows.slice(1).forEach((row, i) => {
           const teamLead = String(row[colTL]||'').trim();
-          const ville    = String(row[colV]||'').trim();
+          const villeRaw = String(row[colV]||'').trim();
+          const ville    = VILLES.find(v => v.toLowerCase() === villeRaw.toLowerCase()) || villeRaw;
           const name     = String(row[colN]||'').trim();
           const sector   = String(row[colS]||'').trim();
           if (!name) return;
