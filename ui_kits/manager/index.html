@@ -1535,6 +1535,7 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
   const [weekOffset,   setWeekOffset]   = useState(0);
   const [filterVille,  setFilterVille]  = useState('Toutes');
   const [filterTL,     setFilterTL]     = useState('Tous');
+  const [filterStatus, setFilterStatus] = useState('Tous');
 
   const weekDays = useMemo(() => getWeekDays(weekOffset), [weekOffset]);
   const todayStr = new Date().toDateString();
@@ -1579,9 +1580,14 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
   }).sort((a,b) => b.totalPresent - a.totalPresent || a.ville.localeCompare(b.ville) || a.name.localeCompare(b.name)),
   [filteredAnims, weekPtgs, weekDateStrings]);
 
+  const displayRows = useMemo(() => {
+    if (filterStatus === 'Tous') return rows;
+    return rows.filter(r => Object.values(r.days).includes(filterStatus));
+  }, [rows, filterStatus]);
+
   const weekLabel = `Semaine du ${weekDays[0].toLocaleDateString('fr-FR',{day:'numeric',month:'long'})} au ${weekDays[6].toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})}`;
 
-  const totalPresentAll = rows.reduce((acc, r) => acc + r.totalPresent, 0);
+  const totalPresentAll = displayRows.reduce((acc, r) => acc + r.totalPresent, 0);
   const maxDays = rows.length > 0 ? Math.max(...rows.map(r => r.totalPresent)) : 0;
 
   const renderDayChip = (status) => {
@@ -1637,9 +1643,18 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
             <option key={tl.name} value={tl.name}>{tl.name} — {tl.ville}</option>
           ))}
         </select>
+        <select className={`af-select ${filterStatus !== 'Tous' ? 'active-filter' : ''}`}
+          value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+          <option value="Tous">Tous les statuts</option>
+          <option value="present">Présent</option>
+          <option value="absent">Absent</option>
+          <option value="malade">Malade</option>
+          <option value="demission">Démission</option>
+          <option value="nonpointe">Non pointé</option>
+        </select>
         <div className="af-spacer"></div>
         <div style={{fontSize:12,color:'var(--neutral-500)',fontWeight:600}}>
-          {rows.length} animateurs · {totalPresentAll} présences cette semaine
+          {displayRows.length} animateurs · {totalPresentAll} présences cette semaine
         </div>
         <button className="btn btn-success" onClick={() => exportWeeklyXLSX(rows, weekDays)}>
           <i data-lucide="download" style={{width:15,height:15}}></i>Exporter Excel
@@ -1658,7 +1673,7 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
 
       {/* Table */}
       <div className="table-card">
-        {rows.length === 0 ? (
+        {displayRows.length === 0 ? (
           <div className="empty">
             <i data-lucide="users" style={{width:48,height:48,opacity:0.25}}></i>
             <div className="empty-text">Aucun animateur trouvé</div>
@@ -1684,7 +1699,7 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map(r => {
+                {displayRows.map(r => {
                   const tc = getTotalColor(r.totalPresent);
                   return (
                     <tr key={r.id}>
