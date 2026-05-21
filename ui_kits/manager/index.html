@@ -226,6 +226,43 @@
     .day-chip-none      { background:var(--neutral-100); color:var(--neutral-400); }
     .week-total-chip { display:inline-flex; align-items:center; justify-content:center; width:34px; height:22px; border-radius:6px; font-size:12px; font-weight:800; }
     .today-col-hd { background:var(--primary-50); color:var(--primary-700); }
+
+    /* ── MOBILE RESPONSIVE ── */
+    .hamburger { display:none; background:none; border:1.5px solid var(--neutral-200); border-radius:8px; width:36px; height:36px; cursor:pointer; align-items:center; justify-content:center; color:var(--neutral-700); flex-shrink:0; }
+    .mob-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:49; }
+    @media (max-width:768px) {
+      .hamburger { display:flex; }
+      .sidebar { position:fixed; top:0; left:0; z-index:50; height:100dvh; transform:translateX(-100%); transition:transform 0.25s ease; box-shadow:4px 0 24px rgba(0,0,0,0.18); }
+      .sidebar.open { transform:translateX(0); }
+      .topbar { padding:0 12px; gap:8px; }
+      .topbar-title { font-size:15px; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .topbar-live { display:none; }
+      .refresh-label { display:none; }
+      .topbar-refresh { padding:0 10px; }
+      .content { padding:12px; }
+      .kpi-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
+      .kpi-val { font-size:24px; }
+      .analytics-filters { flex-direction:column; align-items:stretch; gap:8px; }
+      .af-select { min-width:unset; width:100%; }
+      .af-divider { display:none; }
+      .af-spacer { display:none; }
+      .table-toolbar { flex-direction:column; align-items:stretch; gap:10px; }
+      .table-search { width:100%; }
+      .table-search input { width:100%; }
+      .mg-row { grid-template-columns:1fr; }
+      .modal-overlay { padding:0; align-items:flex-end; }
+      .modal { border-radius:16px 16px 0 0; max-height:90dvh; overflow-y:auto; }
+      .map-page { height:auto; padding-bottom:16px; }
+      .map-wrap { height:50dvh; min-height:260px; flex:none; }
+      .map-ctrl-row { flex-direction:column; align-items:stretch; }
+      .map-stat { justify-content:space-between; }
+      .map-vdivider { width:100%; height:1px; flex:none; }
+      .map-table-wrap { max-height:200px; }
+      .week-nav { flex-wrap:wrap; }
+      .week-nav-label { font-size:13px; }
+      .section-hd { flex-direction:column; align-items:flex-start; gap:8px; }
+      .gap-grid { grid-template-columns:1fr 1fr; }
+    }
   </style>
 </head>
 <body>
@@ -2265,6 +2302,7 @@ function AnimateursView({ animateurs, accounts }) {
 function App() {
   const [loggedIn,    setLoggedIn]    = useState(() => localStorage.getItem('ptg_manager_session') === '1');
   const [view,        setView]        = useState('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [accounts,    setAccounts]    = useState([]);
   const [sessions,    setSessions]    = useState({});
   const [pointages,   setPointages]   = useState([]);
@@ -2307,7 +2345,9 @@ function App() {
 
   return (
     <div className="app-layout">
-      <div className="sidebar">
+      {sidebarOpen && <div className="mob-overlay" onClick={() => setSidebarOpen(false)}></div>}
+
+      <div className={`sidebar${sidebarOpen ? ' open' : ''}`}>
         <div className="sidebar-brand">
           <div className="sidebar-brand-row">
             <div className="sidebar-brand-icon">
@@ -2321,7 +2361,7 @@ function App() {
         <nav className="sidebar-nav">
           <div className="nav-group-label">Navigation</div>
           {navItems.map(item => (
-            <button key={item.key} className={`nav-btn ${view===item.key?'active':''}`} onClick={() => setView(item.key)}>
+            <button key={item.key} className={`nav-btn ${view===item.key?'active':''}`} onClick={() => { setView(item.key); setSidebarOpen(false); }}>
               <i data-lucide={item.icon} style={{width:17,height:17}}></i>
               {item.label}
               {item.badge > 0 && (
@@ -2338,7 +2378,7 @@ function App() {
               <div className="sidebar-user-name">Manager</div>
               <div className="sidebar-user-email">{MANAGER_EMAIL}</div>
             </div>
-            <button className="sidebar-logout" onClick={() => { localStorage.removeItem('ptg_manager_session'); setLoggedIn(false); }} title="Déconnexion">
+            <button className="sidebar-logout" onClick={() => { localStorage.removeItem('ptg_manager_session'); setLoggedIn(false); setSidebarOpen(false); }} title="Déconnexion">
               <i data-lucide="log-out" style={{width:16,height:16}}></i>
             </button>
           </div>
@@ -2347,6 +2387,9 @@ function App() {
 
       <div className="main-area">
         <div className="topbar">
+          <button className="hamburger" onClick={() => setSidebarOpen(true)}>
+            <i data-lucide="menu" style={{width:20,height:20}}></i>
+          </button>
           <div className="topbar-title">{pageTitle}</div>
           <div className="topbar-right">
             {liveCount > 0 && (
@@ -2356,7 +2399,7 @@ function App() {
               </div>
             )}
             <button className="topbar-refresh" onClick={refresh}>
-              <i data-lucide="refresh-cw" style={{width:14,height:14}}></i>Actualiser
+              <i data-lucide="refresh-cw" style={{width:14,height:14}}></i><span className="refresh-label">Actualiser</span>
             </button>
           </div>
         </div>
