@@ -1026,6 +1026,8 @@ function SummaryTable({ animateurs, todayPtgs, filterVille }) {
 
 /* ── SECTOR GAP PANEL ── */
 function SectorGapPanel({ animateurs, todayPtgs }) {
+  const [open, setOpen] = useState(false);
+
   const gaps = useMemo(() => {
     const map = {};
     animateurs.forEach(a => {
@@ -1046,26 +1048,32 @@ function SectorGapPanel({ animateurs, todayPtgs }) {
 
   return (
     <div className="table-card" style={{marginBottom:20}}>
-      <div className="table-toolbar">
+      <div className="table-toolbar" style={{cursor:'pointer',userSelect:'none'}} onClick={() => setOpen(o => !o)}>
         <div>
           <div className="table-toolbar-title" style={{display:'flex',alignItems:'center',gap:8}}>
             <i data-lucide="alert-triangle" style={{width:15,height:15,color:'#EF4444'}}></i>
             Secteurs sans présence aujourd'hui
+            <span style={{marginLeft:4,padding:'1px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:'#FEE2E2',color:'#B91C1C'}}>{gaps.length}</span>
           </div>
-          <div className="table-toolbar-sub" style={{color:'#DC2626'}}>{gaps.length} secteur{gaps.length!==1?'s':''} sans animateur présent</div>
+          <div className="table-toolbar-sub" style={{color:'#DC2626'}}>
+            {open ? 'Cliquez pour réduire' : 'Cliquez pour afficher les secteurs'}
+          </div>
         </div>
+        <i data-lucide={open ? 'chevron-up' : 'chevron-down'} style={{width:18,height:18,color:'var(--neutral-400)',flexShrink:0}}></i>
       </div>
-      <div className="gap-grid">
-        {gaps.map(g => (
-          <div key={g.sector+g.ville} className="gap-item">
-            <span className="gap-dot"></span>
-            <div>
-              <div className="gap-sector">{g.sector}</div>
-              <div className="gap-ville">{g.ville} · {g.total} animateur{g.total!==1?'s':''}</div>
+      {open && (
+        <div className="gap-grid">
+          {gaps.map(g => (
+            <div key={g.sector+g.ville} className="gap-item">
+              <span className="gap-dot"></span>
+              <div>
+                <div className="gap-sector">{g.sector}</div>
+                <div className="gap-ville">{g.ville} · {g.total} animateur{g.total!==1?'s':''}</div>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
