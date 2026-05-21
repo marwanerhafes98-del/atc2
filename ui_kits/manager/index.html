@@ -2225,6 +2225,7 @@ function ImportAnimateursModal({ animateurs, accounts, onClose, onImported }) {
         const toUpdate=[], toCreate=[], errors=[];
         rows.slice(1).forEach((row, i) => {
           const teamLead = String(row[colTL]||'').trim();
+          const tlEmail  = String(row[colMail]||'').trim().toLowerCase();
           const villeRaw = String(row[colV]||'').trim();
           const ville    = VILLES.find(v => v.toLowerCase() === villeRaw.toLowerCase()) || villeRaw;
           const name     = String(row[colN]||'').trim();
@@ -2232,8 +2233,8 @@ function ImportAnimateursModal({ animateurs, accounts, onClose, onImported }) {
           if (!name) return;
           if (!teamLead || !ville || !sector) { errors.push({ row:i+2, name, reason:'Données incomplètes (TL, ville ou secteur manquant)' }); return; }
           const existing = animateurs.find(a => a.name.toLowerCase() === name.toLowerCase());
-          if (existing) toUpdate.push({ ...existing, teamLead, ville, sector });
-          else          toCreate.push({ name, teamLead, ville, sector, phone:'' });
+          if (existing) toUpdate.push({ ...existing, teamLead, ville, sector, tlEmail });
+          else          toCreate.push({ name, teamLead, ville, sector, phone:'', tlEmail });
         });
         setPreview({ toUpdate, toCreate, errors });
       } catch { setPreview({ error:'Impossible de lire le fichier.' }); }
@@ -2246,11 +2247,27 @@ function ImportAnimateursModal({ animateurs, accounts, onClose, onImported }) {
     setImporting(true);
     try {
       const updates = {};
-      preview.toUpdate.forEach(a => { updates[a.id] = { ...a }; delete updates[a.id]._type; });
+      preview.toUpdate.forEach(a => {
+        const { tlEmail: _, _t, ...animData } = a;
+        updates[a.id] = animData;
+      });
       const maxId = Math.max(...animateurs.map(a => a.id), 0);
       let next = maxId + 1;
       preview.toCreate.forEach(a => { updates[next] = { id:next, name:a.name, teamLead:a.teamLead, ville:a.ville, sector:a.sector, phone:a.phone||'' }; next++; });
       await db.ref('ptg/animateurs').update(updates);
+
+      // Update TL account emails where the Excel provides one
+      const tlEmailMap = {};
+      [...preview.toUpdate, ...preview.toCreate].forEach(a => {
+        if (a.tlEmail && a.teamLead) tlEmailMap[a.teamLead] = a.tlEmail;
+      });
+      const accUpdates = {};
+      for (const [tlName, email] of Object.entries(tlEmailMap)) {
+        const acc = accounts.find(a => a.name === tlName);
+        if (acc && email && acc.email !== email) accUpdates[`${acc.id}/email`] = email;
+      }
+      if (Object.keys(accUpdates).length) await db.ref('ptg/accounts').update(accUpdates);
+
       onImported(preview.toUpdate.length, preview.toCreate.length);
       onClose();
     } catch { alert('Erreur lors de l\'import Firebase.'); }
