@@ -2178,17 +2178,20 @@ function AddAnimateurMgrModal({ animateurs, accounts, onClose, onCreated }) {
 }
 
 /* ── IMPORT ANIMATEURS MODAL ── */
-function ImportAnimateursModal({ animateurs, onClose, onImported }) {
+function ImportAnimateursModal({ animateurs, accounts, onClose, onImported }) {
   const [file,      setFile]      = useState(null);
   const [preview,   setPreview]   = useState(null);
   const [importing, setImporting] = useState(false);
   const fileRef = useRef(null);
 
   const downloadTemplate = () => {
+    const sorted = [...animateurs].sort((a,b) => a.ville.localeCompare(b.ville) || a.teamLead.localeCompare(b.teamLead) || a.name.localeCompare(b.name));
     const data = [
       ['TEAM LEAD','EMAIL','VILLE','NOM ANIMATEUR','SECTEUR'],
-      ['Mohammed Sandoud','m.sandoud@labelvie.ma','Casablanca','Ali Safri','Sidi Moumen 1 NV'],
-      ['Driss Elharche','d.elharche@labelvie.ma','Fes','Med Dekaki','Oued Fes NV'],
+      ...sorted.map(a => {
+        const acc = accounts.find(ac => ac.name === a.teamLead);
+        return [a.teamLead, acc?.email || '', a.ville, a.name, a.sector];
+      }),
     ];
     const ws = XLSX.utils.aoa_to_sheet(data);
     ws['!cols'] = [{wch:24},{wch:28},{wch:14},{wch:26},{wch:26}];
@@ -2400,7 +2403,7 @@ function AnimateursView({ animateurs, accounts }) {
       )}
       {showImport && (
         <ImportAnimateursModal
-          animateurs={animateurs}
+          animateurs={animateurs} accounts={accounts}
           onClose={() => setShowImport(false)}
           onImported={(upd, cre) => showToast(`Import réussi : ${upd} mis à jour · ${cre} créé${cre!==1?'s':''}`)} />
       )}
