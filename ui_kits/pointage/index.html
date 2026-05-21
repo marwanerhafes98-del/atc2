@@ -34,6 +34,12 @@
     .status-bar-icon-btn { background:rgba(255,255,255,0.15); border:none; color:white; border-radius:var(--radius-full); width:34px; height:34px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
     .status-bar-spacer { width:70px; }
 
+    /* GPS BANNER */
+    .gps-banner { display:flex; align-items:center; gap:10px; padding:9px 16px; font-size:12px; font-weight:600; flex-shrink:0; }
+    .gps-banner-warn  { background:#FEF3C7; color:#92400E; }
+    .gps-banner-error { background:#FEE2E2; color:#991B1B; }
+    .gps-banner-btn { margin-left:auto; background:rgba(0,0,0,0.12); border:none; border-radius:6px; padding:5px 12px; font-size:12px; font-weight:700; cursor:pointer; color:inherit; font-family:var(--font-sans); }
+
     /* MAIN CONTENT */
     .main-content { flex:1; overflow-y:auto; padding-bottom:80px; }
 
@@ -1256,8 +1262,10 @@ function App() {
   const [toast,   setToast]       = useState(null);
   const [showAdd, setShowAdd]     = useState(false);
   const [todayCount, setTodayCount] = useState(0);
-  const nextId = useRef(ANIMATEURS_DB.length + 1);
-  const mainRef = useRef(null);
+  const [gpsStatus,  setGpsStatus]  = useState('idle'); // idle | ok | needs-tap | denied | error
+  const nextId    = useRef(ANIMATEURS_DB.length + 1);
+  const mainRef   = useRef(null);
+  const watchIdRef = useRef(null);
 
   useEffect(() => { lucide.createIcons(); });
 
@@ -1303,7 +1311,6 @@ function App() {
 
     // GPS tracking — partage la position du TL en temps réel avec le manager
     const locKey = encodeKey(user.email);
-    let watchId = null;
     const writeLocation = (lat, lng) => {
       db.ref(`ptg/locations/${locKey}`).set({
         lat, lng,
@@ -1313,12 +1320,24 @@ function App() {
         ville: user.ville,
       });
     };
-    if (navigator.geolocation) {
-      watchId = navigator.geolocation.watchPosition(
-        pos => writeLocation(pos.coords.latitude, pos.coords.longitude),
-        () => {},
+    const startWatch = () => {
+      if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        p  => { setGpsStatus('ok'); writeLocation(p.coords.latitude, p.coords.longitude); },
+        err => setGpsStatus(err.code === 1 ? 'denied' : 'error'),
         { enableHighAccuracy:true, maximumAge:15000, timeout:20000 }
       );
+    };
+    if (navigator.geolocation) {
+      // getCurrentPosition déclenche la popup de permission iOS quand appelé depuis un geste utilisateur
+      // et fonctionne silencieusement si la permission est déjà accordée (Android + iOS)
+      navigator.geolocation.getCurrentPosition(
+        pos => { setGpsStatus('ok'); writeLocation(pos.coords.latitude, pos.coords.longitude); startWatch(); },
+        ()  => setGpsStatus('needs-tap'), // iOS sans geste → montrer le bouton
+        { enableHighAccuracy:true, timeout:8000, maximumAge:0 }
+      );
+    } else {
+      setGpsStatus('unavailable');
     }
 
     // Écoute Firebase pour les changements d'animateurs (réaffectations manager)
@@ -1363,7 +1382,7 @@ function App() {
     const onUnload = () => LS.endSession(user.email);
     window.addEventListener('beforeunload', onUnload);
     return () => {
-      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      if (watchIdRef.current !== null) { navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null; }
       accRef.off('value', accHandler);
       animRef.off('value', animHandler);
       ref.off('value', handler);
@@ -1392,6 +1411,30 @@ function App() {
     scheduleReset();
     return () => clearTimeout(tid);
   }, [user]);
+
+  // Appelé depuis un tap utilisateur → déclenche la popup de permission iOS
+  const handleActivateGps = () => {
+    if (!navigator.geolocation || !user) return;
+    setGpsStatus('idle');
+    const locKey = encodeKey(user.email);
+    const write = (lat, lng) => db.ref(`ptg/locations/${locKey}`).set({
+      lat, lng, ts: new Date().toISOString(), email: user.email, name: user.name, ville: user.ville,
+    });
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        setGpsStatus('ok');
+        write(pos.coords.latitude, pos.coords.longitude);
+        if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = navigator.geolocation.watchPosition(
+          p  => write(p.coords.latitude, p.coords.longitude),
+          err => setGpsStatus(err.code === 1 ? 'denied' : 'error'),
+          { enableHighAccuracy:true, maximumAge:15000, timeout:20000 }
+        );
+      },
+      err => setGpsStatus(err.code === 1 ? 'denied' : 'error'),
+      { enableHighAccuracy:true, timeout:12000, maximumAge:0 }
+    );
+  };
 
   const showToast = (msg, type='neutral') => setToast({ msg, type });
 
@@ -1471,6 +1514,27 @@ function App() {
           : <div className="status-bar-spacer"></div>
         }
       </div>
+
+      {gpsStatus === 'needs-tap' && (
+        <div className="gps-banner gps-banner-warn">
+          <i data-lucide="map-pin-off" style={{width:15,height:15,flexShrink:0}}></i>
+          Localisation désactivée — requis pour le manager
+          <button className="gps-banner-btn" onClick={handleActivateGps}>Activer</button>
+        </div>
+      )}
+      {gpsStatus === 'denied' && (
+        <div className="gps-banner gps-banner-error">
+          <i data-lucide="map-pin-off" style={{width:15,height:15,flexShrink:0}}></i>
+          Permission refusée — activez dans Réglages &gt; Safari &gt; Localisation
+        </div>
+      )}
+      {gpsStatus === 'error' && (
+        <div className="gps-banner gps-banner-warn">
+          <i data-lucide="map-pin-off" style={{width:15,height:15,flexShrink:0}}></i>
+          Signal GPS faible
+          <button className="gps-banner-btn" onClick={handleActivateGps}>Réessayer</button>
+        </div>
+      )}
 
       <div className="main-content" ref={mainRef}>
         {currentView === 'list' && !selectedAnimateur && (
