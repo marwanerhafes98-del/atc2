@@ -1423,15 +1423,17 @@ function exportWeeklyXLSX(rows, weekDays) {
   XLSX.writeFile(wb, `presence_semaine_${toISODate(weekDays[0])}.xlsx`);
 }
 
+function dateToISO(dateStr) {
+  const d = new Date(dateStr);
+  if (isNaN(d)) return null;
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 function exportRangeXLSX(allPointages, accounts, fromStr, toStr) {
-  const [fy,fm,fd] = fromStr.split('-').map(Number);
-  const [ty,tm,td] = toStr.split('-').map(Number);
-  const fromDate = new Date(fy, fm-1, fd, 0, 0, 0, 0);
-  const toDate   = new Date(ty, tm-1, td, 23, 59, 59, 999);
   const inRange  = allPointages.filter(p => {
     if (!p.date) return false;
-    const d = new Date(p.date);
-    return d >= fromDate && d <= toDate;
+    const iso = dateToISO(p.date);
+    return iso && iso >= fromStr && iso <= toStr;
   });
   inRange.sort((a,b) => new Date(a.date)-new Date(b.date) || (a.animateurName||'').localeCompare(b.animateurName||''));
   const tlMap = {};
@@ -1694,14 +1696,10 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
 
   const rangeCount = useMemo(() => {
     if (!exportFrom || !exportTo) return null;
-    const [fy,fm,fd] = exportFrom.split('-').map(Number);
-    const [ty,tm,td] = exportTo.split('-').map(Number);
-    const fromDate = new Date(fy,fm-1,fd,0,0,0,0);
-    const toDate   = new Date(ty,tm-1,td,23,59,59,999);
     return pointages.filter(p => {
       if (!p.date) return false;
-      const d = new Date(p.date);
-      return d >= fromDate && d <= toDate;
+      const iso = dateToISO(p.date);
+      return iso && iso >= exportFrom && iso <= exportTo;
     }).length;
   }, [exportFrom, exportTo, pointages]);
 
