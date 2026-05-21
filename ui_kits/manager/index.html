@@ -1585,6 +1585,7 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
   const [filterVille,  setFilterVille]  = useState('Toutes');
   const [filterTL,     setFilterTL]     = useState('Tous');
   const [filterStatus, setFilterStatus] = useState('Tous');
+  const [toast,        setToast]        = useState('');
 
   const weekDays = useMemo(() => getWeekDays(weekOffset), [weekOffset]);
   const todayStr = new Date().toDateString();
@@ -1639,6 +1640,30 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
   const totalPresentAll = displayRows.reduce((acc, r) => acc + r.totalPresent, 0);
   const maxDays = rows.length > 0 ? Math.max(...rows.map(r => r.totalPresent)) : 0;
 
+  const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 3000); };
+
+  const handleDeleteAnimateurWeek = (r) => {
+    const toDelete = weekPtgs.filter(p => p._key && (p.animateurId === r.id || p.animateurName === r.name));
+    if (toDelete.length === 0) { showToast('Aucun pointage enregistré pour cet animateur cette semaine'); return; }
+    if (!window.confirm(`Supprimer les ${toDelete.length} pointage${toDelete.length!==1?'s':''} de ${r.name} pour cette semaine ?`)) return;
+    const updates = {};
+    toDelete.forEach(p => { updates[p._key] = null; });
+    db.ref('ptg/pointages').update(updates);
+    showToast(`${toDelete.length} pointage${toDelete.length!==1?'s':''} de ${r.name} supprimé${toDelete.length!==1?'s':''}`);
+  };
+
+  const handleDeleteWeek = () => {
+    const animIds   = new Set(displayRows.map(r => r.id));
+    const animNames = new Set(displayRows.map(r => r.name));
+    const toDelete  = weekPtgs.filter(p => p._key && (animIds.has(p.animateurId) || animNames.has(p.animateurName)));
+    if (toDelete.length === 0) { showToast('Aucun pointage à supprimer pour cette sélection'); return; }
+    if (!window.confirm(`Supprimer les ${toDelete.length} entrée${toDelete.length!==1?'s':''} de la semaine sélectionnée ?\nCette action est irréversible.`)) return;
+    const updates = {};
+    toDelete.forEach(p => { updates[p._key] = null; });
+    db.ref('ptg/pointages').update(updates);
+    showToast(`${toDelete.length} entrée${toDelete.length!==1?'s':''} supprimée${toDelete.length!==1?'s':''}`);
+  };
+
   const renderDayChip = (status) => {
     if (!status) return <span className="day-chip day-chip-none">—</span>;
     const map = { present:'P', absent:'A', malade:'M', demission:'D' };
@@ -1655,6 +1680,11 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
 
   return (
     <>
+      {toast && (
+        <div style={{position:'fixed',bottom:24,right:24,background:'#1E293B',color:'white',padding:'10px 18px',borderRadius:10,fontSize:13,fontWeight:600,zIndex:200,boxShadow:'0 8px 24px rgba(0,0,0,0.2)'}}>
+          {toast}
+        </div>
+      )}
       {/* Week navigation */}
       <div className="week-nav">
         <button className="week-nav-btn" onClick={() => setWeekOffset(o => o - 1)}>
@@ -1705,6 +1735,9 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
         <div style={{fontSize:12,color:'var(--neutral-500)',fontWeight:600}}>
           {displayRows.length} animateurs · {totalPresentAll} présences cette semaine
         </div>
+        <button className="btn btn-danger btn-sm" onClick={handleDeleteWeek}>
+          <i data-lucide="trash-2" style={{width:14,height:14}}></i>Supprimer la semaine
+        </button>
         <button className="btn btn-success" onClick={() => exportWeeklyXLSX(rows, weekDays)}>
           <i data-lucide="download" style={{width:15,height:15}}></i>Exporter Excel
         </button>
@@ -1745,6 +1778,7 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
                     );
                   })}
                   <th style={{textAlign:'center',minWidth:80}}>Sem.</th>
+                  <th style={{width:36}}></th>
                 </tr>
               </thead>
               <tbody>
@@ -1766,6 +1800,14 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
                         <span className="week-total-chip" style={{background:tc.bg,color:tc.color}}>
                           {r.totalPresent}
                         </span>
+                      </td>
+                      <td className="day-cell" style={{padding:'4px 8px'}}>
+                        <button onClick={() => handleDeleteAnimateurWeek(r)} title={`Supprimer les pointages de ${r.name}`}
+                          style={{background:'none',border:'none',cursor:'pointer',color:'var(--neutral-300)',padding:'4px',display:'flex',alignItems:'center',borderRadius:6,transition:'all 150ms'}}
+                          onMouseEnter={e=>{e.currentTarget.style.color='#DC2626';e.currentTarget.style.background='#FEE2E2'}}
+                          onMouseLeave={e=>{e.currentTarget.style.color='var(--neutral-300)';e.currentTarget.style.background='none'}}>
+                          <i data-lucide="trash-2" style={{width:13,height:13}}></i>
+                        </button>
                       </td>
                     </tr>
                   );
