@@ -1418,6 +1418,51 @@ function exportWeeklyXLSX(rows, weekDays) {
   XLSX.writeFile(wb, `presence_semaine_${toISODate(weekDays[0])}.xlsx`);
 }
 
+function exportRangeXLSX(allPointages, accounts, fromStr, toStr) {
+  const [fy,fm,fd] = fromStr.split('-').map(Number);
+  const [ty,tm,td] = toStr.split('-').map(Number);
+  const fromDate = new Date(fy, fm-1, fd, 0, 0, 0, 0);
+  const toDate   = new Date(ty, tm-1, td, 23, 59, 59, 999);
+  const inRange  = allPointages.filter(p => {
+    if (!p.date) return false;
+    const d = new Date(p.date);
+    return d >= fromDate && d <= toDate;
+  });
+  inRange.sort((a,b) => new Date(a.date)-new Date(b.date) || (a.animateurName||'').localeCompare(b.animateurName||''));
+  const tlMap = {};
+  accounts.forEach(a => { tlMap[a.email] = a.name; });
+  const STATUS_COLORS = { present:'DCFCE7', absent:'FEE2E2', malade:'FEF3C7', demission:'F3E8FF' };
+  const hStyle = { font:{bold:true,color:{rgb:'FFFFFF'},sz:11}, fill:{fgColor:{rgb:'0052CC'}}, alignment:{horizontal:'center'} };
+  const DAY_FR = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  const headers = ['Date','Jour','Animateur','Ville','Team Lead','Statut','Heure','Note'];
+  const ws_data = [headers, ...inRange.map(p => {
+    const d = new Date(p.date);
+    return [
+      `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`,
+      DAY_FR[d.getDay()],
+      p.animateurName||'—',
+      p.ville||'—',
+      tlMap[p.teamLeadEmail] || p.teamLeadEmail?.split('@')[0] || '—',
+      STATUS_FR[p.status]||p.status||'—',
+      p.time||'—',
+      p.note||'',
+    ];
+  })];
+  const ws = XLSX.utils.aoa_to_sheet(ws_data);
+  ws['!cols'] = [{wch:12},{wch:6},{wch:26},{wch:14},{wch:20},{wch:12},{wch:8},{wch:20}];
+  headers.forEach((_,i) => { const c = XLSX.utils.encode_cell({r:0,c:i}); if(ws[c]) ws[c].s=hStyle; });
+  inRange.forEach((p,ri) => {
+    const bg = STATUS_COLORS[p.status];
+    if (bg) {
+      const c = XLSX.utils.encode_cell({r:ri+1,c:5});
+      if(ws[c]) ws[c].s = { fill:{fgColor:{rgb:bg}}, alignment:{horizontal:'center'} };
+    }
+  });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Présence');
+  XLSX.writeFile(wb, `presence_${fromStr}_au_${toStr}.xlsx`);
+}
+
 /* ── ACTIVITY LOG VIEW ── */
 function ActivityView({ pointages, accounts }) {
   const todayStr = toISODate(new Date());
@@ -1585,6 +1630,8 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
   const [filterVille,  setFilterVille]  = useState('Toutes');
   const [filterTL,     setFilterTL]     = useState('Tous');
   const [filterStatus, setFilterStatus] = useState('Tous');
+  const [exportFrom,   setExportFrom]   = useState('');
+  const [exportTo,     setExportTo]     = useState('');
   const [toast,        setToast]        = useState('');
 
   const weekDays = useMemo(() => getWeekDays(weekOffset), [weekOffset]);
@@ -1639,6 +1686,19 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
 
   const totalPresentAll = displayRows.reduce((acc, r) => acc + r.totalPresent, 0);
   const maxDays = rows.length > 0 ? Math.max(...rows.map(r => r.totalPresent)) : 0;
+
+  const rangeCount = useMemo(() => {
+    if (!exportFrom || !exportTo) return null;
+    const [fy,fm,fd] = exportFrom.split('-').map(Number);
+    const [ty,tm,td] = exportTo.split('-').map(Number);
+    const fromDate = new Date(fy,fm-1,fd,0,0,0,0);
+    const toDate   = new Date(ty,tm-1,td,23,59,59,999);
+    return pointages.filter(p => {
+      if (!p.date) return false;
+      const d = new Date(p.date);
+      return d >= fromDate && d <= toDate;
+    }).length;
+  }, [exportFrom, exportTo, pointages]);
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 3000); };
 
@@ -1738,9 +1798,35 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
         <button className="btn btn-danger btn-sm" onClick={handleDeleteWeek}>
           <i data-lucide="trash-2" style={{width:14,height:14}}></i>Supprimer la semaine
         </button>
-        <button className="btn btn-success" onClick={() => exportWeeklyXLSX(rows, weekDays)}>
-          <i data-lucide="download" style={{width:15,height:15}}></i>Exporter Excel
+        <button className="btn btn-success" onClick={() => {
+          if (exportFrom && exportTo) exportRangeXLSX(pointages, accounts, exportFrom, exportTo);
+          else exportWeeklyXLSX(rows, weekDays);
+        }}>
+          <i data-lucide="download" style={{width:15,height:15}}></i>
+          {exportFrom && exportTo ? 'Exporter la plage' : 'Exporter Excel'}
         </button>
+      </div>
+
+      {/* Date range export filter */}
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16,flexWrap:'wrap',background:'var(--neutral-50)',border:'1px solid var(--neutral-200)',borderRadius:10,padding:'10px 14px'}}>
+        <i data-lucide="calendar-range" style={{width:15,height:15,color:'var(--neutral-400)',flexShrink:0}}></i>
+        <span style={{fontSize:12,fontWeight:600,color:'var(--neutral-600)',flexShrink:0}}>Plage d'export</span>
+        <span style={{fontSize:12,color:'var(--neutral-500)',flexShrink:0}}>Du</span>
+        <input type="date" value={exportFrom} onChange={e => setExportFrom(e.target.value)}
+          style={{fontSize:12,padding:'4px 8px',border:'1px solid var(--neutral-300)',borderRadius:6,background:'white',color:'var(--neutral-800)',cursor:'pointer'}} />
+        <span style={{fontSize:12,color:'var(--neutral-500)',flexShrink:0}}>au</span>
+        <input type="date" value={exportTo} min={exportFrom||undefined} onChange={e => setExportTo(e.target.value)}
+          style={{fontSize:12,padding:'4px 8px',border:'1px solid var(--neutral-300)',borderRadius:6,background:'white',color:'var(--neutral-800)',cursor:'pointer'}} />
+        {(exportFrom || exportTo) && (
+          <button onClick={() => { setExportFrom(''); setExportTo(''); }}
+            style={{fontSize:11,padding:'3px 10px',border:'1px solid var(--neutral-300)',borderRadius:6,background:'white',color:'var(--neutral-500)',cursor:'pointer',flexShrink:0}}>
+            Réinitialiser
+          </button>
+        )}
+        {exportFrom && exportTo && rangeCount !== null
+          ? <span style={{fontSize:11,color:'var(--primary-600)',fontWeight:600,marginLeft:4,flexShrink:0}}>{rangeCount} pointage{rangeCount!==1?'s':''} dans cette plage</span>
+          : <span style={{fontSize:11,color:'var(--neutral-400)',marginLeft:4}}>Sélectionnez une plage pour personnaliser l'export</span>
+        }
       </div>
 
       {/* Legend */}
