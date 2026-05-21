@@ -2224,7 +2224,8 @@ function ImportAnimateursModal({ animateurs, accounts, onClose, onImported }) {
         }
         const toUpdate=[], toCreate=[], errors=[];
         rows.slice(1).forEach((row, i) => {
-          const teamLead = String(row[colTL]||'').trim();
+          const teamLeadRaw = String(row[colTL]||'').trim();
+          const teamLead    = accounts.find(a => a.name.toLowerCase() === teamLeadRaw.toLowerCase())?.name || teamLeadRaw;
           const tlEmail  = String(row[colMail]||'').trim().toLowerCase();
           const villeRaw = String(row[colV]||'').trim();
           const ville    = VILLES.find(v => v.toLowerCase() === villeRaw.toLowerCase()) || villeRaw;
