@@ -1371,6 +1371,27 @@ function App() {
     };
   }, [user]);
 
+  // Auto-reset when a new day begins while the tool is left open
+  useEffect(() => {
+    if (!user) return;
+    let tid;
+    const scheduleReset = () => {
+      const now  = new Date();
+      const midnight = new Date(now);
+      midnight.setHours(24, 0, 0, 0);
+      tid = setTimeout(() => {
+        setAnimateurs(prev => prev.map(a => ({ ...a, status:'nonpointe', pointedAt:null, note:undefined })));
+        setTodayCount(0);
+        setHistory([]);
+        setSelectedAnimateur(null);
+        setToast({ msg:'Nouvelle journée — pointages réinitialisés automatiquement', type:'info' });
+        scheduleReset();
+      }, midnight - now);
+    };
+    scheduleReset();
+    return () => clearTimeout(tid);
+  }, [user]);
+
   const showToast = (msg, type='neutral') => setToast({ msg, type });
 
   const handleLogin = (account, remember) => {
