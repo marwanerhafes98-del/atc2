@@ -1442,19 +1442,22 @@ function exportRangeXLSX(allPointages, accounts, fromStr, toStr) {
   const hStyle = { font:{bold:true,color:{rgb:'FFFFFF'},sz:11}, fill:{fgColor:{rgb:'0052CC'}}, alignment:{horizontal:'center'} };
   const DAY_FR = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
   const headers = ['Date','Jour','Animateur','Ville','Team Lead','Statut','Heure','Note'];
-  const ws_data = [headers, ...inRange.map(p => {
-    const d = new Date(p.date);
-    return [
-      `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`,
-      DAY_FR[d.getDay()],
-      p.animateurName||'—',
-      p.ville||'—',
-      tlMap[p.teamLeadEmail] || p.teamLeadEmail?.split('@')[0] || '—',
-      STATUS_FR[p.status]||p.status||'—',
-      p.time||'—',
-      p.note||'',
-    ];
-  })];
+  const dataRows = inRange.length > 0
+    ? inRange.map(p => {
+        const d = new Date(p.date);
+        return [
+          `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`,
+          DAY_FR[d.getDay()],
+          p.animateurName||'—',
+          p.ville||'—',
+          tlMap[p.teamLeadEmail] || p.teamLeadEmail?.split('@')[0] || '—',
+          STATUS_FR[p.status]||p.status||'—',
+          p.time||'—',
+          p.note||'',
+        ];
+      })
+    : [['Aucun pointage enregistré pour cette période','','','','','','','']];
+  const ws_data = [headers, ...dataRows];
   const ws = XLSX.utils.aoa_to_sheet(ws_data);
   ws['!cols'] = [{wch:12},{wch:6},{wch:26},{wch:14},{wch:20},{wch:12},{wch:8},{wch:20}];
   headers.forEach((_,i) => { const c = XLSX.utils.encode_cell({r:0,c:i}); if(ws[c]) ws[c].s=hStyle; });
@@ -3309,7 +3312,7 @@ function App() {
 
   const navItems = [
     { key:'dashboard',  icon:'layout-dashboard', label:'Dashboard',         badge:0 },
-    { key:'accounts',   icon:'users',            label:'Comptes',           badge:accounts.length },
+    { key:'accounts',   icon:'users',            label:'Team Lead',           badge:accounts.length },
     { key:'animateurs', icon:'user-cog',         label:'Animateurs',        badge:animateurs.length },
     { key:'carte',      icon:'map-pin',          label:'Carte temps réel',  badge:liveCount },
     { key:'activity',   icon:'clipboard-list',   label:'Journal',           badge:todayPtgN },
