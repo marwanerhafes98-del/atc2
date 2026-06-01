@@ -988,17 +988,17 @@ function PointageForm({ animateur, onBack, onConfirm, onEdit, onDelete }) {
 
         {!confirmDel ? (
           <button className="btn-delete-outline" onClick={() => setConfirmDel(true)}>
-            <i data-lucide="trash-2" style={{ width:16, height:16 }}></i>
-            Supprimer cet animateur
+            <i data-lucide="user-x" style={{ width:16, height:16 }}></i>
+            Désactiver cet animateur
           </button>
         ) : (
           <>
             <div style={{ textAlign:'center', fontSize:13, color:'#EF4444', fontWeight:700, marginTop:14 }}>
-              Confirmer la suppression de {animateur.name} ?
+              Désactiver {animateur.name} ? Il sera masqué de la liste.
             </div>
             <button className="btn-delete-solid" onClick={() => onDelete(animateur.id)}>
-              <i data-lucide="trash-2" style={{ width:16, height:16 }}></i>
-              Oui, supprimer définitivement
+              <i data-lucide="user-x" style={{ width:16, height:16 }}></i>
+              Oui, désactiver
             </button>
             <button className="btn-cancel-del" onClick={() => setConfirmDel(false)}>Annuler</button>
           </>
@@ -1482,17 +1482,17 @@ function App() {
   };
 
   const handleDeleteAnimateur = (id) => {
-    db.ref(`ptg/animateurs/${id}`).remove();
+    db.ref(`ptg/animateurs/${id}`).update({ actif: false });
     setAnimateurs(prev => prev.filter(a => a.id !== id));
     setSelectedAnimateur(null);
-    showToast('Animateur supprimé', 'info');
+    showToast('Animateur désactivé', 'info');
   };
 
   if (!user) return <LoginScreen onLogin={handleLogin} />;
 
-  const visibleAnimateurs = user.ville
+  const visibleAnimateurs = (user.ville
     ? animateurs.filter(a => a.ville === user.ville)
-    : animateurs;
+    : animateurs).filter(a => a.actif !== false);
   const unpointed = visibleAnimateurs.filter(a => a.status === 'nonpointe').length;
   const barTitle  = selectedAnimateur ? 'Pointage' :
     { list:'Animateurs', map:'Carte', history:'Historique', profile:'Profil' }[currentView];

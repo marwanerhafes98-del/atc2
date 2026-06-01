@@ -764,8 +764,12 @@ const LS = {
     await db.ref(`ptg/animateurs/${anim.id}`).set(anim);
   },
 
-  async deleteAnimateur(id) {
-    await db.ref(`ptg/animateurs/${id}`).remove();
+  async deactivateAnimateur(id) {
+    await db.ref(`ptg/animateurs/${id}`).update({ actif: false });
+  },
+
+  async reactivateAnimateur(id) {
+    await db.ref(`ptg/animateurs/${id}`).update({ actif: true });
   }
 };
 
@@ -1009,6 +1013,7 @@ function SummaryTable({ animateurs, todayPtgs, filterVille }) {
             <th style={{color:'#D97706'}}>Malades</th>
             <th style={{color:'#7C3AED'}}>Démissions</th>
             <th>Non pointés</th>
+            <th style={{color:'#0EA5E9'}}>Recrutement</th>
             <th>% Présence</th>
           </tr>
         </thead>
@@ -1033,6 +1038,7 @@ function SummaryTable({ animateurs, todayPtgs, filterVille }) {
                 <td><span style={{fontWeight:600,color:'#D97706'}}>{row.malade}</span></td>
                 <td><span style={{fontWeight:600,color:'#7C3AED'}}>{row.demission}</span></td>
                 <td><span style={{color:'var(--neutral-500)'}}>{row.nonPointe}</span></td>
+                <td><span style={{fontWeight:700,color:'#0EA5E9'}}>{row.total - row.present}</span></td>
                 <td>
                   <div className="inline-prog">
                     <div className="inline-prog-bar">
@@ -2601,20 +2607,28 @@ function AnimateursView({ animateurs, accounts }) {
     return [...new Set(src.map(a => a.teamLead))].sort();
   }, [animateurs, filterVille]);
 
+  const activeAnims = useMemo(() => animateurs.filter(a => a.actif !== false), [animateurs]);
+  const inactiveAnims = useMemo(() => animateurs.filter(a => a.actif === false), [animateurs]);
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return animateurs.filter(a => {
+    return activeAnims.filter(a => {
       const matchQ = !q || a.name.toLowerCase().includes(q) || a.sector.toLowerCase().includes(q);
       const matchV = filterVille === 'Toutes' || a.ville === filterVille;
       const matchT = filterTL === 'Tous' || a.teamLead === filterTL;
       return matchQ && matchV && matchT;
     });
-  }, [animateurs, search, filterVille, filterTL]);
+  }, [activeAnims, search, filterVille, filterTL]);
 
-  const handleDelete = async (anim) => {
-    if (!window.confirm(`Supprimer ${anim.name} de l'équipe ?`)) return;
-    await LS.deleteAnimateur(anim.id);
-    showToast(`${anim.name} supprimé`);
+  const handleDeactivate = async (anim) => {
+    if (!window.confirm(`Désactiver ${anim.name} ? Il sera masqué des listes actives.`)) return;
+    await LS.deactivateAnimateur(anim.id);
+    showToast(`${anim.name} désactivé`);
+  };
+
+  const handleReactivate = async (anim) => {
+    await LS.reactivateAnimateur(anim.id);
+    showToast(`${anim.name} réactivé`);
   };
 
   const villeCount = [...new Set(animateurs.map(a => a.ville))].length;
@@ -2648,7 +2662,7 @@ function AnimateursView({ animateurs, accounts }) {
       <div className="section-hd">
         <div>
           <div className="section-title">Gestion des animateurs</div>
-          <div className="section-sub">{animateurs.length} animateurs · {villeCount} ville{villeCount!==1?'s':''}</div>
+          <div className="section-sub">{activeAnims.length} actifs · {inactiveAnims.length} désactivé{inactiveAnims.length!==1?'s':''} · {villeCount} ville{villeCount!==1?'s':''}</div>
         </div>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
           <button className="btn btn-ghost" onClick={() => setShowImport(true)}>
@@ -2720,8 +2734,8 @@ function AnimateursView({ animateurs, accounts }) {
                         <button className="btn btn-ghost btn-sm" onClick={() => setEditTarget(anim)} title="Modifier / Réaffecter">
                           <i data-lucide="pencil" style={{width:13,height:13}}></i>
                         </button>
-                        <button className="btn btn-danger btn-sm" onClick={() => handleDelete(anim)} title="Supprimer">
-                          <i data-lucide="trash-2" style={{width:13,height:13}}></i>
+                        <button className="btn btn-danger btn-sm" onClick={() => handleDeactivate(anim)} title="Désactiver" style={{background:'#FFF7ED',color:'#C2410C',border:'1.5px solid #FED7AA'}}>
+                          <i data-lucide="user-x" style={{width:13,height:13}}></i>
                         </button>
                       </div>
                     </td>
@@ -2732,6 +2746,59 @@ function AnimateursView({ animateurs, accounts }) {
           </table></div>
         )}
       </div>
+
+      {/* ── DÉSACTIVÉS / DÉMISSIONS ── */}
+      {inactiveAnims.length > 0 && (
+        <>
+          <div className="section-hd" style={{marginTop:28}}>
+            <div>
+              <div className="section-title" style={{color:'#7C3AED'}}>Animateurs désactivés</div>
+              <div className="section-sub">{inactiveAnims.length} animateur{inactiveAnims.length!==1?'s':''} masqué{inactiveAnims.length!==1?'s':''} des listes actives</div>
+            </div>
+          </div>
+          <div className="table-card">
+            <div className="tbl-scroll"><table className="tbl">
+              <thead>
+                <tr>
+                  <th>#</th><th>Animateur</th><th>Secteur</th><th>Ville</th><th>Team Lead</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inactiveAnims.map(anim => {
+                  const color = CITY_COLORS[anim.ville] || '#64748B';
+                  return (
+                    <tr key={anim.id} style={{opacity:0.7}}>
+                      <td><span className="mono">{anim.id}</span></td>
+                      <td>
+                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                          <div className="av" style={{background:'#94A3B8',width:28,height:28,fontSize:11}}>{initials(anim.name)}</div>
+                          <div>
+                            <span style={{fontWeight:600,color:'var(--neutral-600)'}}>{anim.name}</span>
+                            <span style={{marginLeft:8,fontSize:10,padding:'1px 7px',borderRadius:99,background:'#F3E8FF',color:'#7C3AED',fontWeight:700}}>Désactivé</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td style={{fontSize:12,color:'var(--neutral-500)'}}>{anim.sector}</td>
+                      <td>
+                        <span style={{display:'inline-flex',padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:color+'20',color}}>
+                          {anim.ville}
+                        </span>
+                      </td>
+                      <td style={{fontSize:12,color:'var(--neutral-600)'}}>{anim.teamLead}</td>
+                      <td>
+                        <button className="btn btn-ghost btn-sm" onClick={() => handleReactivate(anim)} title="Réactiver" style={{color:'#16A34A',border:'1.5px solid #BBF7D0'}}>
+                          <i data-lucide="user-check" style={{width:13,height:13}}></i>
+                          Réactiver
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table></div>
+          </div>
+        </>
+      )}
     </>
   );
 }
@@ -3415,12 +3482,12 @@ function App() {
         </div>
 
         <div className="content">
-          {view === 'dashboard'  && <DashboardView accounts={accounts} sessions={sessions} pointages={pointages} onRefresh={refresh} animateurs={animateurs} />}
+          {view === 'dashboard'  && <DashboardView accounts={accounts} sessions={sessions} pointages={pointages} onRefresh={refresh} animateurs={animateurs.filter(a => a.actif !== false)} />}
           {view === 'accounts'   && <AccountsView  accounts={accounts} sessions={sessions} onRefresh={refresh} />}
           {view === 'animateurs' && <AnimateursView animateurs={animateurs} accounts={accounts} />}
           {view === 'carte'      && <MapView accounts={accounts} />}
           {view === 'activity'   && <ActivityView  pointages={pointages} accounts={accounts} />}
-          {view === 'weekly'     && <WeeklyPresenceView pointages={pointages} accounts={accounts} animateurs={animateurs} />}
+          {view === 'weekly'     && <WeeklyPresenceView pointages={pointages} accounts={accounts} animateurs={animateurs.filter(a => a.actif !== false)} />}
           {view === 'geozone'   && <GeoZoningView />}
         </div>
       </div>
