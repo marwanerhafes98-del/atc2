@@ -1676,7 +1676,7 @@ function getWeekDays(offset) {
   const monday = new Date(now);
   monday.setDate(now.getDate() + diff + offset * 7);
   monday.setHours(0, 0, 0, 0);
-  return Array.from({ length: 7 }, (_, i) => {
+  return Array.from({ length: 6 }, (_, i) => {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
     return d;
@@ -1694,7 +1694,7 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
 
   const weekDays = useMemo(() => getWeekDays(weekOffset), [weekOffset]);
   const todayStr = new Date().toDateString();
-  const DAY_FR   = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  const DAY_FR   = ['Lun','Mar','Mer','Jeu','Ven','Sam'];
 
   // All unique dates in this week as toDateString
   const weekDateStrings = useMemo(() => weekDays.map(d => d.toDateString()), [weekDays]);
@@ -1740,7 +1740,7 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
     return rows.filter(r => Object.values(r.days).includes(filterStatus));
   }, [rows, filterStatus]);
 
-  const weekLabel = `Semaine du ${weekDays[0].toLocaleDateString('fr-FR',{day:'numeric',month:'long'})} au ${weekDays[6].toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})}`;
+  const weekLabel = `Semaine du ${weekDays[0].toLocaleDateString('fr-FR',{day:'numeric',month:'long'})} au ${weekDays[5].toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})}`;
 
   const totalPresentAll = displayRows.reduce((acc, r) => acc + r.totalPresent, 0);
   const maxDays = rows.length > 0 ? Math.max(...rows.map(r => r.totalPresent)) : 0;
@@ -3393,6 +3393,263 @@ function GeoZoningView() {
   );
 }
 
+/* ── SCORES VIEW ── */
+const SCORE_POINTS = { present:100, renfort:100, recupe:65, conge:75, malade:50, absent:0, demission:0, nonpointe:null };
+const SCORE_GRADES = [
+  { min:90, label:'Elite',       color:'#15803D', bg:'#DCFCE7', icon:'award',       ring:'#22C55E' },
+  { min:75, label:'Excellent',   color:'#1D4ED8', bg:'#DBEAFE', icon:'star',        ring:'#3B82F6' },
+  { min:60, label:'Bien',        color:'#B45309', bg:'#FEF3C7', icon:'thumbs-up',   ring:'#F59E0B' },
+  { min:45, label:'Passable',    color:'#C2410C', bg:'#FFEDD5', icon:'alert-circle',ring:'#F97316' },
+  { min:0,  label:'Insuffisant', color:'#B91C1C', bg:'#FEE2E2', icon:'x-circle',    ring:'#EF4444' },
+];
+function getGrade(score, total) {
+  if (total === 0) return { label:'N/A', color:'#94A3B8', bg:'#F1F5F9', icon:'minus', ring:'#CBD5E1' };
+  return SCORE_GRADES.find(g => score >= g.min) || SCORE_GRADES[SCORE_GRADES.length-1];
+}
+function computeAnimScore(anim, pointages, cutoff) {
+  const ptgs = pointages.filter(p => {
+    if (!(p.animateurId === anim.id || p.animateurName === anim.name)) return false;
+    if (!p.date) return false;
+    const iso = dateToISO(p.date);
+    return iso && iso >= cutoff;
+  });
+  const byStatus = { present:0, renfort:0, recupe:0, conge:0, malade:0, absent:0, demission:0 };
+  ptgs.forEach(p => { if (byStatus[p.status] !== undefined) byStatus[p.status]++; });
+  const scored = ptgs.filter(p => SCORE_POINTS[p.status] !== null && SCORE_POINTS[p.status] !== undefined);
+  const total  = scored.length;
+  const rawScore = total > 0 ? scored.reduce((acc, p) => acc + (SCORE_POINTS[p.status]||0), 0) / total : 0;
+  const score = Math.round(rawScore);
+  return { ...anim, score, total, ...byStatus };
+}
+
+function ScoresView({ pointages, animateurs, accounts }) {
+  const [period,      setPeriod]      = useState(30);
+  const [filterVille, setFilterVille] = useState('Toutes');
+  const [filterTL,    setFilterTL]    = useState('Tous');
+  const [sortBy,      setSortBy]      = useState('score');
+
+  const cutoff = useMemo(() => {
+    if (period === 0) return '2000-01-01';
+    const d = new Date(); d.setDate(d.getDate() - period);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }, [period]);
+
+  const allScores = useMemo(() => {
+    const active = animateurs.filter(a => a.actif !== false);
+    return active.map(a => computeAnimScore(a, pointages, cutoff));
+  }, [animateurs, pointages, cutoff]);
+
+  const teamLeadsForVille = useMemo(() => {
+    const src = filterVille === 'Toutes' ? animateurs : animateurs.filter(a => a.ville === filterVille);
+    return [...new Set(src.map(a => a.teamLead))].sort();
+  }, [animateurs, filterVille]);
+
+  const filtered = useMemo(() => {
+    let list = allScores;
+    if (filterVille !== 'Toutes') list = list.filter(a => a.ville === filterVille);
+    if (filterTL    !== 'Tous')   list = list.filter(a => a.teamLead === filterTL);
+    return [...list].sort((a, b) => {
+      if (sortBy === 'score') return b.score - a.score || b.total - a.total;
+      if (sortBy === 'name')  return a.name.localeCompare(b.name);
+      if (sortBy === 'total') return b.total - a.total;
+      return 0;
+    });
+  }, [allScores, filterVille, filterTL, sortBy]);
+
+  const withData   = filtered.filter(a => a.total > 0);
+  const noData     = filtered.filter(a => a.total === 0);
+  const atRisk     = withData.filter(a => a.score < 60);
+  const avgScore   = withData.length > 0 ? Math.round(withData.reduce((s, a) => s + a.score, 0) / withData.length) : 0;
+  const top3       = withData.slice(0, 3);
+
+  const PERIOD_OPTS = [{v:7,l:'7 jours'},{v:30,l:'30 jours'},{v:60,l:'60 jours'},{v:90,l:'90 jours'},{v:0,l:'Tout'}];
+
+  const ScoreBar = ({ score, total }) => {
+    if (total === 0) return <span style={{fontSize:11,color:'#94A3B8'}}>Pas de données</span>;
+    const g = getGrade(score, total);
+    return (
+      <div style={{display:'flex',alignItems:'center',gap:8,minWidth:140}}>
+        <div style={{flex:1,height:7,background:'#F1F5F9',borderRadius:99,overflow:'hidden'}}>
+          <div style={{height:'100%',width:`${score}%`,background:g.ring,borderRadius:99,transition:'width 0.5s'}}></div>
+        </div>
+        <span style={{fontSize:12,fontWeight:800,color:g.color,minWidth:32}}>{score}</span>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <div className="section-hd" style={{marginBottom:20}}>
+        <div>
+          <div className="section-title">Scores & Performance</div>
+          <div className="section-sub">{withData.length} animateurs évalués · Score moyen : <strong>{avgScore}/100</strong></div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="analytics-filters" style={{marginBottom:20}}>
+        <i data-lucide="sliders-horizontal" style={{width:16,height:16,color:'var(--neutral-400)',flexShrink:0}}></i>
+        <span className="af-label">Période</span>
+        {PERIOD_OPTS.map(o => (
+          <button key={o.v} onClick={() => setPeriod(o.v)}
+            style={{height:32,padding:'0 12px',borderRadius:8,border:`1.5px solid ${period===o.v?'var(--primary-500)':'var(--neutral-200)'}`,background:period===o.v?'var(--primary-50)':'white',color:period===o.v?'var(--primary-700)':'var(--neutral-600)',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'var(--font-sans)'}}>
+            {o.l}
+          </button>
+        ))}
+        <div className="af-divider"></div>
+        <select className={`af-select ${filterVille!=='Toutes'?'active-filter':''}`} value={filterVille} onChange={e=>{setFilterVille(e.target.value);setFilterTL('Tous');}}>
+          <option value="Toutes">Toutes les villes</option>
+          {VILLES.map(v=><option key={v} value={v}>{v}</option>)}
+        </select>
+        <select className={`af-select ${filterTL!=='Tous'?'active-filter':''}`} value={filterTL} onChange={e=>setFilterTL(e.target.value)}>
+          <option value="Tous">Tous les TL</option>
+          {teamLeadsForVille.map(tl=><option key={tl} value={tl}>{tl}</option>)}
+        </select>
+      </div>
+
+      {/* Top 3 Podium */}
+      {top3.length > 0 && (
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:20}}>
+          {top3.map((a, idx) => {
+            const g = getGrade(a.score, a.total);
+            const medals = ['🥇','🥈','🥉'];
+            const sizes  = [52,44,44];
+            return (
+              <div key={a.id} style={{background:'white',borderRadius:14,padding:'18px 16px',border:`2px solid ${g.ring}`,textAlign:'center',position:'relative',boxShadow:'0 2px 12px rgba(0,0,0,0.06)'}}>
+                <div style={{position:'absolute',top:10,left:12,fontSize:20}}>{medals[idx]}</div>
+                <div style={{width:sizes[idx],height:sizes[idx],borderRadius:'50%',background:g.bg,border:`3px solid ${g.ring}`,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 10px',fontSize:idx===0?20:16,fontWeight:800,color:g.color}}>
+                  {initials(a.name)}
+                </div>
+                <div style={{fontWeight:700,fontSize:13,color:'var(--neutral-900)',marginBottom:2}}>{a.name}</div>
+                <div style={{fontSize:11,color:'var(--neutral-500)',marginBottom:8}}>{a.ville}</div>
+                <div style={{fontSize:28,fontWeight:800,color:g.color,lineHeight:1,fontFamily:'var(--font-mono)'}}>{a.score}</div>
+                <div style={{fontSize:10,color:g.color,fontWeight:700,marginTop:2}}>{g.label}</div>
+                <div style={{fontSize:10,color:'var(--neutral-400)',marginTop:4}}>{a.total} jour{a.total!==1?'s':''} évalués</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Grade distribution */}
+      {withData.length > 0 && (
+        <div style={{display:'flex',gap:8,marginBottom:20,flexWrap:'wrap'}}>
+          {SCORE_GRADES.map(g => {
+            const cnt = withData.filter(a => getGrade(a.score,a.total).label === g.label).length;
+            if (cnt === 0) return null;
+            return (
+              <span key={g.label} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'5px 12px',borderRadius:99,background:g.bg,color:g.color,fontWeight:700,fontSize:12}}>
+                <i data-lucide={g.icon} style={{width:13,height:13}}></i>
+                {g.label} · {cnt}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Leaderboard */}
+      <div className="table-card" style={{marginBottom:20}}>
+        <div className="table-toolbar">
+          <div>
+            <div className="table-toolbar-title">Classement complet</div>
+            <div className="table-toolbar-sub">{filtered.length} animateurs</div>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            {[{k:'score',l:'Score'},{k:'name',l:'Nom'},{k:'total',l:'Jours'}].map(o=>(
+              <button key={o.k} onClick={()=>setSortBy(o.k)}
+                style={{height:32,padding:'0 10px',borderRadius:8,border:`1.5px solid ${sortBy===o.k?'var(--primary-500)':'var(--neutral-200)'}`,background:sortBy===o.k?'var(--primary-50)':'white',color:sortBy===o.k?'var(--primary-700)':'var(--neutral-600)',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'var(--font-sans)'}}>
+                {o.l}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="tbl-scroll"><table className="tbl">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Animateur</th>
+              <th>Ville</th>
+              <th>Team Lead</th>
+              <th style={{color:'#15803D'}}>Présents</th>
+              <th style={{color:'#DC2626'}}>Absents</th>
+              <th style={{color:'#D97706'}}>Malades</th>
+              <th>Jours</th>
+              <th>Score</th>
+              <th>Grade</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((a, idx) => {
+              const g = getGrade(a.score, a.total);
+              return (
+                <tr key={a.id}>
+                  <td><span className="mono" style={{color:'var(--neutral-400)',fontSize:11}}>#{idx+1}</span></td>
+                  <td>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <div className="av" style={{background:a.total>0?getGrade(a.score,a.total).ring:'#CBD5E1',width:28,height:28,fontSize:11}}>{initials(a.name)}</div>
+                      <span style={{fontWeight:600,color:'var(--neutral-900)'}}>{a.name}</span>
+                    </div>
+                  </td>
+                  <td><span style={{display:'inline-flex',padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:(CITY_COLORS[a.ville]||'#64748B')+'20',color:CITY_COLORS[a.ville]||'#64748B'}}>{a.ville}</span></td>
+                  <td style={{fontSize:12,color:'var(--neutral-600)'}}>{a.teamLead}</td>
+                  <td><span style={{fontWeight:700,color:'#15803D'}}>{a.present + a.renfort}</span></td>
+                  <td><span style={{fontWeight:600,color:'#DC2626'}}>{a.absent}</span></td>
+                  <td><span style={{fontWeight:600,color:'#D97706'}}>{a.malade}</span></td>
+                  <td><span style={{color:'var(--neutral-500)'}}>{a.total}</span></td>
+                  <td><ScoreBar score={a.score} total={a.total} /></td>
+                  <td>
+                    <span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',borderRadius:99,fontSize:11,fontWeight:700,background:g.bg,color:g.color}}>
+                      <i data-lucide={g.icon} style={{width:11,height:11}}></i>{g.label}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table></div>
+      </div>
+
+      {/* At risk */}
+      {atRisk.length > 0 && (
+        <>
+          <div className="section-hd" style={{marginTop:4}}>
+            <div>
+              <div className="section-title" style={{color:'#DC2626'}}>⚠ Animateurs à surveiller</div>
+              <div className="section-sub">Score inférieur à 60 — nécessitent un suivi</div>
+            </div>
+          </div>
+          <div className="table-card">
+            <div className="tbl-scroll"><table className="tbl">
+              <thead><tr><th>Animateur</th><th>Ville</th><th>TL</th><th>Présents</th><th>Absents</th><th>Score</th><th>Grade</th></tr></thead>
+              <tbody>
+                {atRisk.map(a => {
+                  const g = getGrade(a.score, a.total);
+                  return (
+                    <tr key={a.id} style={{background:'#FFF5F5'}}>
+                      <td>
+                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                          <div className="av" style={{background:g.ring,width:28,height:28,fontSize:11}}>{initials(a.name)}</div>
+                          <span style={{fontWeight:600}}>{a.name}</span>
+                        </div>
+                      </td>
+                      <td><span style={{display:'inline-flex',padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:(CITY_COLORS[a.ville]||'#64748B')+'20',color:CITY_COLORS[a.ville]||'#64748B'}}>{a.ville}</span></td>
+                      <td style={{fontSize:12}}>{a.teamLead}</td>
+                      <td><span style={{fontWeight:700,color:'#15803D'}}>{a.present + a.renfort}</span></td>
+                      <td><span style={{fontWeight:700,color:'#DC2626'}}>{a.absent}</span></td>
+                      <td><ScoreBar score={a.score} total={a.total} /></td>
+                      <td><span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',borderRadius:99,fontSize:11,fontWeight:700,background:g.bg,color:g.color}}><i data-lucide={g.icon} style={{width:11,height:11}}></i>{g.label}</span></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table></div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 /* ── APP ── */
 function App() {
   const [loggedIn,    setLoggedIn]    = useState(() => localStorage.getItem('ptg_manager_session') === '1');
@@ -3426,7 +3683,7 @@ function App() {
   const liveCount  = accounts.filter(a => LS.isLive(a.email)).length;
   const todayPtgN  = pointages.filter(p => p.date === new Date().toDateString()).length;
   const LIVE_LOC_THRESH = 120000;
-  const PAGE_TITLES = { dashboard:'Dashboard', accounts:'Comptes Team Leads', animateurs:'Gestion des animateurs', carte:'Localisation en temps réel', activity:'Journal des pointages', weekly:'Présence hebdomadaire', geozone:'Geo Zoning' };
+  const PAGE_TITLES = { dashboard:'Dashboard', accounts:'Comptes Team Leads', animateurs:'Gestion des animateurs', carte:'Localisation en temps réel', activity:'Journal des pointages', weekly:'Présence hebdomadaire', geozone:'Geo Zoning', scores:'Scores & Performance' };
   const pageTitle  = PAGE_TITLES[view] || 'Dashboard';
 
   const navItems = [
@@ -3437,6 +3694,7 @@ function App() {
     { key:'activity',   icon:'clipboard-list',   label:'Journal',           badge:todayPtgN },
     { key:'weekly',     icon:'calendar-days',    label:'Présence hebdo',    badge:0 },
     { key:'geozone',   icon:'map-pin',          label:'Geo Zoning',        badge:0 },
+    { key:'scores',    icon:'award',            label:'Scores',            badge:0 },
   ];
 
   return (
@@ -3511,6 +3769,7 @@ function App() {
           {view === 'activity'   && <ActivityView  pointages={pointages} accounts={accounts} />}
           {view === 'weekly'     && <WeeklyPresenceView pointages={pointages} accounts={accounts} animateurs={animateurs.filter(a => a.actif !== false)} />}
           {view === 'geozone'   && <GeoZoningView />}
+          {view === 'scores'    && <ScoresView pointages={pointages} animateurs={animateurs} accounts={accounts} />}
         </div>
       </div>
     </div>
