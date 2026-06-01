@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>RTM FIELD TRACKER · ATC2</title>
+  <title>RTM FIELD TRACKER</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231D4ED8'/><rect x='10' y='12' width='12' height='14' rx='2.5' fill='none' stroke='white' stroke-width='1.8'/><rect x='13' y='8.5' width='6' height='5.5' rx='2' fill='white'/><path d='M13 19 L15.5 21.5 L20.5 15.5' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/></svg>">
   <link rel="stylesheet" href="../../colors_and_type.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -873,7 +873,7 @@ function EditAnimateurModal({ animateur, onClose, onSave }) {
   const [form, setForm] = useState({
     name: animateur.name, sector: animateur.sector,
     ville: animateur.ville, phone: animateur.phone || '',
-    teamLead: animateur.teamLead || '',
+    teamLead: animateur.teamLead || '', matricule: animateur.matricule || '',
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -908,6 +908,18 @@ function EditAnimateurModal({ animateur, onClose, onSave }) {
             </div>
             <div className="form-row">
               <div className="form-group">
+                <label className="form-label">Matricule *</label>
+                <input className="form-input" placeholder="Code unique" value={form.matricule}
+                  onChange={e => set('matricule', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Téléphone</label>
+                <input className="form-input" value={form.phone}
+                  onChange={e => set('phone', e.target.value)} />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
                 <label className="form-label">Ville</label>
                 <div className="select-wrap">
                   <select className="form-select" value={form.ville} onChange={e => set('ville', e.target.value)}>
@@ -916,15 +928,10 @@ function EditAnimateurModal({ animateur, onClose, onSave }) {
                 </div>
               </div>
               <div className="form-group">
-                <label className="form-label">Téléphone</label>
-                <input className="form-input" value={form.phone}
-                  onChange={e => set('phone', e.target.value)} />
+                <label className="form-label">Team Lead</label>
+                <input className="form-input" value={form.teamLead}
+                  onChange={e => set('teamLead', e.target.value)} />
               </div>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Team Lead</label>
-              <input className="form-input" value={form.teamLead}
-                onChange={e => set('teamLead', e.target.value)} />
             </div>
           </div>
           <div className="modal-footer">
@@ -1053,7 +1060,7 @@ function AddAnimateurModal({ onClose, onAdd, defaultVille }) {
   const cities = [...new Set(ANIMATEURS_DB.map(a => a.ville))].sort();
   const [form, setForm] = useState({
     name: '', sector: '', ville: defaultVille || 'Casablanca',
-    phone: '', teamLead: ''
+    phone: '', teamLead: '', matricule: ''
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -1083,6 +1090,18 @@ function AddAnimateurModal({ onClose, onAdd, defaultVille }) {
             </div>
             <div className="form-row">
               <div className="form-group">
+                <label className="form-label">Matricule *</label>
+                <input className="form-input" placeholder="Code unique"
+                  value={form.matricule} onChange={e => set('matricule', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Téléphone</label>
+                <input className="form-input" placeholder="+212 6 XX XX XX XX"
+                  value={form.phone} onChange={e => set('phone', e.target.value)} />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
                 <label className="form-label">Ville *</label>
                 <div className="select-wrap">
                   <select className="form-select" value={form.ville} onChange={e => set('ville', e.target.value)}>
@@ -1091,15 +1110,10 @@ function AddAnimateurModal({ onClose, onAdd, defaultVille }) {
                 </div>
               </div>
               <div className="form-group">
-                <label className="form-label">Téléphone</label>
-                <input className="form-input" placeholder="+212 6 XX XX XX XX"
-                  value={form.phone} onChange={e => set('phone', e.target.value)} />
+                <label className="form-label">Secteur *</label>
+                <input className="form-input" placeholder="Ex: Hay Salam 1, Tassila 2..."
+                  value={form.sector} onChange={e => set('sector', e.target.value)} required />
               </div>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Secteur *</label>
-              <input className="form-input" placeholder="Ex: Hay Salam 1, Tassila 2..."
-                value={form.sector} onChange={e => set('sector', e.target.value)} required />
             </div>
             <div className="form-group">
               <label className="form-label">Team Lead</label>
@@ -1119,22 +1133,101 @@ function AddAnimateurModal({ onClose, onAdd, defaultVille }) {
   );
 }
 
-/* ── MAP VIEW ── */
-function MapView({ animateurs }) {
-  useEffect(() => {
-    const first = animateurs[0];
-    const center = first ? getCoord(first.ville, first.id) : { lat:33.5731, lng:-7.5898 };
-    const map = L.map('map').setView([center.lat, center.lng], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'© OpenStreetMap' }).addTo(map);
-    animateurs.forEach(a => {
-      const meta = STATUS_META[a.status] || STATUS_META.nonpointe;
-      const c    = getCoord(a.ville, a.id);
-      const m    = L.circleMarker([c.lat, c.lng], { radius:11, fillColor:meta.mapColor, color:'white', weight:3, fillOpacity:0.9 }).addTo(map);
-      m.bindPopup(`<strong>${a.name}</strong><br><small>${a.sector} · ${a.ville}</small><br><span style="color:${meta.mapColor};font-weight:700">${meta.label}</span>`);
-    });
-    return () => map.remove();
-  }, [animateurs]);
-  return <div id="map"></div>;
+/* ── KPI VIEW ── */
+function KpiView({ animateurs }) {
+  const total    = animateurs.length;
+  const present  = animateurs.filter(a => a.status === 'present').length;
+  const renfort  = animateurs.filter(a => a.status === 'renfort').length;
+  const absent   = animateurs.filter(a => a.status === 'absent').length;
+  const malade   = animateurs.filter(a => a.status === 'malade').length;
+  const demission= animateurs.filter(a => a.status === 'demission').length;
+  const recupe   = animateurs.filter(a => a.status === 'recupe').length;
+  const conge    = animateurs.filter(a => a.status === 'conge').length;
+  const nonPointe= animateurs.filter(a => a.status === 'nonpointe' || !a.status).length;
+
+  const allSectors      = [...new Set(animateurs.map(a => a.sector))];
+  const coveredSectors  = [...new Set(animateurs.filter(a => a.status === 'present' || a.status === 'renfort').map(a => a.sector))];
+  const uncoveredSectors= allSectors.filter(s => !coveredSectors.includes(s));
+  const sectorPct       = allSectors.length > 0 ? Math.round(coveredSectors.length / allSectors.length * 100) : 0;
+  const presencePct     = total > 0 ? Math.round((present + renfort) / total * 100) : 0;
+
+  const absentList = animateurs.filter(a => ['absent','malade','demission','recupe','conge'].includes(a.status));
+
+  return (
+    <div style={{padding:'16px',overflowY:'auto',height:'calc(100vh - 52px - 68px)'}}>
+      {/* KPI Cards */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16}}>
+        <div style={{background:'#DCFCE7',borderRadius:14,padding:'14px 16px'}}>
+          <div style={{fontSize:10,fontWeight:700,color:'#15803D',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:6}}>Secteurs couverts</div>
+          <div style={{fontSize:28,fontWeight:800,color:'#15803D',fontFamily:'var(--font-mono)',lineHeight:1}}>{coveredSectors.length}<span style={{fontSize:14,fontWeight:600,color:'#4ADE80'}}>/{allSectors.length}</span></div>
+          <div style={{marginTop:8,height:5,background:'#BBF7D0',borderRadius:3,overflow:'hidden'}}>
+            <div style={{height:'100%',background:'#22C55E',borderRadius:3,width:`${sectorPct}%`,transition:'width 0.5s'}}></div>
+          </div>
+          <div style={{fontSize:11,color:'#16A34A',fontWeight:600,marginTop:4}}>{sectorPct}% couverts</div>
+        </div>
+        <div style={{background:'#FEE2E2',borderRadius:14,padding:'14px 16px'}}>
+          <div style={{fontSize:10,fontWeight:700,color:'#B91C1C',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:6}}>Non couverts</div>
+          <div style={{fontSize:28,fontWeight:800,color:'#B91C1C',fontFamily:'var(--font-mono)',lineHeight:1}}>{uncoveredSectors.length}</div>
+          <div style={{fontSize:11,color:'#DC2626',fontWeight:600,marginTop:12}}>{100-sectorPct}% des secteurs</div>
+        </div>
+        <div style={{background:'#EFF6FF',borderRadius:14,padding:'14px 16px'}}>
+          <div style={{fontSize:10,fontWeight:700,color:'#1D4ED8',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:6}}>Taux présence</div>
+          <div style={{fontSize:28,fontWeight:800,color:'#1D4ED8',fontFamily:'var(--font-mono)',lineHeight:1}}>{presencePct}<span style={{fontSize:16}}>%</span></div>
+          <div style={{fontSize:11,color:'#3B82F6',fontWeight:600,marginTop:6}}>{present} présents · {renfort} renforts</div>
+        </div>
+        <div style={{background:'#F8FAFC',borderRadius:14,padding:'14px 16px',border:'1px solid #E2E8F0'}}>
+          <div style={{fontSize:10,fontWeight:700,color:'#64748B',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:6}}>Non pointés</div>
+          <div style={{fontSize:28,fontWeight:800,color:'#64748B',fontFamily:'var(--font-mono)',lineHeight:1}}>{nonPointe}</div>
+          <div style={{fontSize:11,color:'#94A3B8',fontWeight:600,marginTop:6}}>sur {total} animateurs</div>
+        </div>
+      </div>
+
+      {/* Secteurs non couverts */}
+      {uncoveredSectors.length > 0 && (
+        <div style={{background:'#FFF7ED',borderRadius:12,padding:'12px 14px',marginBottom:14,border:'1px solid #FED7AA'}}>
+          <div style={{fontSize:11,fontWeight:700,color:'#C2410C',marginBottom:8,textTransform:'uppercase',letterSpacing:'0.5px'}}>
+            <i data-lucide="alert-triangle" style={{width:13,height:13,display:'inline',marginRight:5}}></i>
+            Secteurs sans présence
+          </div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
+            {uncoveredSectors.map(s => (
+              <span key={s} style={{fontSize:11,padding:'3px 9px',background:'#FFEDD5',color:'#C2410C',borderRadius:99,fontWeight:600}}>{s}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Liste absents */}
+      {absentList.length > 0 && (
+        <div style={{background:'white',borderRadius:12,border:'1px solid #E2E8F0',overflow:'hidden'}}>
+          <div style={{padding:'10px 14px',borderBottom:'1px solid #F1F5F9',fontSize:11,fontWeight:700,color:'#64748B',textTransform:'uppercase',letterSpacing:'0.5px'}}>
+            Animateurs hors présence ({absentList.length})
+          </div>
+          {absentList.map(a => {
+            const meta = STATUS_META[a.status] || STATUS_META.nonpointe;
+            return (
+              <div key={a.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderBottom:'1px solid #F8FAFC'}}>
+                <div style={{width:32,height:32,borderRadius:'50%',background:meta.dotColor+'20',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  <i data-lucide={meta.icon} style={{width:14,height:14,color:meta.dotColor}}></i>
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:600,fontSize:13,color:'#0F172A'}}>{a.name}</div>
+                  <div style={{fontSize:11,color:'#94A3B8'}}>{a.sector}</div>
+                </div>
+                <span style={{fontSize:11,fontWeight:700,padding:'3px 9px',borderRadius:99,background:meta.dotColor+'20',color:meta.dotColor,flexShrink:0}}>{meta.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {absentList.length === 0 && (
+        <div style={{textAlign:'center',padding:'24px',color:'#94A3B8',fontSize:13}}>
+          <i data-lucide="check-circle" style={{width:32,height:32,color:'#22C55E',display:'block',margin:'0 auto 8px'}}></i>
+          Aucun animateur hors présence
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* ── HISTORY VIEW ── */
@@ -1498,6 +1591,7 @@ function App() {
     const newAnim = {
       id, name: form.name.trim(), sector: form.sector.trim(),
       ville: form.ville, phone: form.phone || '',
+      matricule: form.matricule || '',
       teamLead: form.teamLead || user.name,
     };
     db.ref(`ptg/animateurs/${id}`).set(newAnim);
@@ -1527,7 +1621,7 @@ function App() {
     : animateurs).filter(a => a.actif !== false);
   const unpointed = visibleAnimateurs.filter(a => a.status === 'nonpointe').length;
   const barTitle  = selectedAnimateur ? 'Pointage' :
-    { list:'Animateurs', map:'Carte', history:'Historique', profile:'Profil' }[currentView];
+    { list:'Animateurs', kpi:'Vue KPI', history:'Historique', profile:'Profil' }[currentView];
 
   return (
     <div className="mobile-container">
@@ -1579,10 +1673,8 @@ function App() {
         {currentView === 'list' && selectedAnimateur && (
           <PointageForm animateur={selectedAnimateur} onBack={() => setSelectedAnimateur(null)} onConfirm={handleConfirmPointage} onEdit={handleEditAnimateur} onDelete={handleDeleteAnimateur} />
         )}
-        {currentView === 'map' && (
-          <div className="map-container">
-            <MapView animateurs={user.ville ? animateurs.filter(a=>a.ville===user.ville) : animateurs} />
-          </div>
+        {currentView === 'kpi' && (
+          <KpiView animateurs={visibleAnimateurs} />
         )}
         {currentView === 'history' && <HistoryView userEmail={user.email} />}
         {currentView === 'profile' && <ProfileView user={user} animateurs={visibleAnimateurs} onLogout={handleLogout} />}
@@ -1591,10 +1683,10 @@ function App() {
       {!selectedAnimateur && (
         <div className="bottom-nav">
           {[
-            { key:'list',    icon:'users',   label:'Animateurs', badge:unpointed },
-            { key:'map',     icon:'map',     label:'Carte',      badge:0 },
-            { key:'history', icon:'clock',   label:'Historique', badge:todayCount },
-            { key:'profile', icon:'user',    label:'Profil',     badge:0 },
+            { key:'list',    icon:'users',          label:'Animateurs', badge:unpointed },
+            { key:'kpi',     icon:'bar-chart-2',   label:'KPI',        badge:0 },
+            { key:'history', icon:'clock',          label:'Historique', badge:todayCount },
+            { key:'profile', icon:'user',           label:'Profil',     badge:0 },
           ].map(item => (
             <button key={item.key} className={`nav-item ${currentView === item.key ? 'active' : ''}`}
               onClick={() => setCurrentView(item.key)}>
