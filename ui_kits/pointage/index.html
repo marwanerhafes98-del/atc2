@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Pointage · ATC2</title>
+  <title>RTM FIELD TRACKER · ATC2</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231D4ED8'/><rect x='10' y='12' width='12' height='14' rx='2.5' fill='none' stroke='white' stroke-width='1.8'/><rect x='13' y='8.5' width='6' height='5.5' rx='2' fill='white'/><path d='M13 19 L15.5 21.5 L20.5 15.5' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/></svg>">
   <link rel="stylesheet" href="../../colors_and_type.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -585,7 +585,7 @@ function LoginScreen({ onLogin }) {
         <div className="login-logo-circle">
           <i data-lucide="clipboard-check" style={{ width:44, height:44, color:'var(--primary-600)' }}></i>
         </div>
-        <div className="login-title">OUTILS POINTAGE</div>
+        <div className="login-title">RTM FIELD TRACKER</div>
         <div className="login-subtitle">Team Lead</div>
       </div>
 
@@ -728,6 +728,11 @@ function AnimateursList({ animateurs, onSelectAnimateur, defaultVille }) {
     conge:     bySector.filter(a => a.status === 'conge').length,
     renfort:   bySector.filter(a => a.status === 'renfort').length,
   };
+  const allSectors     = [...new Set(bySector.map(a => a.sector))];
+  const coveredSectors = [...new Set(bySector.filter(a => a.status === 'present' || a.status === 'renfort').map(a => a.sector))];
+  const sectorCovered  = coveredSectors.length;
+  const sectorTotal    = allSectors.length;
+  const sectorGap      = sectorTotal - sectorCovered;
 
   // ── Filtre 3 : STATUT ──
   const statusFilters = [
@@ -827,6 +832,9 @@ function AnimateursList({ animateurs, onSelectAnimateur, defaultVille }) {
         {counts.recupe  > 0 && <div className="stat-chip stat-recupe"><span className="stat-chip-dot"></span>{counts.recupe} Récupe</div>}
         {counts.conge   > 0 && <div className="stat-chip stat-conge"><span className="stat-chip-dot"></span>{counts.conge} Congé</div>}
         {counts.renfort > 0 && <div className="stat-chip stat-renfort"><span className="stat-chip-dot"></span>{counts.renfort} Renfort</div>}
+        <div style={{width:1,background:'var(--neutral-200)',alignSelf:'stretch',margin:'0 4px',flexShrink:0}}></div>
+        <div className="stat-chip" style={{background:'#DCFCE7',color:'#15803D'}}><span className="stat-chip-dot" style={{background:'#22C55E'}}></span>{sectorCovered}/{sectorTotal} Couverts</div>
+        {sectorGap > 0 && <div className="stat-chip" style={{background:'#FEE2E2',color:'#B91C1C'}}><span className="stat-chip-dot" style={{background:'#EF4444'}}></span>{sectorGap} Non couvert{sectorGap>1?'s':''}</div>}
       </div>
 
       {/* ── FILTRE STATUT ── */}

@@ -2424,16 +2424,16 @@ function ImportAnimateursModal({ animateurs, accounts, onClose, onImported }) {
   const downloadTemplate = () => {
     const sorted = [...animateurs].sort((a,b) => a.ville.localeCompare(b.ville) || a.teamLead.localeCompare(b.teamLead) || a.name.localeCompare(b.name));
     const data = [
-      ['TEAM LEAD','EMAIL','VILLE','NOM ANIMATEUR','SECTEUR'],
+      ['TEAM LEAD','EMAIL','VILLE','NOM ANIMATEUR','SECTEUR','MATRICULE','TÉLÉPHONE'],
       ...sorted.map(a => {
         const acc = accounts.find(ac => ac.name === a.teamLead);
-        return [a.teamLead, acc?.email || '', a.ville, a.name, a.sector];
+        return [a.teamLead, acc?.email || '', a.ville, a.name, a.sector, a.matricule||'', a.phone||''];
       }),
     ];
     const ws = XLSX.utils.aoa_to_sheet(data);
-    ws['!cols'] = [{wch:24},{wch:28},{wch:14},{wch:26},{wch:26}];
+    ws['!cols'] = [{wch:24},{wch:28},{wch:14},{wch:26},{wch:26},{wch:14},{wch:16}];
     const hStyle = { font:{bold:true,color:{rgb:'FFFFFF'},sz:11}, fill:{fgColor:{rgb:'0052CC'}}, alignment:{horizontal:'center'} };
-    ['A1','B1','C1','D1','E1'].forEach(c => { if (ws[c]) ws[c].s = hStyle; });
+    ['A1','B1','C1','D1','E1','F1','G1'].forEach(c => { if (ws[c]) ws[c].s = hStyle; });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Animateurs');
     XLSX.writeFile(wb, 'template_animateurs.xlsx');
@@ -2456,6 +2456,8 @@ function ImportAnimateursModal({ animateurs, accounts, onClose, onImported }) {
         const colV   = hdr.indexOf('VILLE');
         const colN   = hdr.indexOf('NOM ANIMATEUR');
         const colS   = hdr.indexOf('SECTEUR');
+        const colMat = hdr.indexOf('MATRICULE');
+        const colPh  = hdr.indexOf('TÉLÉPHONE');
         if ([colTL,colMail,colV,colN,colS].includes(-1)) {
           setPreview({ error:'Colonnes manquantes — utilisez le template fourni.' }); return;
         }
@@ -2468,11 +2470,13 @@ function ImportAnimateursModal({ animateurs, accounts, onClose, onImported }) {
           const ville    = VILLES.find(v => v.toLowerCase() === villeRaw.toLowerCase()) || villeRaw;
           const name     = String(row[colN]||'').trim();
           const sector   = String(row[colS]||'').trim();
+          const matricule= colMat >= 0 ? String(row[colMat]||'').trim() : '';
+          const phone    = colPh  >= 0 ? String(row[colPh] ||'').trim() : '';
           if (!name) return;
           if (!teamLead || !ville || !sector) { errors.push({ row:i+2, name, reason:'Données incomplètes (TL, ville ou secteur manquant)' }); return; }
           const existing = animateurs.find(a => a.name.toLowerCase() === name.toLowerCase());
-          if (existing) toUpdate.push({ ...existing, teamLead, ville, sector, tlEmail });
-          else          toCreate.push({ name, teamLead, ville, sector, phone:'', tlEmail });
+          if (existing) toUpdate.push({ ...existing, teamLead, ville, sector, matricule, phone, tlEmail });
+          else          toCreate.push({ name, teamLead, ville, sector, matricule, phone, tlEmail });
         });
         setPreview({ toUpdate, toCreate, errors });
       } catch { setPreview({ error:'Impossible de lire le fichier.' }); }
@@ -2491,7 +2495,7 @@ function ImportAnimateursModal({ animateurs, accounts, onClose, onImported }) {
       });
       const maxId = Math.max(...animateurs.map(a => a.id), 0);
       let next = maxId + 1;
-      preview.toCreate.forEach(a => { updates[next] = { id:next, name:a.name, teamLead:a.teamLead, ville:a.ville, sector:a.sector, phone:a.phone||'' }; next++; });
+      preview.toCreate.forEach(a => { updates[next] = { id:next, name:a.name, teamLead:a.teamLead, ville:a.ville, sector:a.sector, matricule:a.matricule||'', phone:a.phone||'' }; next++; });
       await db.ref('ptg/animateurs').update(updates);
 
       // Update TL account emails where the Excel provides one
