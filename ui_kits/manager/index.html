@@ -233,6 +233,9 @@
     .day-chip-malade    { background:#FEF3C7; color:#B45309; }
     .day-chip-demission { background:#F3E8FF; color:#6B21A8; }
     .day-chip-none      { background:var(--neutral-100); color:var(--neutral-400); }
+    .day-chip-recupe    { background:#CFFAFE; color:#0E7490; }
+    .day-chip-conge     { background:#E0E7FF; color:#4338CA; }
+    .day-chip-renfort   { background:#FFEDD5; color:#C2410C; }
     .week-total-chip { display:inline-flex; align-items:center; justify-content:center; width:34px; height:22px; border-radius:6px; font-size:12px; font-weight:800; }
     .today-col-hd { background:var(--primary-50); color:var(--primary-700); }
 
@@ -302,8 +305,8 @@ const MANAGER_PASSWORD = 'manager2026';
 const CITY_COLORS = { 'Agadir':'#0052CC','Beni Mellal':'#0EA5E9','Casablanca':'#8B5CF6','Fes':'#F97316','Marrakech':'#EC4899','Meknes':'#14B8A6','Oqba':'#F59E0B','Rabat':'#22C55E','Tanger':'#EF4444' };
 const AVATAR_PALETTE = ['#0052CC','#0EA5E9','#8B5CF6','#EC4899','#14B8A6','#F97316','#22C55E','#EF4444'];
 const VILLES = ['Agadir','Beni Mellal','Casablanca','Fes','Marrakech','Meknes','Oqba','Rabat','Tanger'];
-const STATUS_FR = { present:'Présent', absent:'Absent', malade:'Malade', demission:'Démission', nonpointe:'Non pointé' };
-const STATUS_COLOR = { present:'#16A34A', absent:'#DC2626', malade:'#D97706', demission:'#7C3AED', nonpointe:'#64748B' };
+const STATUS_FR = { present:'Présent', absent:'Absent', malade:'Malade', demission:'Démission', nonpointe:'Non pointé', recupe:'Récupe', conge:'Congé', renfort:'Renfort' };
+const STATUS_COLOR = { present:'#16A34A', absent:'#DC2626', malade:'#D97706', demission:'#7C3AED', nonpointe:'#64748B', recupe:'#0E7490', conge:'#4338CA', renfort:'#C2410C' };
 
 /* ── TL NAME → EMAIL MAPPING (mirrors TEAM_LEADS_DB in pointage tool) ── */
 const TL_NAME_TO_EMAIL = {
@@ -478,7 +481,7 @@ function getPtgForAnim(anim, todayPtgs) {
 }
 
 function computeStats(animList, todayPtgs) {
-  const s = { total:animList.length, present:0, absent:0, malade:0, demission:0, nonPointe:0, pointed:0 };
+  const s = { total:animList.length, present:0, absent:0, malade:0, demission:0, nonPointe:0, pointed:0, recupe:0, conge:0, renfort:0 };
   const allSectors = new Set(animList.map(a => a.sector));
   const coveredSectors = new Set();
   animList.forEach(a => {
@@ -490,6 +493,9 @@ function computeStats(animList, todayPtgs) {
       else if (ptg.status === 'absent')    s.absent++;
       else if (ptg.status === 'malade')    s.malade++;
       else if (ptg.status === 'demission') s.demission++;
+      else if (ptg.status === 'recupe')    s.recupe++;
+      else if (ptg.status === 'conge')     s.conge++;
+      else if (ptg.status === 'renfort')   { s.renfort++; coveredSectors.add(a.sector); }
     }
   });
   s.tauxPresence   = s.total > 0 ? Math.round(s.present   / s.total * 100) : 0;
@@ -1398,7 +1404,7 @@ function toISODate(d) {
 }
 
 function exportJournalXLSX(rows, dateLabel) {
-  const STATUS_COLORS = { present:'DCFCE7', absent:'FEE2E2', malade:'FEF3C7', demission:'F3E8FF' };
+  const STATUS_COLORS = { present:'DCFCE7', absent:'FEE2E2', malade:'FEF3C7', demission:'F3E8FF', recupe:'CFFAFE', conge:'E0E7FF', renfort:'FFEDD5' };
   const hStyle = { font:{bold:true,color:{rgb:'FFFFFF'},sz:12}, fill:{fgColor:{rgb:'0052CC'}}, alignment:{horizontal:'center',vertical:'center'} };
   const headers = ['Date','Animateur','Ville','Team Lead','Statut','Heure','Note'];
   const ws_data = [headers, ...rows.map(p => [
@@ -1428,7 +1434,7 @@ function exportJournalXLSX(rows, dateLabel) {
 
 function exportWeeklyXLSX(rows, weekDays) {
   const DAY_FR = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
-  const STATUS_COLORS = { present:'DCFCE7', absent:'FEE2E2', malade:'FEF3C7', demission:'F3E8FF' };
+  const STATUS_COLORS = { present:'DCFCE7', absent:'FEE2E2', malade:'FEF3C7', demission:'F3E8FF', recupe:'CFFAFE', conge:'E0E7FF', renfort:'FFEDD5' };
   const hStyle = { font:{bold:true,color:{rgb:'FFFFFF'},sz:11}, fill:{fgColor:{rgb:'0052CC'}}, alignment:{horizontal:'center'} };
   const dayHeaders = weekDays.map((d,i) => `${DAY_FR[i]} ${d.getDate()}/${d.getMonth()+1}`);
   const headers = ['Animateur','Ville','Team Lead',...dayHeaders,'Total sem.'];
@@ -1474,7 +1480,7 @@ function exportRangeXLSX(allPointages, accounts, fromStr, toStr) {
   inRange.sort((a,b) => new Date(a.date)-new Date(b.date) || (a.animateurName||'').localeCompare(b.animateurName||''));
   const tlMap = {};
   accounts.forEach(a => { tlMap[a.email] = a.name; });
-  const STATUS_COLORS = { present:'DCFCE7', absent:'FEE2E2', malade:'FEF3C7', demission:'F3E8FF' };
+  const STATUS_COLORS = { present:'DCFCE7', absent:'FEE2E2', malade:'FEF3C7', demission:'F3E8FF', recupe:'CFFAFE', conge:'E0E7FF', renfort:'FFEDD5' };
   const hStyle = { font:{bold:true,color:{rgb:'FFFFFF'},sz:11}, fill:{fgColor:{rgb:'0052CC'}}, alignment:{horizontal:'center'} };
   const DAY_FR = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
   const headers = ['Date','Jour','Animateur','Ville','Team Lead','Statut','Heure','Note'];
@@ -1554,6 +1560,9 @@ function ActivityView({ pointages, accounts }) {
     absent:    { label:'Absent',    color:'#DC2626', icon:'x-circle' },
     malade:    { label:'Malade',    color:'#D97706', icon:'thermometer' },
     demission: { label:'Démission', color:'#7C3AED', icon:'user-minus' },
+    recupe:    { label:'Récupe',    color:'#0E7490', icon:'refresh-cw' },
+    conge:     { label:'Congé',     color:'#4338CA', icon:'umbrella' },
+    renfort:   { label:'Renfort',   color:'#C2410C', icon:'shield-plus' },
   };
 
   const dateLabel = selectedDate
@@ -1613,6 +1622,9 @@ function ActivityView({ pointages, accounts }) {
           <option value="absent">Absent</option>
           <option value="malade">Malade</option>
           <option value="demission">Démission</option>
+          <option value="recupe">Récupe</option>
+          <option value="conge">Congé</option>
+          <option value="renfort">Renfort</option>
         </select>
       </div>
 
@@ -1768,8 +1780,8 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
 
   const renderDayChip = (status) => {
     if (!status) return <span className="day-chip day-chip-none">—</span>;
-    const map = { present:'P', absent:'A', malade:'M', demission:'D' };
-    const cls = { present:'day-chip-present', absent:'day-chip-absent', malade:'day-chip-malade', demission:'day-chip-demission' };
+    const map = { present:'P', absent:'A', malade:'M', demission:'D', recupe:'R', conge:'C', renfort:'RF' };
+    const cls = { present:'day-chip-present', absent:'day-chip-absent', malade:'day-chip-malade', demission:'day-chip-demission', recupe:'day-chip-recupe', conge:'day-chip-conge', renfort:'day-chip-renfort' };
     return <span className={`day-chip ${cls[status]||'day-chip-none'}`}>{map[status]||'?'}</span>;
   };
 
@@ -1832,6 +1844,9 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
           <option value="malade">Malade</option>
           <option value="demission">Démission</option>
           <option value="nonpointe">Non pointé</option>
+          <option value="recupe">Récupe</option>
+          <option value="conge">Congé</option>
+          <option value="renfort">Renfort</option>
         </select>
         <div className="af-spacer"></div>
         <div style={{fontSize:12,color:'var(--neutral-500)',fontWeight:600}}>
@@ -1873,12 +1888,15 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
 
       {/* Legend */}
       <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
-        {[{cls:'day-chip-present',label:'P = Présent'},
-          {cls:'day-chip-absent', label:'A = Absent'},
-          {cls:'day-chip-malade', label:'M = Malade'},
+        {[{cls:'day-chip-present',  label:'P = Présent'},
+          {cls:'day-chip-absent',   label:'A = Absent'},
+          {cls:'day-chip-malade',   label:'M = Malade'},
           {cls:'day-chip-demission',label:'D = Démission'},
-          {cls:'day-chip-none',  label:'— = Non pointé'}
-        ].map(l => <span key={l.label}><span className={`day-chip ${l.cls}`}>{l.label.split(' ')[0]}</span><span style={{fontSize:11,color:'var(--neutral-500)',marginLeft:5}}>{l.label.slice(4)}</span></span>)}
+          {cls:'day-chip-recupe',   label:'R = Récupe'},
+          {cls:'day-chip-conge',    label:'C = Congé'},
+          {cls:'day-chip-renfort',  label:'RF = Renfort'},
+          {cls:'day-chip-none',     label:'— = Non pointé'}
+        ].map(l => <span key={l.label}><span className={`day-chip ${l.cls}`}>{l.label.split(' ')[0]}</span><span style={{fontSize:11,color:'var(--neutral-500)',marginLeft:5}}>{l.label.slice(l.label.indexOf('=')+2)}</span></span>)}
       </div>
 
       {/* Table */}

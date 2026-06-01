@@ -94,6 +94,9 @@
     .stat-malade  { background:#FEF3C7; color:#B45309; } .stat-malade  .stat-chip-dot { background:#F59E0B; }
     .stat-demission { background:#F3E8FF; color:#6B21A8; } .stat-demission .stat-chip-dot { background:#A855F7; }
     .stat-nonpointe { background:var(--neutral-100); color:var(--neutral-600); } .stat-nonpointe .stat-chip-dot { background:var(--neutral-400); }
+    .stat-recupe  { background:#CFFAFE; color:#0E7490; } .stat-recupe  .stat-chip-dot { background:#06B6D4; }
+    .stat-conge   { background:#E0E7FF; color:#4338CA; } .stat-conge   .stat-chip-dot { background:#6366F1; }
+    .stat-renfort { background:#FFEDD5; color:#C2410C; } .stat-renfort .stat-chip-dot { background:#F97316; }
 
     /* LIST HEADER */
     .list-header { padding:14px 16px 0; background:white; position:sticky; top:52px; z-index:50; border-bottom:1px solid var(--neutral-100); }
@@ -134,6 +137,9 @@
     .s-malade   { background:#FEF3C7; color:#B45309; } .s-malade   .status-dot { background:#F59E0B; }
     .s-demission{ background:#F3E8FF; color:#7C3AED; } .s-demission .status-dot { background:#A855F7; }
     .s-nonpointe{ background:var(--neutral-100); color:var(--neutral-500); } .s-nonpointe .status-dot { background:var(--neutral-400); }
+    .s-recupe  { background:#CFFAFE; color:#0E7490; } .s-recupe  .status-dot { background:#06B6D4; }
+    .s-conge   { background:#E0E7FF; color:#4338CA; } .s-conge   .status-dot { background:#6366F1; }
+    .s-renfort { background:#FFEDD5; color:#C2410C; } .s-renfort .status-dot { background:#F97316; }
 
     .empty-state { padding:48px 24px; text-align:center; color:var(--neutral-400); }
     .empty-state-text { font-size:14px; font-weight:500; margin-top:12px; }
@@ -160,6 +166,9 @@
     .status-btn.btn-absent    { color:#B91C1C; } .status-btn.btn-absent.selected    { background:#FEE2E2; }
     .status-btn.btn-malade    { color:#B45309; } .status-btn.btn-malade.selected    { background:#FEF3C7; }
     .status-btn.btn-demission { color:#7C3AED; } .status-btn.btn-demission.selected { background:#F3E8FF; }
+    .status-btn.btn-recupe  { color:#0E7490; } .status-btn.btn-recupe.selected  { background:#CFFAFE; }
+    .status-btn.btn-conge   { color:#4338CA; } .status-btn.btn-conge.selected   { background:#E0E7FF; }
+    .status-btn.btn-renfort { color:#C2410C; } .status-btn.btn-renfort.selected { background:#FFEDD5; }
     .note-area { width:100%; min-height:72px; padding:10px 12px; border:1.5px solid var(--neutral-200); border-radius:var(--radius-md); font-size:14px; font-family:var(--font-sans); resize:none; color:var(--neutral-800); background:var(--neutral-50); transition:all 150ms; margin-bottom:14px; }
     .note-area:focus { outline:none; border-color:var(--primary-400); background:white; }
     .gps-card { background:#EFF6FF; border:1px solid #BFDBFE; border-radius:var(--radius-md); padding:11px 13px; display:flex; align-items:center; gap:11px; margin-bottom:16px; }
@@ -451,6 +460,9 @@ const STATUS_META = {
   malade:    { label:'Malade',    cls:'s-malade',    dotColor:'#F59E0B', mapColor:'#D97706', icon:'thermometer' },
   demission: { label:'Démission', cls:'s-demission', dotColor:'#A855F7', mapColor:'#7C3AED', icon:'user-minus' },
   nonpointe: { label:'Non pointé',cls:'s-nonpointe', dotColor:'#94A3B8', mapColor:'#64748B', icon:'clock' },
+  recupe:    { label:'Récupe',    cls:'s-recupe',    dotColor:'#06B6D4', mapColor:'#0E7490', icon:'refresh-cw' },
+  conge:     { label:'Congé',     cls:'s-conge',     dotColor:'#6366F1', mapColor:'#4338CA', icon:'umbrella' },
+  renfort:   { label:'Renfort',   cls:'s-renfort',   dotColor:'#F97316', mapColor:'#C2410C', icon:'shield-plus' },
 };
 
 const NOW_TIME = () => new Date().toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
@@ -712,6 +724,9 @@ function AnimateursList({ animateurs, onSelectAnimateur, defaultVille }) {
     malade:    bySector.filter(a => a.status === 'malade').length,
     demission: bySector.filter(a => a.status === 'demission').length,
     nonpointe: bySector.filter(a => a.status === 'nonpointe').length,
+    recupe:    bySector.filter(a => a.status === 'recupe').length,
+    conge:     bySector.filter(a => a.status === 'conge').length,
+    renfort:   bySector.filter(a => a.status === 'renfort').length,
   };
 
   // ── Filtre 3 : STATUT ──
@@ -722,6 +737,9 @@ function AnimateursList({ animateurs, onSelectAnimateur, defaultVille }) {
     { key:'absent',    label:`Absents (${counts.absent})` },
     { key:'malade',    label:`Malades (${counts.malade})` },
     { key:'demission', label:`Démissions (${counts.demission})` },
+    { key:'recupe',    label:`Récupe (${counts.recupe})` },
+    { key:'conge',     label:`Congé (${counts.conge})` },
+    { key:'renfort',   label:`Renfort (${counts.renfort})` },
   ];
 
   const filtered = bySector.filter(a => {
@@ -806,6 +824,9 @@ function AnimateursList({ animateurs, onSelectAnimateur, defaultVille }) {
         <div className="stat-chip stat-malade"><span className="stat-chip-dot"></span>{counts.malade} Malades</div>
         <div className="stat-chip stat-demission"><span className="stat-chip-dot"></span>{counts.demission} Démissions</div>
         <div className="stat-chip stat-nonpointe"><span className="stat-chip-dot"></span>{counts.nonpointe} Non pointés</div>
+        {counts.recupe  > 0 && <div className="stat-chip stat-recupe"><span className="stat-chip-dot"></span>{counts.recupe} Récupe</div>}
+        {counts.conge   > 0 && <div className="stat-chip stat-conge"><span className="stat-chip-dot"></span>{counts.conge} Congé</div>}
+        {counts.renfort > 0 && <div className="stat-chip stat-renfort"><span className="stat-chip-dot"></span>{counts.renfort} Renfort</div>}
       </div>
 
       {/* ── FILTRE STATUT ── */}
@@ -933,6 +954,9 @@ function PointageForm({ animateur, onBack, onConfirm, onEdit, onDelete }) {
     { key:'absent',    label:'Absent',    icon:'x-circle',     cls:'btn-absent' },
     { key:'malade',    label:'Malade',    icon:'thermometer',  cls:'btn-malade' },
     { key:'demission', label:'Démission', icon:'user-minus',   cls:'btn-demission' },
+    { key:'recupe',    label:'Récupe',    icon:'refresh-cw',   cls:'btn-recupe' },
+    { key:'conge',     label:'Congé',     icon:'umbrella',     cls:'btn-conge' },
+    { key:'renfort',   label:'Renfort',   icon:'shield-plus',  cls:'btn-renfort' },
   ];
 
   return (
@@ -1456,7 +1480,7 @@ function App() {
     const entry = { animateurId:id, animateurName:a.name, ville:a.ville, sector:a.sector, status, note, time };
     setHistory(prev => [...prev, entry]);
     LS.writePointage(user.email, entry);
-    const toastType = { present:'success', absent:'error', malade:'warning', demission:'info' };
+    const toastType = { present:'success', absent:'error', malade:'warning', demission:'info', recupe:'info', conge:'info', renfort:'success' };
     showToast(`${a.name} — ${STATUS_META[status].label}`, toastType[status]);
     setSelectedAnimateur(null);
   };
