@@ -1577,12 +1577,18 @@ function App() {
   const handleConfirmPointage = (id, status, note, coords) => {
     const time = NOW_TIME();
     const a    = animateurs.find(a => a.id === id);
-    setAnimateurs(prev => prev.map(x => x.id === id ? { ...x, status, note:note||undefined, pointedAt:time } : x));
     const entry = { animateurId:id, animateurName:a.name, ville:a.ville, sector:a.sector, status, note, time };
     setHistory(prev => [...prev, entry]);
     LS.writePointage(user.email, entry);
     const toastType = { present:'success', absent:'error', malade:'warning', demission:'info', recupe:'info', conge:'info', renfort:'success' };
-    showToast(`${a.name} — ${STATUS_META[status].label}`, toastType[status]);
+    if (status === 'demission') {
+      db.ref(`ptg/animateurs/${id}`).update({ actif: false });
+      setAnimateurs(prev => prev.filter(x => x.id !== id));
+      showToast(`${a.name} — Démission enregistrée, animateur désactivé`, 'info');
+    } else {
+      setAnimateurs(prev => prev.map(x => x.id === id ? { ...x, status, note:note||undefined, pointedAt:time } : x));
+      showToast(`${a.name} — ${STATUS_META[status].label}`, toastType[status]);
+    }
     setSelectedAnimateur(null);
   };
 
