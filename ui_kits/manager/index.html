@@ -468,15 +468,31 @@ function parseKML(kmlText) {
   try {
     const doc = new DOMParser().parseFromString(kmlText, 'text/xml');
     const result = [];
-    doc.querySelectorAll('Placemark').forEach(pm => {
+    const parsePoints = (cn) => {
+      const points = [];
+      cn.textContent.trim().split(/\s+/).forEach(token => {
+        const [lng, lat] = token.split(',').map(Number);
+        if (!isNaN(lat) && !isNaN(lng)) points.push([lat, lng]);
+      });
+      return points;
+    };
+    // Placemarks inside Folder (Google My Maps layers = villes)
+    doc.querySelectorAll('Folder').forEach(folder => {
+      const folderName = folder.querySelector(':scope > name')?.textContent?.trim() || '';
+      folder.querySelectorAll('Placemark').forEach(pm => {
+        const name = pm.querySelector('name')?.textContent?.trim() || '';
+        pm.querySelectorAll('coordinates').forEach(cn => {
+          const points = parsePoints(cn);
+          if (points.length >= 3) result.push({ name, folder: folderName, coordinates: points });
+        });
+      });
+    });
+    // Placemarks directly under Document (no folder)
+    doc.querySelectorAll('Document > Placemark').forEach(pm => {
       const name = pm.querySelector('name')?.textContent?.trim() || '';
       pm.querySelectorAll('coordinates').forEach(cn => {
-        const points = [];
-        cn.textContent.trim().split(/\s+/).forEach(token => {
-          const [lng, lat] = token.split(',').map(Number);
-          if (!isNaN(lat) && !isNaN(lng)) points.push([lat, lng]);
-        });
-        if (points.length >= 3) result.push({ name, coordinates: points });
+        const points = parsePoints(cn);
+        if (points.length >= 3) result.push({ name, folder: '', coordinates: points });
       });
     });
     return result;
@@ -3690,6 +3706,93 @@ function ScoresView({ pointages, animateurs, accounts }) {
   );
 }
 
+/* ── UNASSIGNED MATRIX ── */
+function UnassignedMatrix({ polygons, animateurs }) {
+  const [expanded, setExpanded] = React.useState(new Set());
+  const toggle = (city) => setExpanded(prev => {
+    const next = new Set(prev);
+    next.has(city) ? next.delete(city) : next.add(city);
+    return next;
+  });
+
+  // Groupe les polygones sans animateur par dossier KML (= ville dans Google My Maps)
+  const byCity = React.useMemo(() => {
+    const map = {};
+    polygons.forEach(poly => {
+      const hasAnim = animateurs.find(a =>
+        (a.sector||'').toLowerCase().trim() === poly.name.toLowerCase().trim()
+      );
+      if (!hasAnim) {
+        const city = poly.folder || 'Non rattaché';
+        if (!map[city]) map[city] = [];
+        map[city].push(poly.name);
+      }
+    });
+    return Object.entries(map).sort((a,b) => b[1].length - a[1].length);
+  }, [polygons, animateurs]);
+
+  const total = byCity.reduce((s,[,v]) => s + v.length, 0);
+
+  if (!total) return (
+    <div style={{marginTop:16,background:'#DCFCE7',border:'1px solid #BBF7D0',borderRadius:10,padding:'12px 18px',display:'flex',alignItems:'center',gap:10}}>
+      <i data-lucide="check-circle-2" style={{width:18,height:18,color:'#16A34A',flexShrink:0}}></i>
+      <span style={{fontSize:13,fontWeight:700,color:'#15803D'}}>Tous les secteurs ont un animateur affecté</span>
+    </div>
+  );
+
+  return (
+    <div style={{marginTop:20}}>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
+        <div style={{width:10,height:10,borderRadius:99,background:'#EC4899',flexShrink:0}}></div>
+        <span style={{fontSize:14,fontWeight:700,color:'var(--neutral-900)'}}>Secteurs sans animateur affecté</span>
+        <span style={{background:'#FCE7F3',color:'#BE185D',fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:99}}>{total} secteur{total!==1?'s':''}</span>
+      </div>
+      <div className="table-card">
+        <table className="data-table" style={{width:'100%'}}>
+          <thead>
+            <tr>
+              <th style={{width:36}}></th>
+              <th>Ville / Zone</th>
+              <th style={{width:220,textAlign:'center'}}>Secteurs sans animateur</th>
+            </tr>
+          </thead>
+          <tbody>
+            {byCity.map(([city, sectors]) => (
+              <React.Fragment key={city}>
+                <tr style={{cursor:'pointer',background:expanded.has(city)?'var(--primary-50)':'white'}} onClick={() => toggle(city)}>
+                  <td style={{textAlign:'center'}}>
+                    <div style={{width:24,height:24,borderRadius:6,background:expanded.has(city)?'var(--primary-600)':'var(--neutral-100)',display:'inline-flex',alignItems:'center',justifyContent:'center',transition:'all 150ms'}}>
+                      <i data-lucide={expanded.has(city)?'minus':'plus'} style={{width:13,height:13,color:expanded.has(city)?'white':'var(--neutral-600)'}}></i>
+                    </div>
+                  </td>
+                  <td style={{fontWeight:700,color:'var(--neutral-900)'}}>{city}</td>
+                  <td style={{textAlign:'center'}}>
+                    <span style={{background:'#FCE7F3',color:'#BE185D',fontSize:13,fontWeight:800,padding:'4px 14px',borderRadius:99,display:'inline-flex',alignItems:'center',gap:6}}>
+                      <span style={{width:7,height:7,borderRadius:99,background:'#EC4899',display:'inline-block'}}></span>
+                      {sectors.length}
+                    </span>
+                  </td>
+                </tr>
+                {expanded.has(city) && sectors.map((name, i) => (
+                  <tr key={i} style={{background:'#FDF4FF'}}>
+                    <td></td>
+                    <td colSpan={2} style={{paddingLeft:32}}>
+                      <div style={{display:'flex',alignItems:'center',gap:8,paddingTop:4,paddingBottom:4}}>
+                        <div style={{width:6,height:6,borderRadius:99,background:'#EC4899',flexShrink:0}}></div>
+                        <span style={{fontSize:13,color:'var(--neutral-700)',fontWeight:500}}>{name || '—'}</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 /* ── KML MAP VIEW ── */
 const POLY_COLORS = {
   present:'#16A34A', absent:'#DC2626', malade:'#D97706', demission:'#7C3AED',
@@ -3923,52 +4026,8 @@ function KmlMapView({ animateurs, pointages, accounts, isTL }) {
         </div>
       </div>
 
-      {/* Tableau — secteurs sans animateur */}
-      {polygons.length > 0 && (() => {
-        const unassigned = polygons.filter(poly =>
-          !animateurs.find(a => (a.sector||'').toLowerCase().trim() === poly.name.toLowerCase().trim())
-        );
-        if (!unassigned.length) return (
-          <div style={{marginTop:16,background:'#DCFCE7',border:'1px solid #BBF7D0',borderRadius:10,padding:'12px 18px',display:'flex',alignItems:'center',gap:10}}>
-            <i data-lucide="check-circle-2" style={{width:18,height:18,color:'#16A34A',flexShrink:0}}></i>
-            <span style={{fontSize:13,fontWeight:700,color:'#15803D'}}>Tous les secteurs ont un animateur affecté</span>
-          </div>
-        );
-        return (
-          <div style={{marginTop:20}}>
-            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
-              <div style={{width:10,height:10,borderRadius:99,background:'#EC4899',flexShrink:0}}></div>
-              <span style={{fontSize:14,fontWeight:700,color:'var(--neutral-900)'}}>Secteurs sans animateur affecté</span>
-              <span style={{background:'#FCE7F3',color:'#BE185D',fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:99}}>{unassigned.length} secteur{unassigned.length!==1?'s':''}</span>
-            </div>
-            <div className="table-card">
-              <table className="data-table" style={{width:'100%'}}>
-                <thead>
-                  <tr>
-                    <th style={{width:48}}>#</th>
-                    <th>Nom du secteur</th>
-                    <th style={{width:160}}>Statut</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {unassigned.map((poly, i) => (
-                    <tr key={i}>
-                      <td style={{color:'var(--neutral-400)',fontWeight:600}}>{i+1}</td>
-                      <td style={{fontWeight:600,color:'var(--neutral-900)'}}>{poly.name || '—'}</td>
-                      <td>
-                        <span style={{background:'#FCE7F3',color:'#BE185D',fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:99,display:'inline-flex',alignItems:'center',gap:5}}>
-                          <span style={{width:6,height:6,borderRadius:99,background:'#EC4899',display:'inline-block'}}></span>
-                          Sans animateur
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        );
-      })()}
+      {/* Matrice — secteurs sans animateur par ville */}
+      {polygons.length > 0 && <UnassignedMatrix polygons={polygons} animateurs={animateurs} />}
     </div>
   );
 }
