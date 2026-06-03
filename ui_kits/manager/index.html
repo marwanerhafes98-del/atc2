@@ -3726,7 +3726,7 @@ function App() {
     { key:'carte',      icon:'map-pin',          label:'Carte temps réel', badge:liveCount },
     { key:'activity',   icon:'clipboard-list',   label:'Journal',          badge:todayPtgN },
     { key:'weekly',     icon:'calendar-days',    label:'Présence hebdo',   badge:0 },
-    ...(!isTL ? [{ key:'geozone', icon:'map', label:'Geo Zoning',          badge:0 }] : []),
+    { key:'geozone', icon:'map',   label:'Geo Zoning',                   badge:0 },
     { key:'scores',     icon:'award',            label:'Scores',           badge:0 },
   ];
 
@@ -3816,7 +3816,7 @@ function App() {
           {view === 'carte'      && <MapView accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
           {view === 'activity'   && <ActivityView pointages={filteredPtgs} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
           {view === 'weekly'     && <WeeklyPresenceView pointages={filteredPtgs} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} animateurs={activeAnims} />}
-          {view === 'geozone'    && !isTL && <GeoZoningView />}
+          {view === 'geozone'    && <GeoZoningView />}
           {view === 'scores'     && <ScoresView pointages={filteredPtgs} animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
         </div>
       </div>
