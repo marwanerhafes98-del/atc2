@@ -784,14 +784,33 @@ function LoginPage({ onLogin }) {
   const [email,    setEmail]    = useState('');
   const [pwd,      setPwd]      = useState('');
   const [error,    setError]    = useState('');
+  const [loading,  setLoading]  = useState(false);
   const [remember, setRemember] = useState(true);
 
-  const handleSubmit = (e) => {
-    e.preventDefault(); setError('');
-    if (email.toLowerCase().trim() !== MANAGER_EMAIL || pwd !== MANAGER_PASSWORD) {
-      setError('Identifiants incorrects.'); return;
+  const handleSubmit = async (e) => {
+    e.preventDefault(); setError(''); setLoading(true);
+    const emailLow = email.toLowerCase().trim();
+
+    // Manager account
+    if (emailLow === MANAGER_EMAIL && pwd === MANAGER_PASSWORD) {
+      onLogin({ role:'manager', email:MANAGER_EMAIL, name:'Manager', initials:'MG', ville:null }, remember);
+      return;
     }
-    onLogin(remember);
+
+    // Team Lead account via Firebase
+    try {
+      const snap = await db.ref('ptg/accounts').once('value');
+      if (snap.exists()) {
+        const tl = Object.values(snap.val()).find(a => a.email.toLowerCase() === emailLow && a.password === pwd);
+        if (tl) {
+          onLogin({ role:'teamlead', email:tl.email, name:tl.name, initials:tl.initials||initials(tl.name), ville:tl.ville }, remember);
+          return;
+        }
+      }
+    } catch(err) {}
+
+    setError('Identifiants incorrects.');
+    setLoading(false);
   };
 
   return (
@@ -806,8 +825,8 @@ function LoginPage({ onLogin }) {
         </div>
         <form onSubmit={handleSubmit}>
           {error && <div className="login-error">{error}</div>}
-          <label className="login-label">Email manager</label>
-          <input type="email" className="login-input" placeholder="manager@labelvie.ma"
+          <label className="login-label">Email</label>
+          <input type="email" className="login-input" placeholder="votre@email.ma"
             value={email} onChange={e => setEmail(e.target.value)} required />
           <label className="login-label">Mot de passe</label>
           <input type="password" className="login-input" placeholder="••••••••"
@@ -816,7 +835,9 @@ function LoginPage({ onLogin }) {
             <input type="checkbox" id="mgr-remember" checked={remember} onChange={e => setRemember(e.target.checked)} />
             <label htmlFor="mgr-remember">Se souvenir de moi sur cet appareil</label>
           </div>
-          <button type="submit" className="login-btn">Accéder au dashboard</button>
+          <button type="submit" className="login-btn" disabled={loading}>
+            {loading ? 'Connexion…' : 'Accéder au dashboard'}
+          </button>
         </form>
       </div>
     </div>
@@ -3652,13 +3673,15 @@ function ScoresView({ pointages, animateurs, accounts }) {
 
 /* ── APP ── */
 function App() {
-  const [loggedIn,    setLoggedIn]    = useState(() => localStorage.getItem('ptg_manager_session') === '1');
+  const [session,     setSession]     = useState(() => { try { return JSON.parse(localStorage.getItem('ptg_manager_session')); } catch { return null; } });
   const [view,        setView]        = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [accounts,    setAccounts]    = useState([]);
   const [sessions,    setSessions]    = useState({});
   const [pointages,   setPointages]   = useState([]);
   const [animateurs,  setAnimateurs]  = useState(ANIMATEURS_DB);
+
+  const loggedIn = !!session;
 
   useEffect(() => { lucide.createIcons(); });
 
@@ -3678,24 +3701,36 @@ function App() {
     return () => { refAcc.off('value'); refSes.off('value'); refPtg.off('value'); refAnim.off('value'); };
   }, [loggedIn]);
 
-  if (!loggedIn) return <LoginPage onLogin={(remember) => { if (remember) localStorage.setItem('ptg_manager_session', '1'); setLoggedIn(true); }} />;
+  if (!loggedIn) return <LoginPage onLogin={(sess, remember) => {
+    if (remember) localStorage.setItem('ptg_manager_session', JSON.stringify(sess));
+    setSession(sess);
+  }} />;
 
-  const liveCount  = accounts.filter(a => LS.isLive(a.email)).length;
-  const todayPtgN  = pointages.filter(p => p.date === new Date().toDateString()).length;
+  const isTL       = session.role === 'teamlead';
+  const cityFilter = isTL ? session.ville : null;
+
+  const activeAnims   = animateurs.filter(a => a.actif !== false && (!cityFilter || a.ville === cityFilter));
+  const allAnims      = animateurs.filter(a => !cityFilter || a.ville === cityFilter);
+  const filteredPtgs  = pointages.filter(p => !cityFilter || p.ville === cityFilter);
+
+  const liveCount  = (isTL ? accounts.filter(a => a.email === session.email) : accounts).filter(a => LS.isLive(a.email)).length;
+  const todayPtgN  = filteredPtgs.filter(p => p.date === new Date().toDateString()).length;
   const LIVE_LOC_THRESH = 120000;
   const PAGE_TITLES = { dashboard:'Dashboard', accounts:'Comptes Team Leads', animateurs:'Gestion des animateurs', carte:'Localisation en temps réel', activity:'Journal des pointages', weekly:'Présence hebdomadaire', geozone:'Geo Zoning', scores:'Scores & Performance' };
   const pageTitle  = PAGE_TITLES[view] || 'Dashboard';
 
   const navItems = [
-    { key:'dashboard',  icon:'layout-dashboard', label:'Dashboard',         badge:0 },
-    { key:'accounts',   icon:'users',            label:'Team Lead',           badge:accounts.length },
-    { key:'animateurs', icon:'user-cog',         label:'Animateurs',        badge:animateurs.length },
-    { key:'carte',      icon:'map-pin',          label:'Carte temps réel',  badge:liveCount },
-    { key:'activity',   icon:'clipboard-list',   label:'Journal',           badge:todayPtgN },
-    { key:'weekly',     icon:'calendar-days',    label:'Présence hebdo',    badge:0 },
-    { key:'geozone',   icon:'map-pin',          label:'Geo Zoning',        badge:0 },
-    { key:'scores',    icon:'award',            label:'Scores',            badge:0 },
+    { key:'dashboard',  icon:'layout-dashboard', label:'Dashboard',        badge:0 },
+    ...(!isTL ? [{ key:'accounts', icon:'users', label:'Team Lead',        badge:accounts.length }] : []),
+    { key:'animateurs', icon:'user-cog',         label:'Animateurs',       badge:allAnims.length },
+    { key:'carte',      icon:'map-pin',          label:'Carte temps réel', badge:liveCount },
+    { key:'activity',   icon:'clipboard-list',   label:'Journal',          badge:todayPtgN },
+    { key:'weekly',     icon:'calendar-days',    label:'Présence hebdo',   badge:0 },
+    ...(!isTL ? [{ key:'geozone', icon:'map', label:'Geo Zoning',          badge:0 }] : []),
+    { key:'scores',     icon:'award',            label:'Scores',           badge:0 },
   ];
+
+  const handleLogout = () => { localStorage.removeItem('ptg_manager_session'); setSession(null); setSidebarOpen(false); };
 
   return (
     <div className="app-layout">
@@ -3709,6 +3744,14 @@ function App() {
             </div>
             <div className="sidebar-brand-name">ESPACE MANAGER</div>
           </div>
+          {isTL && (
+            <div style={{marginTop:6,display:'flex',alignItems:'center',gap:6,marginLeft:44}}>
+              <span style={{fontSize:10,fontWeight:700,color:'var(--primary-600)',background:'var(--primary-50)',padding:'2px 8px',borderRadius:99,border:'1px solid var(--primary-200)'}}>
+                <i data-lucide="map-pin" style={{width:9,height:9,display:'inline',marginRight:3}}></i>
+                {session.ville}
+              </span>
+            </div>
+          )}
         </div>
 
         <nav className="sidebar-nav">
@@ -3726,12 +3769,12 @@ function App() {
 
         <div className="sidebar-footer">
           <div className="sidebar-user">
-            <div className="sidebar-avatar">MG</div>
+            <div className="sidebar-avatar">{session.initials || 'MG'}</div>
             <div className="sidebar-user-info">
-              <div className="sidebar-user-name">Manager</div>
-              <div className="sidebar-user-email">{MANAGER_EMAIL}</div>
+              <div className="sidebar-user-name">{session.name}</div>
+              <div className="sidebar-user-email">{session.email}</div>
             </div>
-            <button className="sidebar-logout" onClick={() => { localStorage.removeItem('ptg_manager_session'); setLoggedIn(false); setSidebarOpen(false); }} title="Déconnexion">
+            <button className="sidebar-logout" onClick={handleLogout} title="Déconnexion">
               <i data-lucide="log-out" style={{width:16,height:16}}></i>
             </button>
           </div>
@@ -3748,6 +3791,12 @@ function App() {
           </button>
           <div className="topbar-title">{pageTitle}</div>
           <div className="topbar-right">
+            {isTL && (
+              <div style={{display:'flex',alignItems:'center',gap:5,fontSize:12,fontWeight:700,color:'var(--primary-700)',background:'var(--primary-50)',padding:'5px 10px',borderRadius:99,border:'1px solid var(--primary-200)'}}>
+                <i data-lucide="map-pin" style={{width:12,height:12}}></i>
+                Vue : {session.ville}
+              </div>
+            )}
             {liveCount > 0 && (
               <div className="topbar-live">
                 <span className="live-dot"></span>
@@ -3761,14 +3810,14 @@ function App() {
         </div>
 
         <div className="content">
-          {view === 'dashboard'  && <DashboardView accounts={accounts} sessions={sessions} pointages={pointages} onRefresh={refresh} animateurs={animateurs.filter(a => a.actif !== false)} />}
-          {view === 'accounts'   && <AccountsView  accounts={accounts} sessions={sessions} onRefresh={refresh} />}
-          {view === 'animateurs' && <AnimateursView animateurs={animateurs} accounts={accounts} />}
-          {view === 'carte'      && <MapView accounts={accounts} />}
-          {view === 'activity'   && <ActivityView  pointages={pointages} accounts={accounts} />}
-          {view === 'weekly'     && <WeeklyPresenceView pointages={pointages} accounts={accounts} animateurs={animateurs.filter(a => a.actif !== false)} />}
-          {view === 'geozone'   && <GeoZoningView />}
-          {view === 'scores'    && <ScoresView pointages={pointages} animateurs={animateurs} accounts={accounts} />}
+          {view === 'dashboard'  && <DashboardView accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} sessions={sessions} pointages={filteredPtgs} onRefresh={refresh} animateurs={activeAnims} />}
+          {view === 'accounts'   && !isTL && <AccountsView accounts={accounts} sessions={sessions} onRefresh={refresh} />}
+          {view === 'animateurs' && <AnimateursView animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
+          {view === 'carte'      && <MapView accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
+          {view === 'activity'   && <ActivityView pointages={filteredPtgs} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
+          {view === 'weekly'     && <WeeklyPresenceView pointages={filteredPtgs} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} animateurs={activeAnims} />}
+          {view === 'geozone'    && !isTL && <GeoZoningView />}
+          {view === 'scores'     && <ScoresView pointages={filteredPtgs} animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
         </div>
       </div>
     </div>
