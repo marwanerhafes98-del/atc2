@@ -463,6 +463,25 @@ const ANIMATEURS_DB = [
 /* ── HELPERS ── */
 function avatarColor(str) { let h=0; for(let c of str) h=(h*31+c.charCodeAt(0))&0xFFFFFF; return AVATAR_PALETTE[Math.abs(h)%AVATAR_PALETTE.length]; }
 function initials(name) { const p=name.trim().split(/\s+/); return p.length>=2?(p[0][0]+p[1][0]).toUpperCase():name.substring(0,2).toUpperCase(); }
+
+function parseKML(kmlText) {
+  try {
+    const doc = new DOMParser().parseFromString(kmlText, 'text/xml');
+    const result = [];
+    doc.querySelectorAll('Placemark').forEach(pm => {
+      const name = pm.querySelector('name')?.textContent?.trim() || '';
+      pm.querySelectorAll('coordinates').forEach(cn => {
+        const points = [];
+        cn.textContent.trim().split(/\s+/).forEach(token => {
+          const [lng, lat] = token.split(',').map(Number);
+          if (!isNaN(lat) && !isNaN(lng)) points.push([lat, lng]);
+        });
+        if (points.length >= 3) result.push({ name, coordinates: points });
+      });
+    });
+    return result;
+  } catch(e) { return []; }
+}
 function timeAgo(iso) {
   if (!iso) return '—';
   const d = (Date.now() - new Date(iso)) / 1000;
@@ -3671,6 +3690,238 @@ function ScoresView({ pointages, animateurs, accounts }) {
   );
 }
 
+/* ── KML MAP VIEW ── */
+const POLY_COLORS = {
+  present:'#16A34A', absent:'#DC2626', malade:'#D97706', demission:'#7C3AED',
+  nonpointe:'#64748B', recupe:'#0E7490', conge:'#4338CA', renfort:'#C2410C',
+  noanimateur:'#6B7280'
+};
+const POLY_LEGEND = [
+  { status:'present',     label:'Présent' },
+  { status:'absent',      label:'Absent' },
+  { status:'malade',      label:'Malade' },
+  { status:'recupe',      label:'Récupe' },
+  { status:'conge',       label:'Congé' },
+  { status:'renfort',     label:'Renfort' },
+  { status:'demission',   label:'Démission' },
+  { status:'nonpointe',   label:'Non pointé' },
+  { status:'noanimateur', label:'Sans animateur' },
+];
+
+function KmlMapView({ animateurs, pointages, accounts, isTL }) {
+  const [kmlMeta,      setKmlMeta]      = useState(null);
+  const [polygons,     setPolygons]     = useState([]);
+  const [uploading,    setUploading]    = useState(false);
+  const [toast,        setToast]        = useState('');
+  const [filterVille,  setFilterVille]  = useState('Toutes');
+  const [filterTL,     setFilterTL]     = useState('Tous');
+  const [filterStatus, setFilterStatus] = useState('Tous');
+  const containerRef = useRef(null);
+  const mapRef       = useRef(null);
+  const layersRef    = useRef([]);
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3500); };
+
+  // Load KML from Firebase
+  useEffect(() => {
+    const ref = db.ref('ptg/kml');
+    ref.on('value', snap => {
+      if (!snap.exists()) return;
+      const val = snap.val();
+      setKmlMeta({ filename: val.filename, uploadedAt: val.uploadedAt, count: val.polygonCount || 0 });
+      if (val.data) setPolygons(parseKML(val.data));
+    });
+    return () => ref.off('value');
+  }, []);
+
+  // Init Leaflet map once
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+    mapRef.current = L.map(containerRef.current, { zoomControl: true }).setView([31.7, -7.1], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors', maxZoom: 19
+    }).addTo(mapRef.current);
+  }, []);
+
+  // Render/refresh polygon layers
+  useEffect(() => {
+    if (!mapRef.current) return;
+    layersRef.current.forEach(l => mapRef.current.removeLayer(l));
+    layersRef.current = [];
+    if (!polygons.length) return;
+
+    const today = new Date().toDateString();
+    const todayPtgs = pointages.filter(p => p.date === today);
+    const newLayers = [];
+
+    polygons.forEach(poly => {
+      const anim = animateurs.find(a =>
+        (a.sector || '').toLowerCase().trim() === poly.name.toLowerCase().trim()
+      );
+
+      let status = 'noanimateur';
+      let tlName = '—';
+
+      if (anim) {
+        const ptg = todayPtgs.find(p => p.animateurId === anim.id || p.animateurName === anim.name);
+        status = ptg ? ptg.status : 'nonpointe';
+        const tlAcc = accounts.find(a => a.email === ptg?.teamLeadEmail);
+        tlName = tlAcc ? tlAcc.name : accounts.find(a => a.ville === anim.ville)?.name || '—';
+      }
+
+      // Filters
+      if (filterVille !== 'Toutes' && (!anim || anim.ville !== filterVille)) return;
+      if (filterStatus !== 'Tous' && status !== filterStatus) return;
+      if (filterTL !== 'Tous') {
+        const tlAcc = accounts.find(a => a.name === filterTL);
+        const ptg = tlAcc && anim ? todayPtgs.find(p => (p.animateurId===anim.id||p.animateurName===anim.name) && p.teamLeadEmail===tlAcc.email) : null;
+        if (!ptg) return;
+      }
+
+      const color = POLY_COLORS[status] || '#6B7280';
+      const layer = L.polygon(poly.coordinates, {
+        color, fillColor: color, fillOpacity: 0.45, weight: 2, opacity: 0.9
+      });
+
+      const statusLabel = STATUS_FR[status] || 'Sans animateur';
+      const html = anim
+        ? `<div style="font-size:12px;line-height:1.7;min-width:190px">
+            <div style="font-weight:700;font-size:13px;color:#0f172a;margin-bottom:3px">${anim.name}</div>
+            <div><span style="color:#94a3b8">Matricule :</span> ${anim.matricule||'—'}</div>
+            <div><span style="color:#94a3b8">Tél :</span> ${anim.phone||anim.telephone||'—'}</div>
+            <div><span style="color:#94a3b8">Team Lead :</span> ${tlName}</div>
+            <div><span style="color:#94a3b8">Ville :</span> ${anim.ville}</div>
+            <div><span style="color:#94a3b8">Statut :</span> <span style="font-weight:700;color:${color}">${statusLabel}</span></div>
+           </div>`
+        : `<div style="font-size:12px;line-height:1.7">
+            <div style="font-weight:700;font-size:13px;color:#0f172a;margin-bottom:3px">${poly.name||'Zone'}</div>
+            <div style="color:#94a3b8">Sans animateur affecté</div>
+           </div>`;
+
+      layer.bindTooltip(html, { sticky: true, opacity: 1 });
+      layer.addTo(mapRef.current);
+      newLayers.push(layer);
+    });
+
+    layersRef.current = newLayers;
+
+    if (newLayers.length > 0 && filterVille === 'Toutes' && filterTL === 'Tous' && filterStatus === 'Tous') {
+      try { mapRef.current.fitBounds(L.featureGroup(newLayers).getBounds(), { padding: [30, 30] }); } catch(e) {}
+    }
+  }, [polygons, animateurs, pointages, accounts, filterVille, filterTL, filterStatus]);
+
+  const handleUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.kml')) { showToast('Veuillez sélectionner un fichier .kml'); return; }
+    setUploading(true);
+    try {
+      const text = await file.text();
+      const parsed = parseKML(text);
+      if (!parsed.length) { showToast('Aucun polygone trouvé dans ce fichier KML'); setUploading(false); return; }
+      await db.ref('ptg/kml').set({
+        data: text, filename: file.name, polygonCount: parsed.length,
+        uploadedAt: new Date().toISOString(), uploadedBy: 'Manager'
+      });
+      showToast(`✓ ${parsed.length} polygone(s) importé(s) avec succès`);
+    } catch(err) { showToast('Erreur lors de l\'import KML'); }
+    setUploading(false);
+    e.target.value = '';
+  };
+
+  const VILLES_LIST = [...new Set(animateurs.map(a => a.ville).filter(Boolean))].sort();
+
+  return (
+    <div>
+      {/* Toast */}
+      {toast && (
+        <div style={{position:'fixed',top:20,right:20,zIndex:9999,background:'#0f172a',color:'white',padding:'10px 18px',borderRadius:10,fontSize:13,fontWeight:600,boxShadow:'0 4px 16px rgba(0,0,0,0.25)'}}>
+          {toast}
+        </div>
+      )}
+
+      {/* Header */}
+      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,marginBottom:16,flexWrap:'wrap'}}>
+        <div>
+          <div style={{fontSize:15,fontWeight:700,color:'var(--neutral-900)'}}>Cartographie des Polygones</div>
+          {kmlMeta
+            ? <div style={{fontSize:11,color:'var(--neutral-500)',marginTop:2}}>{kmlMeta.filename} · {kmlMeta.count} polygone(s) · importé le {new Date(kmlMeta.uploadedAt).toLocaleDateString('fr-FR')}</div>
+            : <div style={{fontSize:11,color:'var(--neutral-400)',marginTop:2}}>Aucun fichier KML chargé</div>
+          }
+        </div>
+        {!isTL && (
+          <label style={{display:'inline-flex',alignItems:'center',gap:8,height:38,padding:'0 16px',background:'var(--primary-600)',color:'white',borderRadius:8,fontSize:13,fontWeight:700,cursor: uploading?'wait':'pointer',whiteSpace:'nowrap',userSelect:'none',opacity:uploading?0.7:1}}>
+            <i data-lucide="upload" style={{width:14,height:14}}></i>
+            {uploading ? 'Import en cours…' : 'Importer KML'}
+            <input type="file" accept=".kml" style={{display:'none'}} onChange={handleUpload} disabled={uploading} />
+          </label>
+        )}
+      </div>
+
+      {/* Filters */}
+      <div className="analytics-filters" style={{marginBottom:16}}>
+        <span className="af-label">Filtres</span>
+        <div className="af-divider"></div>
+        {!isTL && (
+          <select className={`af-select ${filterVille!=='Toutes'?'active-filter':''}`} value={filterVille} onChange={e => setFilterVille(e.target.value)}>
+            <option value="Toutes">Toutes les villes</option>
+            {VILLES_LIST.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+        )}
+        <select className={`af-select ${filterTL!=='Tous'?'active-filter':''}`} value={filterTL} onChange={e => setFilterTL(e.target.value)}>
+          <option value="Tous">Tous les TL</option>
+          {accounts.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+        </select>
+        <select className={`af-select ${filterStatus!=='Tous'?'active-filter':''}`} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+          <option value="Tous">Tous les statuts</option>
+          <option value="present">Présent</option>
+          <option value="absent">Absent</option>
+          <option value="malade">Malade</option>
+          <option value="recupe">Récupe</option>
+          <option value="conge">Congé</option>
+          <option value="renfort">Renfort</option>
+          <option value="demission">Démission</option>
+          <option value="nonpointe">Non pointé</option>
+          <option value="noanimateur">Sans animateur</option>
+        </select>
+        {(filterVille!=='Toutes'||filterTL!=='Tous'||filterStatus!=='Tous') && (
+          <button style={{height:36,padding:'0 12px',border:'1.5px solid var(--neutral-200)',borderRadius:8,background:'white',color:'var(--neutral-600)',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'var(--font-sans)'}}
+            onClick={() => { setFilterVille('Toutes'); setFilterTL('Tous'); setFilterStatus('Tous'); }}>
+            Réinitialiser
+          </button>
+        )}
+        <div className="af-spacer"></div>
+        <div style={{fontSize:12,color:'var(--neutral-500)',fontWeight:600}}>
+          {layersRef.current.length} zone{layersRef.current.length!==1?'s':''} affichée{layersRef.current.length!==1?'s':''}
+        </div>
+      </div>
+
+      {/* Map container */}
+      <div style={{position:'relative',borderRadius:12,overflow:'hidden',border:'1px solid var(--neutral-200)',boxShadow:'0 1px 6px rgba(0,0,0,0.07)'}}>
+        {!polygons.length && (
+          <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'rgba(248,250,252,0.95)',zIndex:500,gap:10}}>
+            <i data-lucide="map" style={{width:44,height:44,color:'var(--neutral-300)'}}></i>
+            <div style={{fontSize:15,fontWeight:600,color:'var(--neutral-500)'}}>Aucun fichier KML importé</div>
+            {!isTL && <div style={{fontSize:12,color:'var(--neutral-400)'}}>Cliquez sur "Importer KML" pour charger les polygones</div>}
+          </div>
+        )}
+        <div ref={containerRef} style={{height:'calc(100vh - 290px)',minHeight:500}}></div>
+
+        {/* Legend */}
+        <div style={{position:'absolute',bottom:24,right:12,background:'white',borderRadius:10,padding:'10px 14px',boxShadow:'0 2px 16px rgba(0,0,0,0.15)',zIndex:1000,fontSize:11}}>
+          <div style={{fontWeight:800,fontSize:10,color:'var(--neutral-500)',textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:8}}>Légende</div>
+          {POLY_LEGEND.map(l => (
+            <div key={l.status} style={{display:'flex',alignItems:'center',gap:7,marginBottom:5}}>
+              <div style={{width:13,height:13,borderRadius:3,background:POLY_COLORS[l.status],flexShrink:0,border:'1px solid rgba(0,0,0,0.1)'}}></div>
+              <span style={{color:'var(--neutral-700)',fontWeight:500}}>{l.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── APP ── */
 function App() {
   const [session,     setSession]     = useState(() => { try { return JSON.parse(localStorage.getItem('ptg_manager_session')); } catch { return null; } });
@@ -3716,7 +3967,7 @@ function App() {
   const liveCount  = (isTL ? accounts.filter(a => a.email === session.email) : accounts).filter(a => LS.isLive(a.email)).length;
   const todayPtgN  = filteredPtgs.filter(p => p.date === new Date().toDateString()).length;
   const LIVE_LOC_THRESH = 120000;
-  const PAGE_TITLES = { dashboard:'Dashboard', accounts:'Comptes Team Leads', animateurs:'Gestion des animateurs', carte:'Localisation en temps réel', activity:'Journal des pointages', weekly:'Présence hebdomadaire', geozone:'Geo Zoning', scores:'Scores & Performance' };
+  const PAGE_TITLES = { dashboard:'Dashboard', accounts:'Comptes Team Leads', animateurs:'Gestion des animateurs', carte:'Localisation en temps réel', activity:'Journal des pointages', weekly:'Présence hebdomadaire', geozone:'Geo Zoning', scores:'Scores & Performance', polygones:'Cartographie des Polygones' };
   const pageTitle  = PAGE_TITLES[view] || 'Dashboard';
 
   const navItems = [
@@ -3726,8 +3977,9 @@ function App() {
     { key:'carte',      icon:'map-pin',          label:'Carte temps réel', badge:liveCount },
     { key:'activity',   icon:'clipboard-list',   label:'Journal',          badge:todayPtgN },
     { key:'weekly',     icon:'calendar-days',    label:'Présence hebdo',   badge:0 },
-    { key:'geozone', icon:'map',   label:'Geo Zoning',                   badge:0 },
-    { key:'scores',     icon:'award',            label:'Scores',           badge:0 },
+    { key:'geozone',   icon:'map',              label:'Geo Zoning',       badge:0 },
+    { key:'polygones', icon:'layers',           label:'Cartographie',     badge:0 },
+    { key:'scores',    icon:'award',            label:'Scores',           badge:0 },
   ];
 
   const handleLogout = () => { localStorage.removeItem('ptg_manager_session'); setSession(null); setSidebarOpen(false); };
@@ -3817,6 +4069,7 @@ function App() {
           {view === 'activity'   && <ActivityView pointages={filteredPtgs} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
           {view === 'weekly'     && <WeeklyPresenceView pointages={filteredPtgs} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} animateurs={activeAnims} />}
           {view === 'geozone'    && <GeoZoningView />}
+          {view === 'polygones'  && <KmlMapView pointages={filteredPtgs} animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} isTL={isTL} />}
           {view === 'scores'     && <ScoresView pointages={filteredPtgs} animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
         </div>
       </div>
