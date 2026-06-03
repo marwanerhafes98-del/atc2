@@ -3734,13 +3734,15 @@ function KmlMapView({ animateurs, pointages, accounts, isTL }) {
     return () => ref.off('value');
   }, []);
 
-  // Init Leaflet map once
-  useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
-    mapRef.current = L.map(containerRef.current, { zoomControl: true }).setView([31.7, -7.1], 6);
+  // Callback ref — initialise Leaflet dès que le div est dans le DOM
+  const mapCallbackRef = useCallback(node => {
+    if (!node || mapRef.current) return;
+    containerRef.current = node;
+    mapRef.current = L.map(node, { zoomControl: true }).setView([31.7, -7.1], 6);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap contributors', maxZoom: 19
     }).addTo(mapRef.current);
+    setTimeout(() => mapRef.current && mapRef.current.invalidateSize(), 250);
   }, []);
 
   // Render/refresh polygon layers
@@ -3769,6 +3771,8 @@ function KmlMapView({ animateurs, pointages, accounts, isTL }) {
         tlName = tlAcc ? tlAcc.name : accounts.find(a => a.ville === anim.ville)?.name || '—';
       }
 
+      // En mode TL : masquer les polygones sans animateur (ville inconnue)
+      if (isTL && status === 'noanimateur') return;
       // Filters
       if (filterVille !== 'Toutes' && (!anim || anim.ville !== filterVille)) return;
       if (filterStatus !== 'Tous' && status !== filterStatus) return;
@@ -3896,16 +3900,16 @@ function KmlMapView({ animateurs, pointages, accounts, isTL }) {
         </div>
       </div>
 
-      {/* Map container */}
-      <div style={{position:'relative',borderRadius:12,overflow:'hidden',border:'1px solid var(--neutral-200)',boxShadow:'0 1px 6px rgba(0,0,0,0.07)'}}>
+      {/* Map container — pas d'overflow:hidden pour que Leaflet fonctionne */}
+      <div style={{position:'relative',borderRadius:12,border:'1px solid var(--neutral-200)',boxShadow:'0 1px 6px rgba(0,0,0,0.07)'}}>
+        <div ref={mapCallbackRef} style={{height:'calc(100vh - 290px)',minHeight:500,borderRadius:12}}></div>
         {!polygons.length && (
-          <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'rgba(248,250,252,0.95)',zIndex:500,gap:10}}>
-            <i data-lucide="map" style={{width:44,height:44,color:'var(--neutral-300)'}}></i>
-            <div style={{fontSize:15,fontWeight:600,color:'var(--neutral-500)'}}>Aucun fichier KML importé</div>
-            {!isTL && <div style={{fontSize:12,color:'var(--neutral-400)'}}>Cliquez sur "Importer KML" pour charger les polygones</div>}
+          <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:1000,background:'white',borderRadius:12,padding:'20px 28px',boxShadow:'0 4px 20px rgba(0,0,0,0.12)',textAlign:'center',pointerEvents:'none',whiteSpace:'nowrap'}}>
+            <i data-lucide="upload-cloud" style={{width:36,height:36,color:'var(--neutral-300)',marginBottom:8}}></i>
+            <div style={{fontSize:14,fontWeight:700,color:'var(--neutral-600)',marginBottom:2}}>Aucun fichier KML importé</div>
+            {!isTL && <div style={{fontSize:12,color:'var(--neutral-400)'}}>Cliquez sur "Importer KML" ci-dessus</div>}
           </div>
         )}
-        <div ref={containerRef} style={{height:'calc(100vh - 290px)',minHeight:500}}></div>
 
         {/* Legend */}
         <div style={{position:'absolute',bottom:24,right:12,background:'white',borderRadius:10,padding:'10px 14px',boxShadow:'0 2px 16px rgba(0,0,0,0.15)',zIndex:1000,fontSize:11}}>
