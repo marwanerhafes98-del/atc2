@@ -586,16 +586,6 @@ function LoginScreen({ onLogin }) {
     onLogin(res.account, remember);
   };
 
-  const handleRegister = async (e) => {
-    e.preventDefault(); setError('');
-    if (password !== confirm) { setError('Les mots de passe ne correspondent pas.'); return; }
-    setLoading(true);
-    const res = await LS.register(name, email, password, ville);
-    setLoading(false);
-    if (res.error) { setError(res.error); return; }
-    onLogin(res.account, remember);
-  };
-
   const handleForgotStep1 = async (e) => {
     e.preventDefault(); setError(''); setLoading(true);
     const snap = await db.ref('ptg/accounts').once('value');
@@ -630,12 +620,6 @@ function LoginScreen({ onLogin }) {
         <div className="login-subtitle">Team Lead</div>
       </div>
 
-      {mode !== 'forgot' && (
-        <div className="login-tabs">
-          <button type="button" className={`login-tab ${mode==='login'?'active':''}`} onClick={() => switchMode('login')}>Se connecter</button>
-          <button type="button" className={`login-tab ${mode==='register'?'active':''}`} onClick={() => switchMode('register')}>Créer un compte</button>
-        </div>
-      )}
 
       {mode === 'forgot' ? (
         <div className="login-form">
@@ -688,7 +672,7 @@ function LoginScreen({ onLogin }) {
             </form>
           )}
         </div>
-      ) : mode === 'login' ? (
+      ) : (
         <form className="login-form" onSubmit={handleLogin}>
           {error && <div className="login-error"><i data-lucide="alert-circle" style={{ width:15, height:15 }}></i>{error}</div>}
           <div className="form-group">
@@ -710,39 +694,6 @@ function LoginScreen({ onLogin }) {
             style={{width:'100%',background:'none',border:'none',color:'var(--primary-600)',fontSize:12,fontWeight:600,cursor:'pointer',marginTop:10,fontFamily:'inherit',textAlign:'center'}}>
             Mot de passe oublié ?
           </button>
-        </form>
-      ) : (
-        <form className="login-form" onSubmit={handleRegister}>
-          {error && <div className="login-error"><i data-lucide="alert-circle" style={{ width:15, height:15 }}></i>{error}</div>}
-          <div className="form-group">
-            <label className="form-label">Nom complet</label>
-            <input type="text" className="form-input" placeholder="Prénom Nom"
-              value={name} onChange={e => setName(e.target.value)} required />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Email professionnel</label>
-            <input type="email" className="form-input" placeholder="teamlead@labelvie.ma"
-              value={email} onChange={e => setEmail(e.target.value)} required />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Ville</label>
-            <div className="select-wrap">
-              <select className="form-select" value={ville} onChange={e => setVille(e.target.value)}>
-                {VILLES.map(v => <option key={v} value={v}>{v}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="form-group">
-            <label className="form-label">Mot de passe</label>
-            <input type="password" className="form-input" placeholder="Min. 4 caractères"
-              value={password} onChange={e => setPwd(e.target.value)} required />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Confirmer mot de passe</label>
-            <input type="password" className="form-input" placeholder="••••••••"
-              value={confirm} onChange={e => setConfirm(e.target.value)} required />
-          </div>
-          <button type="submit" className="btn-login" disabled={loading}>{loading ? 'Création...' : 'Créer mon compte'}</button>
         </form>
       )}
     </div>
