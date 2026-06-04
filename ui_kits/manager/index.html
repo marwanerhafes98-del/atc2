@@ -1344,7 +1344,7 @@ function DashboardView({ accounts, sessions, pointages, onRefresh, animateurs, s
       <SummaryTable animateurs={filteredAnims} todayPtgs={filteredPtgs} filterVille={filterVille} secteurs={secteurs} />
 
       {/* ── SECTEURS SANS PRÉSENCE ── */}
-      <SectorGapPanel animateurs={filteredAnims} todayPtgs={filteredPtgs} secteurs={secteurs} />
+      <SectorGapPanel animateurs={filteredAnims} todayPtgs={filteredPtgs} secteurs={filterVille === 'Toutes' ? secteurs : secteurs.filter(s => s.ville === filterVille)} />
 
       {/* ── SESSIONS ACTIVES ── */}
       <div className="section-hd">
