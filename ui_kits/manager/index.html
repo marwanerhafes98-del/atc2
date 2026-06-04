@@ -816,6 +816,33 @@ const LS = {
 
   async deleteAnimateur(id) {
     await db.ref(`ptg/animateurs/${id}`).remove();
+  },
+
+  /* ── SECTEURS ── */
+  async updateSector(id, data) {
+    await db.ref(`ptg/secteurs/${id}`).update(data);
+  },
+  async deleteSector(id) {
+    await db.ref(`ptg/secteurs/${id}`).remove();
+  },
+  async bulkUpsertSecteurs(items) {
+    const snap = await db.ref('ptg/secteurs').once('value');
+    const existing = snap.exists() ? Object.values(snap.val()) : [];
+    const updates = {};
+    let nextId = Date.now();
+    items.forEach(item => {
+      const found = existing.find(s =>
+        s.ville.toLowerCase() === item.ville.toLowerCase() &&
+        s.sector.toLowerCase() === item.sector.toLowerCase()
+      );
+      if (found) {
+        updates[found.id] = { ...found, actif: item.actif };
+      } else {
+        updates[nextId] = { id: nextId, ville: item.ville, sector: item.sector, actif: item.actif };
+        nextId++;
+      }
+    });
+    await db.ref('ptg/secteurs').update(updates);
   }
 };
 
@@ -1045,10 +1072,21 @@ function AnalyticsKpis({ stats, yesterdayStats }) {
 }
 
 /* ── SUMMARY TABLE ── */
-function SummaryTable({ animateurs, todayPtgs, filterVille }) {
+function SummaryTable({ animateurs, todayPtgs, filterVille, secteurs = [] }) {
   const groupKey = filterVille === 'Toutes' ? 'ville' : 'sector';
 
   const groups = useMemo(() => {
+    if (groupKey === 'sector' && secteurs.length > 0) {
+      const villeSecteurs = secteurs.filter(s => s.ville === filterVille);
+      const animMap = {};
+      animateurs.forEach(a => { if (!animMap[a.sector]) animMap[a.sector] = []; animMap[a.sector].push(a); });
+      const allKeys = new Set([...villeSecteurs.map(s => s.sector), ...animateurs.map(a => a.sector)]);
+      return [...allKeys].map(key => {
+        const list = animMap[key] || [];
+        const tableEntry = villeSecteurs.find(s => s.sector.toLowerCase() === key.toLowerCase());
+        return { key, actif: tableEntry ? tableEntry.actif !== false : true, ...computeStats(list, todayPtgs) };
+      }).sort((a,b) => a.key.localeCompare(b.key));
+    }
     const map = {};
     animateurs.forEach(a => {
       const k = a[groupKey];
@@ -1056,9 +1094,9 @@ function SummaryTable({ animateurs, todayPtgs, filterVille }) {
       map[k].push(a);
     });
     return Object.entries(map)
-      .map(([key, list]) => ({ key, ...computeStats(list, todayPtgs) }))
+      .map(([key, list]) => ({ key, actif: true, ...computeStats(list, todayPtgs) }))
       .sort((a, b) => a.key.localeCompare(b.key));
-  }, [animateurs, todayPtgs, groupKey]);
+  }, [animateurs, todayPtgs, groupKey, secteurs, filterVille]);
 
   if (groups.length === 0) return null;
 
@@ -1100,7 +1138,8 @@ function SummaryTable({ animateurs, todayPtgs, filterVille }) {
                     {filterVille === 'Toutes' && (
                       <span style={{width:10,height:10,borderRadius:'50%',background:color,display:'inline-block',flexShrink:0}}></span>
                     )}
-                    <span style={{fontWeight:700,color:'var(--neutral-900)'}}>{row.key}</span>
+                    <span style={{fontWeight:700,color: row.actif===false?'var(--neutral-400)':'var(--neutral-900)'}}>{row.key}</span>
+                    {row.actif === false && <span style={{fontSize:9,padding:'1px 6px',borderRadius:99,background:'#F1F5F9',color:'#64748B',fontWeight:700,textTransform:'uppercase',flexShrink:0}}>Inactif</span>}
                   </div>
                 </td>
                 <td style={{fontWeight:700,color:'var(--neutral-900)'}}>{row.total}</td>
@@ -1130,21 +1169,39 @@ function SummaryTable({ animateurs, todayPtgs, filterVille }) {
 }
 
 /* ── SECTOR GAP PANEL ── */
-function SectorGapPanel({ animateurs, todayPtgs }) {
+function SectorGapPanel({ animateurs, todayPtgs, secteurs = [] }) {
   const [open, setOpen] = useState(false);
 
   const gaps = useMemo(() => {
+    if (secteurs.length > 0) {
+      return secteurs.map(s => {
+        const linked = animateurs.filter(a =>
+          (a.sector||'').toLowerCase() === (s.sector||'').toLowerCase() &&
+          (a.ville||'').toLowerCase() === (s.ville||'').toLowerCase()
+        );
+        if (linked.length === 0) {
+          return { sector: s.sector, ville: s.ville, actif: s.actif, type: 'noanimateur', anims: [] };
+        }
+        const animStatuses = linked.map(a => {
+          const ptg = getPtgForAnim(a, todayPtgs);
+          return { name: a.name, status: ptg?.status || 'nonpointe' };
+        });
+        const covered = animStatuses.some(a => a.status === 'present' || a.status === 'renfort');
+        if (covered) return null;
+        return { sector: s.sector, ville: s.ville, actif: s.actif, type: 'absence', anims: animStatuses };
+      }).filter(Boolean).sort((a,b) => a.ville.localeCompare(b.ville) || a.sector.localeCompare(b.sector));
+    }
     const map = {};
     animateurs.forEach(a => {
-      if (!map[a.sector]) map[a.sector] = { sector: a.sector, ville: a.ville, anims: [] };
+      if (!map[a.sector]) map[a.sector] = { sector: a.sector, ville: a.ville, actif: true, anims: [] };
       const ptg = getPtgForAnim(a, todayPtgs);
-      const status = ptg?.status || 'nonpointe';
-      map[a.sector].anims.push({ name: a.name, status });
+      map[a.sector].anims.push({ name: a.name, status: ptg?.status || 'nonpointe' });
     });
     return Object.values(map)
       .filter(s => !s.anims.some(a => a.status === 'present' || a.status === 'renfort'))
+      .map(s => ({ ...s, type: 'absence' }))
       .sort((a,b) => a.ville.localeCompare(b.ville) || a.sector.localeCompare(b.sector));
-  }, [animateurs, todayPtgs]);
+  }, [animateurs, todayPtgs, secteurs]);
 
   if (gaps.length === 0) return (
     <div className="alert-banner alert-info" style={{marginBottom:20}}>
@@ -1172,17 +1229,23 @@ function SectorGapPanel({ animateurs, todayPtgs }) {
         <div className="gap-grid">
           {gaps.map(g => (
             <div key={g.sector+g.ville} className="gap-item">
-              <span className="gap-dot"></span>
+              <span className="gap-dot" style={{background: g.actif===false?'#94A3B8':'#EF4444'}}></span>
               <div>
-                <div className="gap-sector">{g.sector}</div>
-                <div className="gap-ville">{g.ville} · {g.anims.length} animateur{g.anims.length!==1?'s':''}</div>
-                <div style={{marginTop:4,display:'flex',gap:4,flexWrap:'wrap'}}>
-                  {g.anims.map((a,i) => (
-                    <span key={i} style={{fontSize:10,padding:'1px 7px',borderRadius:99,background:(STATUS_COLOR[a.status]||'#64748B')+'22',color:STATUS_COLOR[a.status]||'#64748B',fontWeight:700}}>
-                      {STATUS_FR[a.status]||a.status}
-                    </span>
-                  ))}
+                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                  <div className="gap-sector">{g.sector}</div>
+                  {g.actif === false && <span style={{fontSize:9,padding:'1px 5px',borderRadius:99,background:'#F1F5F9',color:'#64748B',fontWeight:700,textTransform:'uppercase'}}>Inactif</span>}
                 </div>
+                <div className="gap-ville">{g.ville}</div>
+                {g.type === 'noanimateur'
+                  ? <div style={{fontSize:11,color:'#D97706',fontWeight:600,marginTop:3}}>⚠️ Aucun animateur rattaché</div>
+                  : <div style={{marginTop:4,display:'flex',gap:4,flexWrap:'wrap'}}>
+                      {g.anims.map((a,i) => (
+                        <span key={i} style={{fontSize:10,padding:'1px 7px',borderRadius:99,background:(STATUS_COLOR[a.status]||'#64748B')+'22',color:STATUS_COLOR[a.status]||'#64748B',fontWeight:700}}>
+                          ⚠️ {STATUS_FR[a.status]||a.status}
+                        </span>
+                      ))}
+                    </div>
+                }
               </div>
             </div>
           ))}
@@ -1193,7 +1256,7 @@ function SectorGapPanel({ animateurs, todayPtgs }) {
 }
 
 /* ── DASHBOARD VIEW ── */
-function DashboardView({ accounts, sessions, pointages, onRefresh, animateurs }) {
+function DashboardView({ accounts, sessions, pointages, onRefresh, animateurs, secteurs = [] }) {
   const [filterVille, setFilterVille]   = useState('Toutes');
   const [filterTL,    setFilterTL]      = useState('Tous');
 
@@ -1278,10 +1341,10 @@ function DashboardView({ accounts, sessions, pointages, onRefresh, animateurs })
       <AnalyticsKpis stats={stats} yesterdayStats={yesterdayStats} />
 
       {/* ── RÉSUMÉ PAR VILLE / SECTEUR ── */}
-      <SummaryTable animateurs={filteredAnims} todayPtgs={filteredPtgs} filterVille={filterVille} />
+      <SummaryTable animateurs={filteredAnims} todayPtgs={filteredPtgs} filterVille={filterVille} secteurs={secteurs} />
 
       {/* ── SECTEURS SANS PRÉSENCE ── */}
-      <SectorGapPanel animateurs={filteredAnims} todayPtgs={filteredPtgs} />
+      <SectorGapPanel animateurs={filteredAnims} todayPtgs={filteredPtgs} secteurs={secteurs} />
 
       {/* ── SESSIONS ACTIVES ── */}
       <div className="section-hd">
@@ -3833,6 +3896,236 @@ function UnassignedMatrix({ polygons, animateurs }) {
   );
 }
 
+/* ── IMPORT SECTEURS MODAL ── */
+function ImportSecteursModal({ onClose, onImported }) {
+  const [file,      setFile]      = useState(null);
+  const [preview,   setPreview]   = useState(null);
+  const [importing, setImporting] = useState(false);
+
+  const handleFile = (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    setFile(f);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb   = XLSX.read(ev.target.result, { type:'array' });
+        const ws   = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+        if (rows.length < 2) { setPreview({ error:'Fichier vide.' }); return; }
+        const hdr   = rows[0].map(h => String(h||'').trim().toUpperCase());
+        const colV  = hdr.indexOf('VILLE');
+        const colS  = hdr.indexOf('SECTEUR');
+        const colSt = hdr.indexOf('STATUT');
+        if ([colV, colS].includes(-1)) { setPreview({ error:'Colonnes manquantes (VILLE, SECTEUR requis).' }); return; }
+        const items = [];
+        rows.slice(1).forEach(row => {
+          const ville  = String(row[colV]||'').trim();
+          const sector = String(row[colS]||'').trim();
+          if (!ville || !sector) return;
+          const statutRaw = colSt >= 0 ? String(row[colSt]||'').trim().toUpperCase() : 'VRAI';
+          const actif = statutRaw !== 'FAUX' && statutRaw !== 'FALSE' && statutRaw !== '0';
+          items.push({ ville, sector, actif });
+        });
+        setPreview({ items });
+      } catch { setPreview({ error:'Impossible de lire le fichier.' }); }
+    };
+    reader.readAsArrayBuffer(f);
+  };
+
+  const handleImport = async () => {
+    if (!preview?.items?.length) return;
+    setImporting(true);
+    await LS.bulkUpsertSecteurs(preview.items);
+    setImporting(false);
+    onImported(preview.items.length);
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target===e.currentTarget && onClose()}>
+      <div className="modal" style={{maxWidth:520}}>
+        <div className="modal-hd">
+          <div className="modal-title">Importer des secteurs</div>
+          <button className="modal-close" onClick={onClose}><i data-lucide="x" style={{width:14,height:14}}></i></button>
+        </div>
+        <div className="modal-body">
+          <div style={{background:'#F8FAFC',border:'1px solid var(--neutral-200)',borderRadius:8,padding:'10px 14px',marginBottom:14,fontSize:12,color:'var(--neutral-600)'}}>
+            Colonnes attendues : <strong>VILLE</strong>, <strong>SECTEUR</strong>, <strong>STATUT</strong> (VRAI = actif, FAUX = inactif)
+          </div>
+          <label style={{display:'flex',alignItems:'center',gap:8,height:40,padding:'0 16px',background:'var(--primary-600)',color:'white',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',width:'fit-content'}}>
+            <i data-lucide="upload" style={{width:14,height:14}}></i>
+            Choisir un fichier Excel
+            <input type="file" accept=".xlsx,.xls,.csv" style={{display:'none'}} onChange={handleFile} />
+          </label>
+          {file && <div style={{marginTop:8,fontSize:12,color:'var(--neutral-600)'}}>{file.name}</div>}
+          {preview?.error && <div className="form-error" style={{marginTop:12}}>{preview.error}</div>}
+          {preview?.items && (
+            <div style={{marginTop:14}}>
+              <div style={{fontSize:13,fontWeight:700,color:'var(--neutral-900)',marginBottom:8}}>{preview.items.length} secteur(s) à importer / mettre à jour</div>
+              <div style={{maxHeight:200,overflowY:'auto',border:'1px solid var(--neutral-100)',borderRadius:8}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                  <thead><tr style={{background:'var(--neutral-50)'}}><th style={{padding:'6px 10px',textAlign:'left'}}>Ville</th><th style={{padding:'6px 10px',textAlign:'left'}}>Secteur</th><th style={{padding:'6px 10px',textAlign:'center'}}>Statut</th></tr></thead>
+                  <tbody>
+                    {preview.items.slice(0, 20).map((r,i) => (
+                      <tr key={i} style={{borderTop:'1px solid var(--neutral-100)'}}>
+                        <td style={{padding:'5px 10px'}}>{r.ville}</td>
+                        <td style={{padding:'5px 10px'}}>{r.sector}</td>
+                        <td style={{padding:'5px 10px',textAlign:'center'}}>
+                          <span style={{fontSize:10,fontWeight:700,padding:'1px 7px',borderRadius:99,background:r.actif?'#DCFCE7':'#FEE2E2',color:r.actif?'#15803D':'#991B1B'}}>{r.actif?'Actif':'Inactif'}</span>
+                        </td>
+                      </tr>
+                    ))}
+                    {preview.items.length > 20 && <tr><td colSpan={3} style={{padding:'6px 10px',color:'var(--neutral-400)',fontStyle:'italic'}}>…et {preview.items.length-20} autres</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="modal-ft">
+          <button className="btn btn-ghost" onClick={onClose}>Annuler</button>
+          <button className="btn btn-primary" disabled={!preview?.items?.length || importing} onClick={handleImport}>
+            <i data-lucide="upload" style={{width:15,height:15}}></i>{importing ? 'Import…' : 'Importer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── SECTORS VIEW ── */
+function SectorsView({ secteurs }) {
+  const [search,      setSearch]      = useState('');
+  const [filterVille, setFilterVille] = useState('Toutes');
+  const [showImport,  setShowImport]  = useState(false);
+  const [toast,       setToast]       = useState('');
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
+
+  const VILLES_LIST = [...new Set(secteurs.map(s => s.ville).filter(Boolean))].sort();
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return secteurs.filter(s => {
+      const matchQ = !q || s.sector.toLowerCase().includes(q) || s.ville.toLowerCase().includes(q);
+      const matchV = filterVille === 'Toutes' || s.ville === filterVille;
+      return matchQ && matchV;
+    }).sort((a,b) => a.ville.localeCompare(b.ville) || a.sector.localeCompare(b.sector));
+  }, [secteurs, search, filterVille]);
+
+  const handleToggle = async (s) => {
+    await LS.updateSector(s.id, { actif: !s.actif });
+    showToast(`${s.sector} — ${!s.actif ? 'activé' : 'désactivé'}`);
+  };
+
+  const handleDelete = async (s) => {
+    if (!window.confirm(`Supprimer le secteur "${s.sector}" ?`)) return;
+    await LS.deleteSector(s.id);
+    showToast(`${s.sector} supprimé`);
+  };
+
+  const downloadTemplate = () => {
+    const data = [
+      ['VILLE', 'SECTEUR', 'STATUT'],
+      ...secteurs.sort((a,b) => a.ville.localeCompare(b.ville)||a.sector.localeCompare(b.sector))
+        .map(s => [s.ville, s.sector, s.actif !== false ? 'VRAI' : 'FAUX']),
+    ];
+    if (data.length === 1) data.push(['Casablanca', 'Exemple Secteur 1', 'VRAI']);
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws['!cols'] = [{wch:20},{wch:32},{wch:10}];
+    const hStyle = { font:{bold:true,color:{rgb:'FFFFFF'},sz:11}, fill:{fgColor:{rgb:'0052CC'}}, alignment:{horizontal:'center'} };
+    ['A1','B1','C1'].forEach(c => { if (ws[c]) ws[c].s = hStyle; });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Secteurs');
+    XLSX.writeFile(wb, 'secteurs.xlsx');
+  };
+
+  const actifCount   = secteurs.filter(s => s.actif !== false).length;
+  const inactifCount = secteurs.filter(s => s.actif === false).length;
+
+  return (
+    <>
+      {showImport && <ImportSecteursModal onClose={() => setShowImport(false)} onImported={n => { setShowImport(false); showToast(`${n} secteur(s) importé(s) / mis à jour`); }} />}
+      {toast && <div style={{position:'fixed',bottom:24,right:24,background:'#1E293B',color:'white',padding:'10px 18px',borderRadius:10,fontSize:13,fontWeight:600,zIndex:200,boxShadow:'0 8px 24px rgba(0,0,0,0.2)'}}>{toast}</div>}
+
+      <div className="section-hd">
+        <div>
+          <div className="section-title">Gestion des Secteurs</div>
+          <div className="section-sub">{actifCount} actif{actifCount!==1?'s':''} · {inactifCount} inactif{inactifCount!==1?'s':''} · {secteurs.length} total</div>
+        </div>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <button className="btn btn-ghost" onClick={downloadTemplate}>
+            <i data-lucide="file-spreadsheet" style={{width:15,height:15}}></i>Template / Extraction
+          </button>
+          <button className="btn btn-primary" onClick={() => setShowImport(true)}>
+            <i data-lucide="upload" style={{width:15,height:15}}></i>Importer Excel
+          </button>
+        </div>
+      </div>
+
+      <div className="table-card">
+        <div className="table-toolbar">
+          <div className="table-search">
+            <i data-lucide="search" className="table-search-icon" style={{width:15,height:15}}></i>
+            <input placeholder="Ville, secteur…" value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <select style={{height:36,padding:'0 10px',border:'1.5px solid var(--neutral-200)',borderRadius:8,fontSize:13,background:'white',fontFamily:'var(--font-sans)',cursor:'pointer'}}
+            value={filterVille} onChange={e => setFilterVille(e.target.value)}>
+            <option value="Toutes">Toutes les villes</option>
+            {VILLES_LIST.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+
+        {filtered.length === 0 ? (
+          <div className="empty">
+            <i data-lucide="layers" style={{width:48,height:48,opacity:0.25}}></i>
+            <div className="empty-text">{secteurs.length === 0 ? 'Aucun secteur — importez un fichier Excel' : 'Aucun secteur trouvé'}</div>
+          </div>
+        ) : (
+          <div className="tbl-scroll"><table className="tbl">
+            <thead>
+              <tr><th>Ville</th><th>Secteur</th><th style={{textAlign:'center'}}>Statut</th><th style={{width:100}}>Actions</th></tr>
+            </thead>
+            <tbody>
+              {filtered.map(s => {
+                const color = CITY_COLORS[s.ville] || '#64748B';
+                return (
+                  <tr key={s.id}>
+                    <td>
+                      <span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:color+'20',color}}>
+                        {s.ville}
+                      </span>
+                    </td>
+                    <td style={{fontWeight:600,color:'var(--neutral-900)'}}>{s.sector}</td>
+                    <td style={{textAlign:'center'}}>
+                      <span style={{fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:99,background:s.actif!==false?'#DCFCE7':'#FEE2E2',color:s.actif!==false?'#15803D':'#991B1B'}}>
+                        {s.actif!==false ? 'Actif' : 'Inactif'}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{display:'flex',gap:5}}>
+                        <button className="btn btn-sm" onClick={() => handleToggle(s)} title={s.actif!==false?'Désactiver':'Activer'}
+                          style={{background:s.actif!==false?'#FFF7ED':'#DCFCE7',color:s.actif!==false?'#C2410C':'#15803D',border:`1.5px solid ${s.actif!==false?'#FED7AA':'#BBF7D0'}`}}>
+                          <i data-lucide={s.actif!==false?'toggle-right':'toggle-left'} style={{width:13,height:13}}></i>
+                        </button>
+                        <button className="btn btn-sm" onClick={() => handleDelete(s)} title="Supprimer"
+                          style={{background:'#FEE2E2',color:'#991B1B',border:'1.5px solid #FECACA'}}>
+                          <i data-lucide="trash-2" style={{width:13,height:13}}></i>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table></div>
+        )}
+      </div>
+    </>
+  );
+}
+
 /* ── KML MAP VIEW ── */
 const POLY_COLORS = {
   present:'#16A34A', absent:'#DC2626', malade:'#D97706', demission:'#7C3AED',
@@ -4081,6 +4374,7 @@ function App() {
   const [sessions,    setSessions]    = useState({});
   const [pointages,   setPointages]   = useState([]);
   const [animateurs,  setAnimateurs]  = useState(ANIMATEURS_DB);
+  const [secteurs,    setSecteurs]    = useState([]);
 
   const loggedIn = !!session;
 
@@ -4095,11 +4389,13 @@ function App() {
     const refSes  = db.ref('ptg/sessions');
     const refPtg  = db.ref('ptg/pointages');
     const refAnim = db.ref('ptg/animateurs');
+    const refSect = db.ref('ptg/secteurs');
     refAcc.on('value',  snap => { _accounts   = snap.exists() ? Object.values(snap.val()) : [];                                      setAccounts([..._accounts]); });
     refSes.on('value',  snap => { _sessions   = snap.exists() ? snap.val() : {};                                                     setSessions({..._sessions}); });
     refPtg.on('value',  snap => { _pointages  = snap.exists() ? Object.entries(snap.val()).map(([k,v]) => ({...(v||{}), _key:k})) : []; setPointages([..._pointages]); });
     refAnim.on('value', snap => { _animateurs = snap.exists() ? Object.values(snap.val()).sort((a,b) => a.id - b.id) : [...ANIMATEURS_DB]; setAnimateurs([..._animateurs]); });
-    return () => { refAcc.off('value'); refSes.off('value'); refPtg.off('value'); refAnim.off('value'); };
+    refSect.on('value', snap => { setSecteurs(snap.exists() ? Object.values(snap.val()).sort((a,b) => (a.ville||'').localeCompare(b.ville||'') || (a.sector||'').localeCompare(b.sector||'')) : []); });
+    return () => { refAcc.off('value'); refSes.off('value'); refPtg.off('value'); refAnim.off('value'); refSect.off('value'); };
   }, [loggedIn]);
 
   if (!loggedIn) return <LoginPage onLogin={(sess, remember) => {
@@ -4117,13 +4413,14 @@ function App() {
   const liveCount  = (isTL ? accounts.filter(a => a.email === session.email) : accounts).filter(a => LS.isLive(a.email)).length;
   const todayPtgN  = filteredPtgs.filter(p => p.date === new Date().toDateString()).length;
   const LIVE_LOC_THRESH = 120000;
-  const PAGE_TITLES = { dashboard:'Dashboard', accounts:'Comptes Team Leads', animateurs:'Gestion des animateurs', carte:'Localisation en temps réel', activity:'Journal des pointages', weekly:'Présence hebdomadaire', geozone:'Geo Zoning', scores:'Scores & Performance', polygones:'Cartographie des Polygones' };
+  const PAGE_TITLES = { dashboard:'Dashboard', accounts:'Comptes Team Leads', animateurs:'Gestion des animateurs', secteurs:'Gestion des Secteurs', carte:'Localisation en temps réel', activity:'Journal des pointages', weekly:'Présence hebdomadaire', geozone:'Geo Zoning', scores:'Scores & Performance', polygones:'Cartographie des Polygones' };
   const pageTitle  = PAGE_TITLES[view] || 'Dashboard';
 
   const navItems = [
     { key:'dashboard',  icon:'layout-dashboard', label:'Dashboard',        badge:0 },
-    ...(!isTL ? [{ key:'accounts', icon:'users', label:'Team Lead',        badge:accounts.length }] : []),
-    { key:'animateurs', icon:'user-cog',         label:'Animateurs',       badge:allAnims.length },
+    ...(!isTL ? [{ key:'accounts',  icon:'users',       label:'Team Lead',          badge:accounts.length }] : []),
+    { key:'animateurs', icon:'user-cog',          label:'Animateurs',         badge:allAnims.length },
+    ...(!isTL ? [{ key:'secteurs',  icon:'grid-3x3',   label:'Gestion des Secteurs', badge:secteurs.length }] : []),
     { key:'carte',      icon:'map-pin',          label:'Carte temps réel', badge:liveCount },
     { key:'activity',   icon:'clipboard-list',   label:'Journal',          badge:todayPtgN },
     { key:'weekly',     icon:'calendar-days',    label:'Présence hebdo',   badge:0 },
@@ -4212,7 +4509,8 @@ function App() {
         </div>
 
         <div className="content">
-          {view === 'dashboard'  && <DashboardView accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} sessions={sessions} pointages={filteredPtgs} onRefresh={refresh} animateurs={activeAnims} />}
+          {view === 'dashboard'  && <DashboardView accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} sessions={sessions} pointages={filteredPtgs} onRefresh={refresh} animateurs={activeAnims} secteurs={isTL ? secteurs.filter(s=>s.ville===session.ville) : secteurs} />}
+          {view === 'secteurs'   && !isTL && <SectorsView secteurs={secteurs} />}
           {view === 'accounts'   && !isTL && <AccountsView accounts={accounts} sessions={sessions} onRefresh={refresh} />}
           {view === 'animateurs' && <AnimateursView animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
           {view === 'carte'      && <MapView accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
