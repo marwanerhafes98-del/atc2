@@ -720,7 +720,8 @@ const LS = {
     const acc = {
       id: Date.now(), name: form.name.trim(),
       email: form.email.toLowerCase().trim(), password: form.password,
-      ville: form.ville, initials: initials(form.name.trim()),
+      ville: form.ville, phone: form.phone || '',
+      initials: initials(form.name.trim()),
       createdAt: new Date().toISOString(), createdBy: 'manager'
     };
     await db.ref(`ptg/accounts/${acc.id}`).set(acc);
@@ -885,7 +886,7 @@ function LoginPage({ onLogin }) {
 
 /* ── ADD ACCOUNT MODAL ── */
 function AddAccountModal({ onClose, onCreated }) {
-  const [form, setForm] = useState({ name:'', email:'', ville:'Casablanca', password:'', confirm:'' });
+  const [form, setForm] = useState({ name:'', email:'', ville:'Casablanca', phone:'', password:'', confirm:'' });
   const [error, setError] = useState('');
   const set = (k,v) => setForm(f => ({...f,[k]:v}));
 
@@ -912,6 +913,7 @@ function AddAccountModal({ onClose, onCreated }) {
             {error && <div className="form-error">{error}</div>}
             <div className="mg"><label>Nom complet *</label><input placeholder="Prénom Nom" value={form.name} onChange={e=>set('name',e.target.value)} required /></div>
             <div className="mg"><label>Email *</label><input type="email" placeholder="teamlead@labelvie.ma" value={form.email} onChange={e=>set('email',e.target.value)} required /></div>
+            <div className="mg"><label>Téléphone</label><input type="tel" placeholder="+212 6 XX XX XX XX" value={form.phone} onChange={e=>set('phone',e.target.value)} /></div>
             <div className="mg-row">
               <div className="mg"><label>Ville *</label>
                 <select value={form.ville} onChange={e=>set('ville',e.target.value)}>
@@ -934,7 +936,7 @@ function AddAccountModal({ onClose, onCreated }) {
 
 /* ── EDIT ACCOUNT MODAL ── */
 function EditAccountModal({ account, onClose, onSaved }) {
-  const [form, setForm] = useState({ name: account.name, ville: account.ville, pwd: '', confirm: '' });
+  const [form, setForm] = useState({ name: account.name, ville: account.ville, phone: account.phone||'', pwd: '', confirm: '' });
   const [error, setError] = useState('');
   const set = (k,v) => setForm(f => ({...f,[k]:v}));
 
@@ -943,7 +945,7 @@ function EditAccountModal({ account, onClose, onSaved }) {
     if (!form.name.trim()) { setError('Le nom est obligatoire.'); return; }
     if (form.pwd && form.pwd.length < 4) { setError('Mot de passe trop court (min 4 chars).'); return; }
     if (form.pwd && form.pwd !== form.confirm) { setError('Les mots de passe ne correspondent pas.'); return; }
-    const data = { name: form.name.trim(), ville: form.ville };
+    const data = { name: form.name.trim(), ville: form.ville, phone: form.phone || '' };
     if (form.pwd) data.password = form.pwd;
     await LS.updateAccount(account.id, data);
     onSaved(); onClose();
@@ -963,6 +965,7 @@ function EditAccountModal({ account, onClose, onSaved }) {
             </div>
             {error && <div className="form-error">{error}</div>}
             <div className="mg"><label>Nom complet *</label><input placeholder="Prénom Nom" value={form.name} onChange={e=>set('name',e.target.value)} required /></div>
+            <div className="mg"><label>Téléphone</label><input type="tel" placeholder="+212 6 XX XX XX XX" value={form.phone} onChange={e=>set('phone',e.target.value)} /></div>
             <div className="mg"><label>Ville (accès pointage) *</label>
               <select value={form.ville} onChange={e=>set('ville',e.target.value)}>
                 {VILLES.map(v => <option key={v} value={v}>{v}</option>)}
@@ -1079,7 +1082,9 @@ function SummaryTable({ animateurs, todayPtgs, filterVille }) {
             <th style={{color:'#D97706'}}>Malades</th>
             <th style={{color:'#7C3AED'}}>Démissions</th>
             <th>Non pointés</th>
-            <th style={{color:'#0EA5E9'}}>Recrutement</th>
+            <th style={{color:'#0E7490'}}>Récupe</th>
+            <th style={{color:'#4338CA'}}>Congé</th>
+            <th style={{color:'#C2410C'}}>Renfort</th>
             <th>% Présence</th>
           </tr>
         </thead>
@@ -1104,7 +1109,9 @@ function SummaryTable({ animateurs, todayPtgs, filterVille }) {
                 <td><span style={{fontWeight:600,color:'#D97706'}}>{row.malade}</span></td>
                 <td><span style={{fontWeight:600,color:'#7C3AED'}}>{row.demission}</span></td>
                 <td><span style={{color:'var(--neutral-500)'}}>{row.nonPointe}</span></td>
-                <td><span style={{fontWeight:700,color:'#0EA5E9'}}>{row.total - row.present}</span></td>
+                <td><span style={{fontWeight:600,color:'#0E7490'}}>{row.recupe||0}</span></td>
+                <td><span style={{fontWeight:600,color:'#4338CA'}}>{row.conge||0}</span></td>
+                <td><span style={{fontWeight:600,color:'#C2410C'}}>{row.renfort||0}</span></td>
                 <td>
                   <div className="inline-prog">
                     <div className="inline-prog-bar">
@@ -1129,12 +1136,14 @@ function SectorGapPanel({ animateurs, todayPtgs }) {
   const gaps = useMemo(() => {
     const map = {};
     animateurs.forEach(a => {
-      if (!map[a.sector]) map[a.sector] = { sector: a.sector, ville: a.ville, total: 0, present: 0 };
-      map[a.sector].total++;
+      if (!map[a.sector]) map[a.sector] = { sector: a.sector, ville: a.ville, anims: [] };
       const ptg = getPtgForAnim(a, todayPtgs);
-      if (ptg?.status === 'present') map[a.sector].present++;
+      const status = ptg?.status || 'nonpointe';
+      map[a.sector].anims.push({ name: a.name, status });
     });
-    return Object.values(map).filter(s => s.present === 0).sort((a,b) => a.ville.localeCompare(b.ville) || a.sector.localeCompare(b.sector));
+    return Object.values(map)
+      .filter(s => !s.anims.some(a => a.status === 'present' || a.status === 'renfort'))
+      .sort((a,b) => a.ville.localeCompare(b.ville) || a.sector.localeCompare(b.sector));
   }, [animateurs, todayPtgs]);
 
   if (gaps.length === 0) return (
@@ -1166,7 +1175,14 @@ function SectorGapPanel({ animateurs, todayPtgs }) {
               <span className="gap-dot"></span>
               <div>
                 <div className="gap-sector">{g.sector}</div>
-                <div className="gap-ville">{g.ville} · {g.total} animateur{g.total!==1?'s':''}</div>
+                <div className="gap-ville">{g.ville} · {g.anims.length} animateur{g.anims.length!==1?'s':''}</div>
+                <div style={{marginTop:4,display:'flex',gap:4,flexWrap:'wrap'}}>
+                  {g.anims.map((a,i) => (
+                    <span key={i} style={{fontSize:10,padding:'1px 7px',borderRadius:99,background:(STATUS_COLOR[a.status]||'#64748B')+'22',color:STATUS_COLOR[a.status]||'#64748B',fontWeight:700}}>
+                      {STATUS_FR[a.status]||a.status}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
           ))}
@@ -1392,7 +1408,7 @@ function AccountsView({ accounts, sessions, onRefresh }) {
           <div className="tbl-scroll"><table className="tbl">
             <thead>
               <tr>
-                <th>Team Lead</th><th>Ville</th><th>Statut</th>
+                <th>Team Lead</th><th>Téléphone</th><th>Ville</th><th>Statut</th>
                 <th>Dernière connexion</th><th>Compte créé</th><th>Source</th><th>Actions</th>
               </tr>
             </thead>
@@ -1412,6 +1428,7 @@ function AccountsView({ accounts, sessions, onRefresh }) {
                         </div>
                       </div>
                     </td>
+                    <td style={{fontSize:13,color:'var(--neutral-700)'}}>{acc.phone || <span style={{color:'var(--neutral-300)'}}>—</span>}</td>
                     <td>
                       <span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 9px',borderRadius:99,fontSize:11,fontWeight:700,background:(CITY_COLORS[acc.ville]||'#64748B')+'20',color:CITY_COLORS[acc.ville]||'#64748B'}}>
                         {acc.ville}
@@ -1972,6 +1989,7 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
               <thead>
                 <tr>
                   <th style={{minWidth:180}}>Animateur</th>
+                  <th style={{minWidth:130}}>Secteur</th>
                   <th style={{minWidth:100}}>Ville</th>
                   <th style={{minWidth:140}}>Team Lead</th>
                   {weekDays.map((d, i) => {
@@ -1993,6 +2011,7 @@ function WeeklyPresenceView({ pointages, accounts, animateurs }) {
                   return (
                     <tr key={r.id}>
                       <td style={{fontWeight:600,color:'var(--neutral-900)'}}>{r.name}</td>
+                      <td style={{fontSize:12,color:'var(--neutral-600)'}}>{r.sector}</td>
                       <td>
                         <span style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:(CITY_COLORS[r.ville]||'#64748B')+'20',color:CITY_COLORS[r.ville]||'#64748B'}}>
                           {r.ville}
