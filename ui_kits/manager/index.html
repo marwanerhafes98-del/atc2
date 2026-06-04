@@ -4084,7 +4084,7 @@ function App() {
     { key:'dashboard',  icon:'layout-dashboard', label:'Dashboard',        badge:0 },
     ...(!isTL ? [{ key:'accounts', icon:'users', label:'Team Lead',        badge:accounts.length }] : []),
     { key:'animateurs', icon:'user-cog',         label:'Animateurs',       badge:allAnims.length },
-    { key:'carte',      icon:'map-pin',          label:'Carte temps réel', badge:liveCount },
+    ...(!isTL ? [{ key:'carte', icon:'map-pin', label:'Carte temps réel', badge:liveCount }] : []),
     { key:'activity',   icon:'clipboard-list',   label:'Journal',          badge:todayPtgN },
     { key:'weekly',     icon:'calendar-days',    label:'Présence hebdo',   badge:0 },
     { key:'geozone',   icon:'map',              label:'Geo Zoning',       badge:0 },
@@ -4175,7 +4175,7 @@ function App() {
           {view === 'dashboard'  && <DashboardView accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} sessions={sessions} pointages={filteredPtgs} onRefresh={refresh} animateurs={activeAnims} />}
           {view === 'accounts'   && !isTL && <AccountsView accounts={accounts} sessions={sessions} onRefresh={refresh} />}
           {view === 'animateurs' && <AnimateursView animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
-          {view === 'carte'      && <MapView accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
+          {view === 'carte'      && !isTL && <MapView accounts={accounts} />}
           {view === 'activity'   && <ActivityView pointages={filteredPtgs} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
           {view === 'weekly'     && <WeeklyPresenceView pointages={filteredPtgs} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} animateurs={activeAnims} />}
           {view === 'geozone'    && <GeoZoningView />}
