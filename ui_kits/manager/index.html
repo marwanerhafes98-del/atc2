@@ -1600,7 +1600,7 @@ function exportWeeklyXLSX(rows, weekDays) {
       const ptg = r.days[d.toDateString()];
       return ptg ? (STATUS_FR[ptg]||ptg) : '—';
     }),
-    `${r.totalPresent}/7`
+    `${r.totalPresent}/6`
   ])];
   const ws = XLSX.utils.aoa_to_sheet(ws_data);
   ws['!cols'] = [{wch:26},{wch:14},{wch:20},...weekDays.map(()=>({wch:10})),{wch:10}];
