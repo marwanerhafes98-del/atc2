@@ -4298,12 +4298,33 @@ function AnalyticsView({ pointages, animateurs, accounts, secteurs, isTL, cityFi
     hS.forEach((_,i)=>{ const c=XLSX.utils.encode_cell({r:0,c:i}); if(wsS[c]) wsS[c].s=hStyle; });
     XLSX.utils.book_append_sheet(wb, wsS, 'Secteurs');
 
-    // Sheet 3 — Jours
-    const hJ = ['Date','Jour','Total','Présent','Absent','Malade','Récupe','Congé','Renfort','Démission','Non pointé'];
-    const JOURS_FR = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
-    const wsJ = XLSX.utils.aoa_to_sheet([hJ,...jourRows.map(r=>[r.date.toLocaleDateString('fr-FR'),JOURS_FR[r.date.getDay()],r.total,r.present,r.absent,r.malade,r.recupe,r.conge,r.renfort,r.demission,r.nonpointe])]);
-    wsJ['!cols'] = [{wch:14},{wch:8},{wch:8},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:12},{wch:12}];
-    hJ.forEach((_,i)=>{ const c=XLSX.utils.encode_cell({r:0,c:i}); if(wsJ[c]) wsJ[c].s=hStyle; });
+    // Sheet 3 — Jours par ville (une ligne par jour × ville)
+    const JOURS_FR2 = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+    const villes = filterVille !== 'Toutes'
+      ? [filterVille]
+      : [...new Set(filteredAnims.map(a => a.ville).filter(Boolean))].sort();
+    const hJ = ['Date','Jour','Ville','Total animateurs','Présent','Absent','Malade','Récupe','Congé','Renfort','Démission','Non pointé'];
+    const rowsJ = [];
+    workingDays.forEach(d => {
+      const ds = d.toDateString();
+      const dateStr = d.toLocaleDateString('fr-FR');
+      const jourStr = JOURS_FR2[d.getDay()];
+      villes.forEach(ville => {
+        const villeAnims = filteredAnims.filter(a => a.ville === ville);
+        const villePtgs  = filteredPtgs.filter(p => {
+          const ids = new Set(villeAnims.map(a=>a.id));
+          const nms = new Set(villeAnims.map(a=>a.name));
+          return p.date === ds && (ids.has(p.animateurId) || nms.has(p.animateurName));
+        });
+        const stats = {};
+        STAT_COLS.forEach(c => { stats[c.key] = 0; });
+        villePtgs.forEach(p => { if (stats.hasOwnProperty(p.status)) stats[p.status]++; });
+        rowsJ.push([dateStr, jourStr, ville, villeAnims.length, stats.present, stats.absent, stats.malade, stats.recupe, stats.conge, stats.renfort, stats.demission, stats.nonpointe]);
+      });
+    });
+    const wsJ = XLSX.utils.aoa_to_sheet([hJ, ...rowsJ]);
+    wsJ['!cols'] = [{wch:14},{wch:8},{wch:16},{wch:14},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:12},{wch:12}];
+    hJ.forEach((_,i) => { const c = XLSX.utils.encode_cell({r:0,c:i}); if(wsJ[c]) wsJ[c].s = hStyle; });
     XLSX.utils.book_append_sheet(wb, wsJ, 'Par jour');
 
     XLSX.writeFile(wb, `analyses_pointage_${fromISO}_${toISO}.xlsx`);
