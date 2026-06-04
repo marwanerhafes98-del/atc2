@@ -1295,7 +1295,20 @@ function DashboardView({ accounts, sessions, pointages, onRefresh, animateurs, s
     return list;
   }, [todayPtgs, filterVille, filterTL, accounts]);
 
-  const stats = useMemo(() => computeStats(filteredAnims, filteredPtgs), [filteredAnims, filteredPtgs]);
+  const stats = useMemo(() => {
+    const base = computeStats(filteredAnims, filteredPtgs);
+    if (secteurs.length > 0) {
+      const villeSecteursCount = filterVille === 'Toutes'
+        ? secteurs.length
+        : secteurs.filter(s => s.ville === filterVille).length;
+      if (villeSecteursCount > 0) {
+        base.totalSectors   = villeSecteursCount;
+        base.gapSectors     = Math.max(0, villeSecteursCount - base.coveredSectors);
+        base.sectorCovPct   = Math.round(base.coveredSectors / villeSecteursCount * 100);
+      }
+    }
+    return base;
+  }, [filteredAnims, filteredPtgs, secteurs, filterVille]);
 
   const yesterdayStr = useMemo(() => { const d = new Date(); d.setDate(d.getDate()-1); return d.toDateString(); }, []);
   const yesterdayPtgs = useMemo(() => {
