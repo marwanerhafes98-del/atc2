@@ -811,6 +811,10 @@ const LS = {
 
   async reactivateAnimateur(id) {
     await db.ref(`ptg/animateurs/${id}`).update({ actif: true });
+  },
+
+  async deleteAnimateur(id) {
+    await db.ref(`ptg/animateurs/${id}`).remove();
   }
 };
 
@@ -2709,6 +2713,12 @@ function AnimateursView({ animateurs, accounts }) {
     showToast(`${anim.name} réactivé`);
   };
 
+  const handleDelete = async (anim) => {
+    if (!window.confirm(`Supprimer définitivement ${anim.name} ? Cette action est irréversible.`)) return;
+    await LS.deleteAnimateur(anim.id);
+    showToast(`${anim.name} supprimé définitivement`);
+  };
+
   const villeCount = [...new Set(animateurs.map(a => a.ville))].length;
 
   return (
@@ -2809,11 +2819,14 @@ function AnimateursView({ animateurs, accounts }) {
                     <td style={{fontSize:12,color:'var(--neutral-700)',fontWeight:500}}>{anim.teamLead}</td>
                     <td>
                       <div style={{display:'flex',gap:6}}>
-                        <button className="btn btn-ghost btn-sm" onClick={() => setEditTarget(anim)} title="Modifier / Réaffecter">
+                        <button className="btn btn-ghost btn-sm" onClick={() => setEditTarget(anim)} title="Modifier">
                           <i data-lucide="pencil" style={{width:13,height:13}}></i>
                         </button>
-                        <button className="btn btn-danger btn-sm" onClick={() => handleDeactivate(anim)} title="Désactiver" style={{background:'#FFF7ED',color:'#C2410C',border:'1.5px solid #FED7AA'}}>
+                        <button className="btn btn-sm" onClick={() => handleDeactivate(anim)} title="Désactiver" style={{background:'#FFF7ED',color:'#C2410C',border:'1.5px solid #FED7AA'}}>
                           <i data-lucide="user-x" style={{width:13,height:13}}></i>
+                        </button>
+                        <button className="btn btn-sm" onClick={() => handleDelete(anim)} title="Supprimer définitivement" style={{background:'#FEE2E2',color:'#991B1B',border:'1.5px solid #FECACA'}}>
+                          <i data-lucide="trash-2" style={{width:13,height:13}}></i>
                         </button>
                       </div>
                     </td>
@@ -2864,10 +2877,15 @@ function AnimateursView({ animateurs, accounts }) {
                       </td>
                       <td style={{fontSize:12,color:'var(--neutral-600)'}}>{anim.teamLead}</td>
                       <td>
-                        <button className="btn btn-ghost btn-sm" onClick={() => handleReactivate(anim)} title="Réactiver" style={{color:'#16A34A',border:'1.5px solid #BBF7D0'}}>
-                          <i data-lucide="user-check" style={{width:13,height:13}}></i>
-                          Réactiver
-                        </button>
+                        <div style={{display:'flex',gap:6}}>
+                          <button className="btn btn-ghost btn-sm" onClick={() => handleReactivate(anim)} title="Réactiver" style={{color:'#16A34A',border:'1.5px solid #BBF7D0'}}>
+                            <i data-lucide="user-check" style={{width:13,height:13}}></i>
+                            Réactiver
+                          </button>
+                          <button className="btn btn-sm" onClick={() => handleDelete(anim)} title="Supprimer définitivement" style={{background:'#FEE2E2',color:'#991B1B',border:'1.5px solid #FECACA'}}>
+                            <i data-lucide="trash-2" style={{width:13,height:13}}></i>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
