@@ -4142,6 +4142,395 @@ function SectorsView({ secteurs }) {
   );
 }
 
+/* ── ANALYTICS VIEW ── */
+const STAT_COLS = [
+  { key:'present',   label:'Présent',   color:'#15803D', bg:'#DCFCE7' },
+  { key:'absent',    label:'Absent',    color:'#B91C1C', bg:'#FEE2E2' },
+  { key:'malade',    label:'Malade',    color:'#B45309', bg:'#FEF3C7' },
+  { key:'recupe',    label:'Récupe',    color:'#0E7490', bg:'#CFFAFE' },
+  { key:'conge',     label:'Congé',     color:'#4338CA', bg:'#E0E7FF' },
+  { key:'renfort',   label:'Renfort',   color:'#C2410C', bg:'#FFEDD5' },
+  { key:'demission', label:'Démission', color:'#6D28D9', bg:'#F3E8FF' },
+  { key:'nonpointe', label:'Non pointé',color:'#475569', bg:'#F1F5F9' },
+];
+
+function getWorkingDays(fromDate, toDate) {
+  const days = [];
+  const cur = new Date(fromDate); cur.setHours(0,0,0,0);
+  const end = new Date(toDate);   end.setHours(23,59,59);
+  while (cur <= end) {
+    if (cur.getDay() !== 0) days.push(new Date(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return days;
+}
+
+function AnalyticsView({ pointages, animateurs, accounts, secteurs, isTL, cityFilter }) {
+  const [subView,      setSubView]      = useState('animateurs');
+  const [period,       setPeriod]       = useState('month');
+  const [customFrom,   setCustomFrom]   = useState('');
+  const [customTo,     setCustomTo]     = useState('');
+  const [filterVille,  setFilterVille]  = useState(cityFilter || 'Toutes');
+  const [filterTL,     setFilterTL]     = useState('Tous');
+  const [filterSector, setFilterSector] = useState('Tous');
+  const [sortKey,      setSortKey]      = useState('name');
+  const [sortDir,      setSortDir]      = useState('asc');
+
+  const handleSort = (k) => { if (sortKey===k) setSortDir(d=>d==='asc'?'desc':'asc'); else { setSortKey(k); setSortDir('asc'); } };
+  const SortIcon = ({k}) => sortKey!==k ? null : <i data-lucide={sortDir==='asc'?'chevron-up':'chevron-down'} style={{width:12,height:12,marginLeft:3}}></i>;
+
+  const { fromDate, toDate } = useMemo(() => {
+    const today = new Date(); today.setHours(23,59,59);
+    if (period === 'week') {
+      const mon = new Date(today);
+      const day = today.getDay();
+      mon.setDate(today.getDate() - (day===0?6:day-1));
+      mon.setHours(0,0,0,0);
+      return { fromDate: mon, toDate: today };
+    }
+    if (period === 'month') return { fromDate: new Date(today.getFullYear(), today.getMonth(), 1), toDate: today };
+    if (period === 'prevmonth') return { fromDate: new Date(today.getFullYear(), today.getMonth()-1, 1), toDate: new Date(today.getFullYear(), today.getMonth(), 0, 23,59,59) };
+    if (period === 'custom' && customFrom && customTo) return { fromDate: new Date(customFrom), toDate: new Date(customTo+'T23:59:59') };
+    return { fromDate: new Date(today.getFullYear(), today.getMonth(), 1), toDate: today };
+  }, [period, customFrom, customTo]);
+
+  const fromISO = useMemo(() => dateToISO(fromDate?.toDateString()), [fromDate]);
+  const toISO   = useMemo(() => dateToISO(toDate?.toDateString()),   [toDate]);
+
+  const periodPtgs = useMemo(() => {
+    if (!fromISO || !toISO) return [];
+    return pointages.filter(p => { const iso = dateToISO(p.date); return iso && iso >= fromISO && iso <= toISO; });
+  }, [pointages, fromISO, toISO]);
+
+  const VILLES_LIST = useMemo(() => [...new Set(animateurs.map(a=>a.ville).filter(Boolean))].sort(), [animateurs]);
+  const TL_LIST     = useMemo(() => {
+    const src = filterVille==='Toutes' ? animateurs : animateurs.filter(a=>a.ville===filterVille);
+    return [...new Set(src.map(a=>a.teamLead).filter(Boolean))].sort();
+  }, [animateurs, filterVille]);
+  const SECTOR_LIST = useMemo(() => {
+    let src = animateurs;
+    if (filterVille!=='Toutes') src = src.filter(a=>a.ville===filterVille);
+    if (filterTL!=='Tous')      src = src.filter(a=>a.teamLead===filterTL);
+    return [...new Set(src.map(a=>a.sector).filter(Boolean))].sort();
+  }, [animateurs, filterVille, filterTL]);
+
+  const filteredAnims = useMemo(() => {
+    let list = animateurs.filter(a => a.actif !== false);
+    if (filterVille!=='Toutes')  list = list.filter(a=>a.ville===filterVille);
+    if (filterTL!=='Tous')       list = list.filter(a=>a.teamLead===filterTL);
+    if (filterSector!=='Tous')   list = list.filter(a=>a.sector===filterSector);
+    return list;
+  }, [animateurs, filterVille, filterTL, filterSector]);
+
+  const filteredPtgs = useMemo(() => {
+    const ids = new Set(filteredAnims.map(a=>a.id));
+    const nms = new Set(filteredAnims.map(a=>a.name));
+    return periodPtgs.filter(p => ids.has(p.animateurId) || nms.has(p.animateurName));
+  }, [periodPtgs, filteredAnims]);
+
+  const workingDays = useMemo(() => (fromDate && toDate) ? getWorkingDays(fromDate, toDate) : [], [fromDate, toDate]);
+
+  // ── Animateur rows
+  const animRows = useMemo(() => {
+    return filteredAnims.map(anim => {
+      const ptgs = filteredPtgs.filter(p => p.animateurId===anim.id || p.animateurName===anim.name);
+      const stats = {};
+      STAT_COLS.forEach(c => { stats[c.key] = 0; });
+      ptgs.forEach(p => { if (stats.hasOwnProperty(p.status)) stats[p.status]++; });
+      const total = ptgs.length;
+      const taux  = total > 0 ? Math.round((stats.present + stats.renfort) / total * 100) : 0;
+      return { ...anim, ...stats, totalPointed: total, taux };
+    }).sort((a,b) => {
+      const v = sortDir==='asc' ? 1 : -1;
+      if (sortKey==='taux')    return v*(a.taux-b.taux);
+      if (sortKey==='present') return v*(a.present-b.present);
+      if (sortKey==='absent')  return v*(a.absent-b.absent);
+      return v*a.name.localeCompare(b.name);
+    });
+  }, [filteredAnims, filteredPtgs, sortKey, sortDir]);
+
+  // ── Secteur rows
+  const sectorRows = useMemo(() => {
+    const base = secteurs.length > 0
+      ? secteurs.filter(s => filterVille==='Toutes' || s.ville===filterVille)
+      : [...new Map(animateurs.filter(a=>filterVille==='Toutes'||a.ville===filterVille).map(a=>[a.sector+'|'+a.ville, {sector:a.sector, ville:a.ville, actif:true}])).values()];
+    return base.map(s => {
+      const linked = animateurs.filter(a => a.actif!==false && (a.sector||'').toLowerCase()===(s.sector||'').toLowerCase() && (a.ville||'').toLowerCase()===(s.ville||'').toLowerCase());
+      const coveredDays = new Set();
+      workingDays.forEach(d => {
+        const ds = d.toDateString();
+        const ok = linked.some(a => { const p=filteredPtgs.find(p2=>(p2.animateurId===a.id||p2.animateurName===a.name)&&p2.date===ds); return p&&(p.status==='present'||p.status==='renfort'); });
+        if (ok) coveredDays.add(ds);
+      });
+      const covered = coveredDays.size;
+      const total   = workingDays.length;
+      return { sector:s.sector, ville:s.ville, actif:s.actif!==false, animNames:linked.map(a=>a.name), covered, uncovered:total-covered, total, taux:total>0?Math.round(covered/total*100):0 };
+    }).sort((a,b)=>a.ville.localeCompare(b.ville)||a.sector.localeCompare(b.sector));
+  }, [secteurs, animateurs, workingDays, filteredPtgs, filterVille]);
+
+  // ── Jour rows
+  const jourRows = useMemo(() => workingDays.map(d => {
+    const ds = d.toDateString();
+    const dp = filteredPtgs.filter(p=>p.date===ds);
+    const stats = {};
+    STAT_COLS.forEach(c=>{ stats[c.key]=0; });
+    dp.forEach(p=>{ if(stats.hasOwnProperty(p.status)) stats[p.status]++; });
+    return { date:d, ds, total:dp.length, ...stats };
+  }), [workingDays, filteredPtgs]);
+
+  // ── Export
+  const handleExport = () => {
+    const wb = XLSX.utils.book_new();
+    const hStyle = { font:{bold:true,color:{rgb:'FFFFFF'},sz:10}, fill:{fgColor:{rgb:'0052CC'}}, alignment:{horizontal:'center'} };
+    const periodLabel = period==='week'?'Cette semaine':period==='month'?'Ce mois':period==='prevmonth'?'Mois précédent':`${customFrom} - ${customTo}`;
+
+    // Sheet 1 — Animateurs
+    const hA = ['Animateur','Matricule','Ville','Secteur','Team Lead','Jours pointés','Présent','Absent','Malade','Récupe','Congé','Renfort','Démission','Non pointé','Taux présence %'];
+    const wsA = XLSX.utils.aoa_to_sheet([hA,...animRows.map(r=>[r.name,r.matricule||'',r.ville,r.sector,r.teamLead,r.totalPointed,r.present,r.absent,r.malade,r.recupe,r.conge,r.renfort,r.demission,r.nonpointe,r.taux+'%'])]);
+    wsA['!cols'] = [{wch:26},{wch:14},{wch:14},{wch:26},{wch:20},{wch:12},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:12},{wch:12},{wch:14}];
+    hA.forEach((_,i)=>{ const c=XLSX.utils.encode_cell({r:0,c:i}); if(wsA[c]) wsA[c].s=hStyle; });
+    XLSX.utils.book_append_sheet(wb, wsA, 'Animateurs');
+
+    // Sheet 2 — Secteurs
+    const hS = ['Secteur','Ville','Statut','Animateur(s)','Jours couverts',`/${workingDays.length}j`,'Jours non couverts','Taux couverture %'];
+    const wsS = XLSX.utils.aoa_to_sheet([hS,...sectorRows.map(r=>[r.sector,r.ville,r.actif?'Actif':'Inactif',r.animNames.join(', ')||'—',r.covered,`/${r.total}j`,r.uncovered,r.taux+'%'])]);
+    wsS['!cols'] = [{wch:28},{wch:14},{wch:10},{wch:30},{wch:14},{wch:8},{wch:16},{wch:16}];
+    hS.forEach((_,i)=>{ const c=XLSX.utils.encode_cell({r:0,c:i}); if(wsS[c]) wsS[c].s=hStyle; });
+    XLSX.utils.book_append_sheet(wb, wsS, 'Secteurs');
+
+    // Sheet 3 — Jours
+    const hJ = ['Date','Jour','Total','Présent','Absent','Malade','Récupe','Congé','Renfort','Démission','Non pointé'];
+    const JOURS_FR = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+    const wsJ = XLSX.utils.aoa_to_sheet([hJ,...jourRows.map(r=>[r.date.toLocaleDateString('fr-FR'),JOURS_FR[r.date.getDay()],r.total,r.present,r.absent,r.malade,r.recupe,r.conge,r.renfort,r.demission,r.nonpointe])]);
+    wsJ['!cols'] = [{wch:14},{wch:8},{wch:8},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:12},{wch:12}];
+    hJ.forEach((_,i)=>{ const c=XLSX.utils.encode_cell({r:0,c:i}); if(wsJ[c]) wsJ[c].s=hStyle; });
+    XLSX.utils.book_append_sheet(wb, wsJ, 'Par jour');
+
+    XLSX.writeFile(wb, `analyses_pointage_${fromISO}_${toISO}.xlsx`);
+  };
+
+  const periodLabel = fromDate && toDate
+    ? `${fromDate.toLocaleDateString('fr-FR')} → ${toDate.toLocaleDateString('fr-FR')} · ${workingDays.length} j. ouvrables`
+    : '';
+
+  return (
+    <div>
+      {/* ── HEADER ── */}
+      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,marginBottom:20,flexWrap:'wrap'}}>
+        <div>
+          <div style={{fontSize:18,fontWeight:800,color:'var(--neutral-900)'}}>Analyses de pointage</div>
+          <div style={{fontSize:12,color:'var(--neutral-500)',marginTop:2}}>{periodLabel}</div>
+        </div>
+        <button className="btn btn-primary" onClick={handleExport}>
+          <i data-lucide="file-spreadsheet" style={{width:15,height:15}}></i>Export Excel (3 onglets)
+        </button>
+      </div>
+
+      {/* ── FILTERS ── */}
+      <div style={{background:'white',border:'1px solid var(--neutral-200)',borderRadius:12,padding:'14px 18px',marginBottom:16,display:'flex',gap:10,flexWrap:'wrap',alignItems:'center',boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
+        <span style={{fontSize:11,fontWeight:700,color:'var(--neutral-500)',textTransform:'uppercase',letterSpacing:'0.5px'}}>Période</span>
+        {[['week','Cette sem.'],['month','Ce mois'],['prevmonth','Mois préc.'],['custom','Personnalisé']].map(([v,l])=>(
+          <button key={v} onClick={()=>setPeriod(v)}
+            style={{height:32,padding:'0 12px',borderRadius:8,border:`1.5px solid ${period===v?'var(--primary-500)':'var(--neutral-200)'}`,background:period===v?'var(--primary-50)':'white',color:period===v?'var(--primary-700)':'var(--neutral-600)',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'var(--font-sans)'}}>
+            {l}
+          </button>
+        ))}
+        {period==='custom' && <>
+          <input type="date" value={customFrom} onChange={e=>setCustomFrom(e.target.value)}
+            style={{height:32,padding:'0 10px',border:'1.5px solid var(--neutral-200)',borderRadius:8,fontSize:12,fontFamily:'var(--font-sans)',color:'var(--neutral-800)'}} />
+          <span style={{fontSize:12,color:'var(--neutral-400)'}}>→</span>
+          <input type="date" value={customTo} onChange={e=>setCustomTo(e.target.value)}
+            style={{height:32,padding:'0 10px',border:'1.5px solid var(--neutral-200)',borderRadius:8,fontSize:12,fontFamily:'var(--font-sans)',color:'var(--neutral-800)'}} />
+        </>}
+        <div style={{width:1,height:24,background:'var(--neutral-200)',margin:'0 4px'}}></div>
+        {!isTL && <select className="af-select" value={filterVille} onChange={e=>{setFilterVille(e.target.value);setFilterTL('Tous');setFilterSector('Tous');}}>
+          <option value="Toutes">Toutes les villes</option>
+          {VILLES_LIST.map(v=><option key={v}>{v}</option>)}
+        </select>}
+        <select className="af-select" value={filterTL} onChange={e=>{setFilterTL(e.target.value);setFilterSector('Tous');}}>
+          <option value="Tous">Tous les TL</option>
+          {TL_LIST.map(t=><option key={t}>{t}</option>)}
+        </select>
+        <select className="af-select" value={filterSector} onChange={e=>setFilterSector(e.target.value)}>
+          <option value="Tous">Tous les secteurs</option>
+          {SECTOR_LIST.map(s=><option key={s}>{s}</option>)}
+        </select>
+        {(filterVille!=='Toutes'||filterTL!=='Tous'||filterSector!=='Tous') && (
+          <button style={{height:32,padding:'0 10px',border:'1.5px solid var(--neutral-200)',borderRadius:8,background:'white',color:'var(--neutral-500)',fontSize:12,cursor:'pointer',fontFamily:'var(--font-sans)'}}
+            onClick={()=>{setFilterVille(cityFilter||'Toutes');setFilterTL('Tous');setFilterSector('Tous');}}>
+            Réinitialiser
+          </button>
+        )}
+      </div>
+
+      {/* ── SUB-TABS ── */}
+      <div style={{display:'flex',gap:4,marginBottom:16,background:'var(--neutral-100)',borderRadius:10,padding:4,width:'fit-content'}}>
+        {[['animateurs','users','Animateurs',animRows.length],['secteurs','layers','Secteurs',sectorRows.length],['jours','calendar-days','Par jour',jourRows.length]].map(([v,ic,lb,cnt])=>(
+          <button key={v} onClick={()=>setSubView(v)}
+            style={{display:'flex',alignItems:'center',gap:7,height:36,padding:'0 16px',borderRadius:8,border:'none',background:subView===v?'white':'transparent',color:subView===v?'var(--neutral-900)':'var(--neutral-500)',fontWeight:subView===v?700:500,fontSize:13,cursor:'pointer',fontFamily:'var(--font-sans)',boxShadow:subView===v?'0 1px 4px rgba(0,0,0,0.08)':'none',transition:'all 150ms'}}>
+            <i data-lucide={ic} style={{width:14,height:14}}></i>{lb}
+            <span style={{fontSize:10,fontWeight:700,padding:'1px 6px',borderRadius:99,background:subView===v?'var(--primary-100)':'var(--neutral-200)',color:subView===v?'var(--primary-700)':'var(--neutral-500)'}}>{cnt}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* ── VUE ANIMATEURS ── */}
+      {subView==='animateurs' && (
+        <div className="table-card">
+          <div className="table-toolbar">
+            <div className="table-toolbar-title">{animRows.length} animateur{animRows.length!==1?'s':''}</div>
+            <div style={{fontSize:12,color:'var(--neutral-500)'}}>Cliquez sur un en-tête pour trier</div>
+          </div>
+          {animRows.length===0 ? (
+            <div className="empty"><i data-lucide="bar-chart-2" style={{width:48,height:48,opacity:0.2}}></i><div className="empty-text">Aucun pointage sur la période</div></div>
+          ) : (
+            <div className="tbl-scroll"><table className="tbl">
+              <thead><tr>
+                <th style={{cursor:'pointer'}} onClick={()=>handleSort('name')}>Animateur <SortIcon k="name"/></th>
+                <th>Secteur</th>
+                <th>Ville</th>
+                <th>Team Lead</th>
+                <th style={{textAlign:'center',cursor:'pointer'}} onClick={()=>handleSort('present')}><span style={{color:'#15803D'}}>Présent</span> <SortIcon k="present"/></th>
+                {STAT_COLS.slice(1).map(c=><th key={c.key} style={{textAlign:'center'}}><span style={{color:c.color}}>{c.label}</span></th>)}
+                <th style={{textAlign:'center',cursor:'pointer'}} onClick={()=>handleSort('taux')}>Taux <SortIcon k="taux"/></th>
+              </tr></thead>
+              <tbody>
+                {animRows.map(r => {
+                  const barColor = r.taux>=70?'#22C55E':r.taux>=40?'#F59E0B':'#EF4444';
+                  return (
+                    <tr key={r.id}>
+                      <td>
+                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                          <div className="av" style={{background:avatarColor(r.name),width:28,height:28,fontSize:11}}>{initials(r.name)}</div>
+                          <div>
+                            <div style={{fontWeight:600,color:'var(--neutral-900)',fontSize:13}}>{r.name}</div>
+                            {r.matricule && <div style={{fontSize:10,color:'var(--neutral-400)'}}>{r.matricule}</div>}
+                          </div>
+                        </div>
+                      </td>
+                      <td style={{fontSize:12,color:'var(--neutral-600)'}}>{r.sector}</td>
+                      <td><span style={{fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:99,background:(CITY_COLORS[r.ville]||'#64748B')+'20',color:CITY_COLORS[r.ville]||'#64748B'}}>{r.ville}</span></td>
+                      <td style={{fontSize:12,color:'var(--neutral-600)'}}>{r.teamLead}</td>
+                      <td style={{textAlign:'center'}}><span style={{fontWeight:700,color:'#15803D',fontSize:14}}>{r.present}</span></td>
+                      {STAT_COLS.slice(1).map(c=>(
+                        <td key={c.key} style={{textAlign:'center'}}>
+                          {r[c.key]>0 ? <span style={{fontWeight:600,color:c.color}}>{r[c.key]}</span> : <span style={{color:'var(--neutral-200)'}}>—</span>}
+                        </td>
+                      ))}
+                      <td>
+                        <div style={{display:'flex',alignItems:'center',gap:7,minWidth:90}}>
+                          <div style={{flex:1,height:5,background:'var(--neutral-100)',borderRadius:3,overflow:'hidden'}}>
+                            <div style={{height:'100%',width:`${r.taux}%`,background:barColor,borderRadius:3}}></div>
+                          </div>
+                          <span style={{fontSize:11,fontWeight:700,color:barColor,minWidth:30}}>{r.taux}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table></div>
+          )}
+        </div>
+      )}
+
+      {/* ── VUE SECTEURS ── */}
+      {subView==='secteurs' && (
+        <div className="table-card">
+          <div className="table-toolbar">
+            <div className="table-toolbar-title">{sectorRows.length} secteur{sectorRows.length!==1?'s':''}</div>
+            <div style={{fontSize:12,color:'var(--neutral-500)'}}>{workingDays.length} jours ouvrables dans la période</div>
+          </div>
+          {sectorRows.length===0 ? (
+            <div className="empty"><i data-lucide="layers" style={{width:48,height:48,opacity:0.2}}></i><div className="empty-text">Aucun secteur</div></div>
+          ) : (
+            <div className="tbl-scroll"><table className="tbl">
+              <thead><tr>
+                <th>Secteur</th><th>Ville</th><th>Statut</th><th>Animateur(s)</th>
+                <th style={{textAlign:'center'}}>Jours couverts</th>
+                <th style={{textAlign:'center'}}>Non couverts</th>
+                <th style={{minWidth:120}}>Couverture</th>
+              </tr></thead>
+              <tbody>
+                {sectorRows.map(r => {
+                  const color  = CITY_COLORS[r.ville]||'#64748B';
+                  const barCol = r.taux>=70?'#22C55E':r.taux>=40?'#F59E0B':'#EF4444';
+                  return (
+                    <tr key={r.sector+r.ville} style={{opacity:r.actif?1:0.55}}>
+                      <td style={{fontWeight:600,color:'var(--neutral-900)'}}>{r.sector}</td>
+                      <td><span style={{fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:99,background:color+'20',color}}>{r.ville}</span></td>
+                      <td><span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:99,background:r.actif?'#DCFCE7':'#FEE2E2',color:r.actif?'#15803D':'#991B1B'}}>{r.actif?'Actif':'Inactif'}</span></td>
+                      <td style={{fontSize:12,color: r.animNames.length?'var(--neutral-700)':'#D97706'}}>
+                        {r.animNames.length ? r.animNames.join(', ') : <span style={{fontWeight:600}}>⚠️ Aucun animateur</span>}
+                      </td>
+                      <td style={{textAlign:'center'}}><span style={{fontWeight:700,color:'#15803D'}}>{r.covered}</span><span style={{color:'var(--neutral-400)',fontSize:11}}>/{r.total}j</span></td>
+                      <td style={{textAlign:'center'}}><span style={{fontWeight:600,color:r.uncovered>0?'#DC2626':'var(--neutral-300)'}}>{r.uncovered}</span></td>
+                      <td>
+                        {r.animNames.length===0
+                          ? <span style={{fontSize:11,color:'#94A3B8',fontStyle:'italic'}}>Aucun animateur</span>
+                          : <div style={{display:'flex',alignItems:'center',gap:7}}>
+                              <div style={{flex:1,height:5,background:'var(--neutral-100)',borderRadius:3,overflow:'hidden'}}>
+                                <div style={{height:'100%',width:`${r.taux}%`,background:barCol,borderRadius:3}}></div>
+                              </div>
+                              <span style={{fontSize:11,fontWeight:700,color:barCol,minWidth:30}}>{r.taux}%</span>
+                            </div>
+                        }
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table></div>
+          )}
+        </div>
+      )}
+
+      {/* ── VUE JOURS ── */}
+      {subView==='jours' && (
+        <div className="table-card">
+          <div className="table-toolbar">
+            <div className="table-toolbar-title">{jourRows.length} jours ouvrables</div>
+          </div>
+          {jourRows.length===0 ? (
+            <div className="empty"><i data-lucide="calendar-days" style={{width:48,height:48,opacity:0.2}}></i><div className="empty-text">Aucune donnée</div></div>
+          ) : (
+            <div className="tbl-scroll"><table className="tbl">
+              <thead><tr>
+                <th>Date</th><th>Jour</th><th style={{textAlign:'center'}}>Total</th>
+                {STAT_COLS.map(c=><th key={c.key} style={{textAlign:'center'}}><span style={{color:c.color}}>{c.label}</span></th>)}
+              </tr></thead>
+              <tbody>
+                {jourRows.map(r => {
+                  const JOURS_FR=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+                  const isToday = r.date.toDateString() === new Date().toDateString();
+                  return (
+                    <tr key={r.ds} style={{background:isToday?'var(--primary-50)':''}}>
+                      <td style={{fontWeight:isToday?700:500,color:isToday?'var(--primary-700)':'var(--neutral-800)'}}>
+                        {r.date.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'})}
+                        {isToday && <span style={{marginLeft:6,fontSize:10,fontWeight:700,background:'var(--primary-600)',color:'white',padding:'1px 6px',borderRadius:99}}>Aujourd'hui</span>}
+                      </td>
+                      <td style={{color:'var(--neutral-500)',fontWeight:500}}>{JOURS_FR[r.date.getDay()]}</td>
+                      <td style={{textAlign:'center',fontWeight:700}}>{r.total}</td>
+                      {STAT_COLS.map(c=>(
+                        <td key={c.key} style={{textAlign:'center'}}>
+                          {r[c.key]>0
+                            ? <span style={{display:'inline-block',minWidth:22,padding:'1px 6px',borderRadius:99,background:c.bg,color:c.color,fontWeight:700,fontSize:12}}>{r[c.key]}</span>
+                            : <span style={{color:'var(--neutral-200)'}}>—</span>
+                          }
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table></div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── KML MAP VIEW ── */
 const POLY_COLORS = {
   present:'#16A34A', absent:'#DC2626', malade:'#D97706', demission:'#7C3AED',
@@ -4429,7 +4818,7 @@ function App() {
   const liveCount  = (isTL ? accounts.filter(a => a.email === session.email) : accounts).filter(a => LS.isLive(a.email)).length;
   const todayPtgN  = filteredPtgs.filter(p => p.date === new Date().toDateString()).length;
   const LIVE_LOC_THRESH = 120000;
-  const PAGE_TITLES = { dashboard:'Dashboard', accounts:'Comptes Team Leads', animateurs:'Gestion des animateurs', secteurs:'Gestion des Secteurs', carte:'Localisation en temps réel', activity:'Journal des pointages', weekly:'Présence hebdomadaire', geozone:'Geo Zoning', scores:'Scores & Performance', polygones:'Cartographie des Polygones' };
+  const PAGE_TITLES = { dashboard:'Dashboard', accounts:'Comptes Team Leads', animateurs:'Gestion des animateurs', secteurs:'Gestion des Secteurs', carte:'Localisation en temps réel', activity:'Journal des pointages', weekly:'Présence hebdomadaire', analytics:'Analyses de pointage', geozone:'Geo Zoning', scores:'Scores & Performance', polygones:'Cartographie des Polygones' };
   const pageTitle  = PAGE_TITLES[view] || 'Dashboard';
 
   const navItems = [
@@ -4440,6 +4829,7 @@ function App() {
     { key:'carte',      icon:'map-pin',          label:'Carte temps réel', badge:liveCount },
     { key:'activity',   icon:'clipboard-list',   label:'Journal',          badge:todayPtgN },
     { key:'weekly',     icon:'calendar-days',    label:'Présence hebdo',   badge:0 },
+    { key:'analytics',  icon:'bar-chart-2',      label:'Analyses',         badge:0 },
     { key:'geozone',   icon:'map',              label:'Geo Zoning',       badge:0 },
     { key:'polygones', icon:'layers',           label:'Cartographie',     badge:0 },
     { key:'scores',    icon:'award',            label:'Scores',           badge:0 },
@@ -4532,6 +4922,7 @@ function App() {
           {view === 'carte'      && <MapView accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
           {view === 'activity'   && <ActivityView pointages={filteredPtgs} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
           {view === 'weekly'     && <WeeklyPresenceView pointages={filteredPtgs} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} animateurs={activeAnims} />}
+          {view === 'analytics'  && <AnalyticsView pointages={filteredPtgs} animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} secteurs={isTL ? secteurs.filter(s=>s.ville===session.ville) : secteurs} isTL={isTL} cityFilter={cityFilter} />}
           {view === 'geozone'    && <GeoZoningView />}
           {view === 'polygones'  && <KmlMapView pointages={filteredPtgs} animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} isTL={isTL} />}
           {view === 'scores'     && <ScoresView pointages={filteredPtgs} animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
