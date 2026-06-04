@@ -1152,12 +1152,15 @@ function SummaryTable({ animateurs, todayPtgs, filterVille, secteurs = [] }) {
                 <td><span style={{fontWeight:600,color:'#4338CA'}}>{row.conge||0}</span></td>
                 <td><span style={{fontWeight:600,color:'#C2410C'}}>{row.renfort||0}</span></td>
                 <td>
-                  <div className="inline-prog">
-                    <div className="inline-prog-bar">
-                      <div className="inline-prog-fill" style={{width:`${pct}%`,background:barColor}}></div>
-                    </div>
-                    <span className="inline-prog-pct">{pct}%</span>
-                  </div>
+                  {row.total === 0
+                    ? <span style={{fontSize:11,color:'#94A3B8',fontStyle:'italic',fontWeight:500}}>Aucun animateur</span>
+                    : <div className="inline-prog">
+                        <div className="inline-prog-bar">
+                          <div className="inline-prog-fill" style={{width:`${pct}%`,background:barColor}}></div>
+                        </div>
+                        <span className="inline-prog-pct">{pct}%</span>
+                      </div>
+                  }
                 </td>
               </tr>
             );
