@@ -853,21 +853,21 @@ function AnimateursList({ animateurs, onSelectAnimateur, defaultVille }) {
           </div>
         </div>
 
-        {/* ── STATS ── */}
-        <div className="stats-bar">
-          <div className="stat-chip stat-present"><span className="stat-chip-dot"></span>{counts.present} Présents</div>
-          <div className="stat-chip stat-absent"><span className="stat-chip-dot"></span>{counts.absent} Absents</div>
-          <div className="stat-chip stat-malade"><span className="stat-chip-dot"></span>{counts.malade} Malades</div>
-          <div className="stat-chip stat-demission"><span className="stat-chip-dot"></span>{counts.demission} Démissions</div>
-          <div className="stat-chip stat-nonpointe"><span className="stat-chip-dot"></span>{counts.nonpointe} Non pointés</div>
-          {counts.recupe  > 0 && <div className="stat-chip stat-recupe"><span className="stat-chip-dot"></span>{counts.recupe} Récupe</div>}
-          {counts.conge   > 0 && <div className="stat-chip stat-conge"><span className="stat-chip-dot"></span>{counts.conge} Congé</div>}
-          {counts.renfort > 0 && <div className="stat-chip stat-renfort"><span className="stat-chip-dot"></span>{counts.renfort} Renfort</div>}
-          <div style={{width:1,background:'var(--neutral-200)',alignSelf:'stretch',margin:'0 3px',flexShrink:0}}></div>
-          <div className="stat-chip" style={{background:'#DCFCE7',color:'#15803D'}}><span className="stat-chip-dot" style={{background:'#22C55E'}}></span>{sectorCovered}/{sectorTotal} Couverts</div>
-          {sectorGap > 0 && <div className="stat-chip" style={{background:'#FEE2E2',color:'#B91C1C'}}><span className="stat-chip-dot" style={{background:'#EF4444'}}></span>{sectorGap} Non couvert{sectorGap>1?'s':''}</div>}
-        </div>
+      </div>
 
+      {/* ── STATS — hors du sticky pour ne pas masquer le premier animateur ── */}
+      <div className="stats-bar">
+        <div className="stat-chip stat-present"><span className="stat-chip-dot"></span>{counts.present} Présents</div>
+        <div className="stat-chip stat-absent"><span className="stat-chip-dot"></span>{counts.absent} Absents</div>
+        <div className="stat-chip stat-malade"><span className="stat-chip-dot"></span>{counts.malade} Malades</div>
+        <div className="stat-chip stat-demission"><span className="stat-chip-dot"></span>{counts.demission} Démissions</div>
+        <div className="stat-chip stat-nonpointe"><span className="stat-chip-dot"></span>{counts.nonpointe} Non pointés</div>
+        {counts.recupe  > 0 && <div className="stat-chip stat-recupe"><span className="stat-chip-dot"></span>{counts.recupe} Récupe</div>}
+        {counts.conge   > 0 && <div className="stat-chip stat-conge"><span className="stat-chip-dot"></span>{counts.conge} Congé</div>}
+        {counts.renfort > 0 && <div className="stat-chip stat-renfort"><span className="stat-chip-dot"></span>{counts.renfort} Renfort</div>}
+        <div style={{width:1,background:'var(--neutral-200)',alignSelf:'stretch',margin:'0 3px',flexShrink:0}}></div>
+        <div className="stat-chip" style={{background:'#DCFCE7',color:'#15803D'}}><span className="stat-chip-dot" style={{background:'#22C55E'}}></span>{sectorCovered}/{sectorTotal} Couverts</div>
+        {sectorGap > 0 && <div className="stat-chip" style={{background:'#FEE2E2',color:'#B91C1C'}}><span className="stat-chip-dot" style={{background:'#EF4444'}}></span>{sectorGap} Non couvert{sectorGap>1?'s':''}</div>}
       </div>
 
       {sorted.length === 0 && (
