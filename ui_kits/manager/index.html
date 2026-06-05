@@ -4624,19 +4624,48 @@ function OverlapView() {
 
     polys.forEach((geo,i) => addPolyLayer(geo, i, fixSet.has(i) && !showOrig));
 
-    // Intersection zones (only before correction or when showing original)
+    // Intersection zones + overlap points (only before correction or when showing original)
     if (phase !== 'corrected' || showOrig) {
       ovlaps.forEach(o => {
         if (!o.intersection?.geometry) return;
         const geom = o.intersection.geometry;
+
+        // Zone remplie
         const polySets = geom.type === 'MultiPolygon'
           ? geom.coordinates.map(p => p.map(r => r.map(([ln,la])=>[la,ln])))
           : [geom.coordinates.map(r => r.map(([ln,la])=>[la,ln]))];
         polySets.forEach(rings => {
-          const layer = L.polygon(rings, { color:'#991B1B', fillColor:'#EF4444', fillOpacity:0.65, weight:2, dashArray:'6 3' });
+          const layer = L.polygon(rings, { color:'#991B1B', fillColor:'#EF4444', fillOpacity:0.45, weight:2, dashArray:'6 3' });
           layer.bindTooltip(`<div style="font-size:12px"><b>⚠️ Zone de conflit</b><br>${o.nameA}<br>↔ ${o.nameB}</div>`, { sticky:true });
           layer.addTo(mapRef.current);
           newLayers.push(layer);
+        });
+
+        // Points de chevauchement (sommets de la zone d'intersection)
+        const allRings = geom.type === 'MultiPolygon'
+          ? geom.coordinates.flatMap(p => p)
+          : geom.coordinates;
+        const seen = new Set();
+        allRings.forEach(ring => {
+          ring.forEach(([ln, la]) => {
+            const key = `${la.toFixed(6)},${ln.toFixed(6)}`;
+            if (seen.has(key)) return;
+            seen.add(key);
+            const dot = L.circleMarker([la, ln], {
+              radius: 6,
+              color: '#FBBF24',
+              fillColor: '#FDE047',
+              fillOpacity: 1,
+              weight: 2.5,
+              opacity: 1,
+            });
+            dot.bindTooltip(
+              `<div style="font-size:11px;font-weight:700">📍 Point de chevauchement<br><span style="color:#92400E">${o.nameA} ↔ ${o.nameB}</span></div>`,
+              { sticky: true }
+            );
+            dot.addTo(mapRef.current);
+            newLayers.push(dot);
+          });
         });
       });
     }
@@ -4883,13 +4912,14 @@ ${placemarks}
           <div style={{position:'absolute',bottom:16,right:12,background:'white',borderRadius:10,padding:'10px 14px',boxShadow:'0 2px 12px rgba(0,0,0,0.13)',zIndex:1000,fontSize:11}}>
             <div style={{fontWeight:800,fontSize:10,color:'var(--neutral-500)',textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:8}}>Légende</div>
             {[
-              ['#3B82F6','Polygone normal'],
-              ['#DC2626','Polygone en conflit'],
-              ['#EF4444','Zone de chevauchement'],
-              ...(phase==='corrected'?[['#16A34A','Polygone corrigé']]:[] ),
-            ].map(([c,l])=>(
+              { c:'#3B82F6', l:'Polygone normal',        circle:false },
+              { c:'#DC2626', l:'Polygone en conflit',    circle:false },
+              { c:'#EF4444', l:'Zone de chevauchement',  circle:false },
+              { c:'#FDE047', l:'Point de chevauchement', circle:true  },
+              ...(phase==='corrected'?[{ c:'#16A34A', l:'Polygone corrigé', circle:false }]:[]),
+            ].map(({c,l,circle})=>(
               <div key={l} style={{display:'flex',alignItems:'center',gap:7,marginBottom:5}}>
-                <div style={{width:13,height:13,borderRadius:3,background:c,flexShrink:0,border:'1px solid rgba(0,0,0,0.1)'}}></div>
+                <div style={{width:13,height:13,borderRadius:circle?'50%':3,background:c,flexShrink:0,border:`2px solid ${circle?'#FBBF24':'rgba(0,0,0,0.1)'}`}}></div>
                 <span style={{color:'var(--neutral-700)',fontWeight:500}}>{l}</span>
               </div>
             ))}
