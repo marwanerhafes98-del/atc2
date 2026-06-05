@@ -76,18 +76,18 @@
     .login-hint { font-size:12px; color:var(--neutral-400); text-align:center; margin-top:16px; }
 
     /* FILTER DROPDOWNS */
-    .filter-dropdowns-row { display:flex; gap:10px; padding:8px 16px 12px; background:white; }
+    .filter-dropdowns-row { display:flex; gap:8px; padding:5px 16px 0; background:white; }
     .filter-dropdown-wrap { flex:1; position:relative; display:flex; align-items:center; }
     .dropdown-icon { position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--primary-600); pointer-events:none; z-index:1; }
     .dropdown-arrow { position:absolute; right:10px; top:50%; transform:translateY(-50%); color:var(--neutral-400); pointer-events:none; }
-    .filter-select { width:100%; height:40px; padding:0 30px 0 32px; border:1.5px solid var(--neutral-200); border-radius:var(--radius-md); font-size:13px; font-weight:600; font-family:var(--font-sans); color:var(--neutral-800); background:var(--neutral-50); appearance:none; cursor:pointer; transition:all 150ms; }
+    .filter-select { width:100%; height:34px; padding:0 26px 0 28px; border:1.5px solid var(--neutral-200); border-radius:var(--radius-md); font-size:12px; font-weight:600; font-family:var(--font-sans); color:var(--neutral-800); background:var(--neutral-50); appearance:none; cursor:pointer; transition:all 150ms; }
     .filter-select:focus { outline:none; border-color:var(--primary-500); background:white; box-shadow:0 0 0 3px var(--primary-100); }
     .filter-select option { font-weight:500; }
 
     /* STATS */
-    .stats-bar { display:flex; gap:8px; overflow-x:auto; scrollbar-width:none; padding:10px 16px; background:var(--neutral-50); border-bottom:1px solid var(--neutral-100); }
+    .stats-bar { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; padding:6px 16px 5px; background:white; }
     .stats-bar::-webkit-scrollbar { display:none; }
-    .stat-chip { display:flex; align-items:center; gap:5px; padding:6px 11px; border-radius:var(--radius-lg); font-size:11px; font-weight:700; white-space:nowrap; flex-shrink:0; }
+    .stat-chip { display:flex; align-items:center; gap:4px; padding:4px 8px; border-radius:var(--radius-lg); font-size:10px; font-weight:700; white-space:nowrap; flex-shrink:0; }
     .stat-chip-dot { width:7px; height:7px; border-radius:var(--radius-full); }
     .stat-present { background:#DCFCE7; color:#15803D; } .stat-present .stat-chip-dot { background:#22C55E; }
     .stat-absent  { background:#FEE2E2; color:#B91C1C; } .stat-absent  .stat-chip-dot { background:#EF4444; }
@@ -99,21 +99,21 @@
     .stat-renfort { background:#FFEDD5; color:#C2410C; } .stat-renfort .stat-chip-dot { background:#F97316; }
 
     /* LIST HEADER */
-    .list-header { padding:14px 16px 0; background:white; position:sticky; top:52px; z-index:50; border-bottom:1px solid var(--neutral-100); }
-    .list-top-row { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:10px; }
-    .list-title { font-size:22px; font-weight:800; color:var(--neutral-900); margin-bottom:2px; }
-    .list-subtitle { font-size:12px; color:var(--neutral-500); }
-    .date-chip { background:var(--primary-50); color:var(--primary-700); font-size:11px; font-weight:600; padding:5px 10px; border-radius:var(--radius-md); white-space:nowrap; }
-    .search-row { display:flex; gap:8px; padding-bottom:10px; }
+    .list-header { padding:10px 16px 0; background:white; position:sticky; top:52px; z-index:50; border-bottom:1px solid var(--neutral-100); }
+    .list-top-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:7px; }
+    .list-title { font-size:20px; font-weight:800; color:var(--neutral-900); margin-bottom:1px; }
+    .list-subtitle { font-size:11px; color:var(--neutral-500); }
+    .date-chip { background:var(--primary-50); color:var(--primary-700); font-size:11px; font-weight:600; padding:4px 9px; border-radius:var(--radius-md); white-space:nowrap; }
+    .search-row { display:flex; gap:8px; padding-bottom:5px; }
     .search-bar { flex:1; position:relative; }
-    .search-input { width:100%; height:40px; padding:0 12px 0 38px; border:1.5px solid var(--neutral-200); border-radius:var(--radius-lg); font-size:15px; background:var(--neutral-50); color:var(--neutral-900); font-family:var(--font-sans); }
+    .search-input { width:100%; height:36px; padding:0 12px 0 36px; border:1.5px solid var(--neutral-200); border-radius:var(--radius-lg); font-size:14px; background:var(--neutral-50); color:var(--neutral-900); font-family:var(--font-sans); }
     .search-input:focus { outline:none; border-color:var(--primary-400); background:white; }
     .search-icon { position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--neutral-400); pointer-events:none; }
 
     /* FILTER CHIPS */
-    .filter-scroll { display:flex; gap:7px; overflow-x:auto; scrollbar-width:none; padding:0 16px 10px; background:white; }
+    .filter-scroll { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; padding:5px 16px 8px; background:white; }
     .filter-scroll::-webkit-scrollbar { display:none; }
-    .filter-chip { display:flex; align-items:center; gap:4px; padding:5px 11px; border-radius:var(--radius-full); font-size:11px; font-weight:600; border:1.5px solid var(--neutral-200); background:white; color:var(--neutral-500); cursor:pointer; white-space:nowrap; flex-shrink:0; transition:all 120ms; }
+    .filter-chip { display:flex; align-items:center; gap:4px; padding:4px 10px; border-radius:var(--radius-full); font-size:11px; font-weight:600; border:1.5px solid var(--neutral-200); background:white; color:var(--neutral-500); cursor:pointer; white-space:nowrap; flex-shrink:0; transition:all 120ms; }
     .filter-chip.active { border-color:var(--primary-600); background:var(--primary-600); color:white; }
 
     /* SECTION DIVIDER */
@@ -869,31 +869,31 @@ function AnimateursList({ animateurs, onSelectAnimateur, defaultVille }) {
             <i data-lucide="chevron-down" className="dropdown-arrow" style={{ width:14, height:14 }}></i>
           </div>
         </div>
-      </div>
 
-      {/* ── STATS ── */}
-      <div className="stats-bar">
-        <div className="stat-chip stat-present"><span className="stat-chip-dot"></span>{counts.present} Présents</div>
-        <div className="stat-chip stat-absent"><span className="stat-chip-dot"></span>{counts.absent} Absents</div>
-        <div className="stat-chip stat-malade"><span className="stat-chip-dot"></span>{counts.malade} Malades</div>
-        <div className="stat-chip stat-demission"><span className="stat-chip-dot"></span>{counts.demission} Démissions</div>
-        <div className="stat-chip stat-nonpointe"><span className="stat-chip-dot"></span>{counts.nonpointe} Non pointés</div>
-        {counts.recupe  > 0 && <div className="stat-chip stat-recupe"><span className="stat-chip-dot"></span>{counts.recupe} Récupe</div>}
-        {counts.conge   > 0 && <div className="stat-chip stat-conge"><span className="stat-chip-dot"></span>{counts.conge} Congé</div>}
-        {counts.renfort > 0 && <div className="stat-chip stat-renfort"><span className="stat-chip-dot"></span>{counts.renfort} Renfort</div>}
-        <div style={{width:1,background:'var(--neutral-200)',alignSelf:'stretch',margin:'0 4px',flexShrink:0}}></div>
-        <div className="stat-chip" style={{background:'#DCFCE7',color:'#15803D'}}><span className="stat-chip-dot" style={{background:'#22C55E'}}></span>{sectorCovered}/{sectorTotal} Couverts</div>
-        {sectorGap > 0 && <div className="stat-chip" style={{background:'#FEE2E2',color:'#B91C1C'}}><span className="stat-chip-dot" style={{background:'#EF4444'}}></span>{sectorGap} Non couvert{sectorGap>1?'s':''}</div>}
-      </div>
+        {/* ── STATS ── */}
+        <div className="stats-bar">
+          <div className="stat-chip stat-present"><span className="stat-chip-dot"></span>{counts.present} Présents</div>
+          <div className="stat-chip stat-absent"><span className="stat-chip-dot"></span>{counts.absent} Absents</div>
+          <div className="stat-chip stat-malade"><span className="stat-chip-dot"></span>{counts.malade} Malades</div>
+          <div className="stat-chip stat-demission"><span className="stat-chip-dot"></span>{counts.demission} Démissions</div>
+          <div className="stat-chip stat-nonpointe"><span className="stat-chip-dot"></span>{counts.nonpointe} Non pointés</div>
+          {counts.recupe  > 0 && <div className="stat-chip stat-recupe"><span className="stat-chip-dot"></span>{counts.recupe} Récupe</div>}
+          {counts.conge   > 0 && <div className="stat-chip stat-conge"><span className="stat-chip-dot"></span>{counts.conge} Congé</div>}
+          {counts.renfort > 0 && <div className="stat-chip stat-renfort"><span className="stat-chip-dot"></span>{counts.renfort} Renfort</div>}
+          <div style={{width:1,background:'var(--neutral-200)',alignSelf:'stretch',margin:'0 3px',flexShrink:0}}></div>
+          <div className="stat-chip" style={{background:'#DCFCE7',color:'#15803D'}}><span className="stat-chip-dot" style={{background:'#22C55E'}}></span>{sectorCovered}/{sectorTotal} Couverts</div>
+          {sectorGap > 0 && <div className="stat-chip" style={{background:'#FEE2E2',color:'#B91C1C'}}><span className="stat-chip-dot" style={{background:'#EF4444'}}></span>{sectorGap} Non couvert{sectorGap>1?'s':''}</div>}
+        </div>
 
-      {/* ── FILTRE STATUT ── */}
-      <div className="filter-scroll">
-        {statusFilters.map(f => (
-          <button key={f.key} className={`filter-chip ${statusFilter === f.key ? 'active' : ''}`}
-            onClick={() => setStatusFilter(f.key)}>
-            {f.label}
-          </button>
-        ))}
+        {/* ── FILTRE STATUT ── */}
+        <div className="filter-scroll">
+          {statusFilters.map(f => (
+            <button key={f.key} className={`filter-chip ${statusFilter === f.key ? 'active' : ''}`}
+              onClick={() => setStatusFilter(f.key)}>
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {sorted.length === 0 && (
