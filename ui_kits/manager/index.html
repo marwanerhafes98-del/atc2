@@ -5424,7 +5424,13 @@ function App() {
 
   useEffect(() => { lucide.createIcons(); });
 
-  const refresh = useCallback(() => {}, []);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = useCallback(() => {
+    setRefreshing(true);
+    setRefreshKey(k => k + 1);
+    setTimeout(() => setRefreshing(false), 800);
+  }, []);
 
   useEffect(() => {
     if (!loggedIn) return;
@@ -5440,7 +5446,7 @@ function App() {
     refAnim.on('value', snap => { _animateurs = snap.exists() ? Object.values(snap.val()).sort((a,b) => a.id - b.id) : [...ANIMATEURS_DB]; setAnimateurs([..._animateurs]); });
     refSect.on('value', snap => { setSecteurs(snap.exists() ? Object.values(snap.val()).sort((a,b) => (a.ville||'').localeCompare(b.ville||'') || (a.sector||'').localeCompare(b.sector||'')) : []); });
     return () => { refAcc.off('value'); refSes.off('value'); refPtg.off('value'); refAnim.off('value'); refSect.off('value'); };
-  }, [loggedIn]);
+  }, [loggedIn, refreshKey]);
 
   if (!loggedIn) return <LoginPage onLogin={(sess, remember) => {
     if (remember) localStorage.setItem('ptg_manager_session', JSON.stringify(sess));
@@ -5563,8 +5569,8 @@ function App() {
                 {liveCount} connecté{liveCount>1?'s':''} maintenant
               </div>
             )}
-            <button className="topbar-refresh" onClick={refresh}>
-              <i data-lucide="refresh-cw" style={{width:14,height:14}}></i><span className="refresh-label">Actualiser</span>
+            <button className="topbar-refresh" onClick={refresh} disabled={refreshing}>
+              <i data-lucide="refresh-cw" style={{width:14,height:14,transition:'transform 0.8s',transform:refreshing?'rotate(360deg)':'rotate(0deg)'}}></i><span className="refresh-label">{refreshing?'Actualisation…':'Actualiser'}</span>
             </button>
           </div>
         </div>
