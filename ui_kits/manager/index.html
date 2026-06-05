@@ -311,15 +311,17 @@ const STATUS_COLOR = { present:'#16A34A', absent:'#DC2626', malade:'#D97706', de
 
 // Pages accessibles aux Team Leads (configurables par le manager)
 const TL_PAGES = [
-  { key:'dashboard',  label:'Dashboard',       icon:'layout-dashboard', locked:true  },
-  { key:'animateurs', label:'Animateurs',      icon:'user-cog',         locked:false },
-  { key:'carte',      label:'Carte temps réel',icon:'map-pin',          locked:false },
-  { key:'activity',   label:'Journal',         icon:'clipboard-list',   locked:false },
-  { key:'weekly',     label:'Présence hebdo',  icon:'calendar-days',    locked:false },
-  { key:'analytics',  label:'Analyses',        icon:'bar-chart-2',      locked:false },
-  { key:'scores',     label:'Scores',          icon:'award',            locked:false },
-  { key:'polygones',  label:'Cartographie',    icon:'layers',           locked:false },
-  { key:'geozone',    label:'Geo Zoning',      icon:'map',              locked:false },
+  { key:'dashboard',  label:'Dashboard',          icon:'layout-dashboard', locked:true  },
+  { key:'animateurs', label:'Animateurs',         icon:'user-cog',         locked:false },
+  { key:'carte',      label:'Carte temps réel',   icon:'map-pin',          locked:false },
+  { key:'activity',   label:'Journal',            icon:'clipboard-list',   locked:false },
+  { key:'weekly',     label:'Présence hebdo',     icon:'calendar-days',    locked:false },
+  { key:'analytics',  label:'Analyses',           icon:'bar-chart-2',      locked:false },
+  { key:'scores',     label:'Scores',             icon:'award',            locked:false },
+  { key:'secteurs',   label:'Gestion Secteurs',   icon:'grid-3x3',         locked:false },
+  { key:'polygones',  label:'Cartographie',       icon:'layers',           locked:false },
+  { key:'overlaps',   label:'Correction Overlaps',icon:'git-merge',        locked:false },
+  { key:'geozone',    label:'Geo Zoning',         icon:'map',              locked:false },
 ];
 const TL_DEFAULT_ACCESS = { dashboard:true, animateurs:true };
 
@@ -4026,7 +4028,7 @@ function ImportSecteursModal({ onClose, onImported }) {
 }
 
 /* ── SECTORS VIEW ── */
-function SectorsView({ secteurs }) {
+function SectorsView({ secteurs, readOnly = false }) {
   const [search,      setSearch]      = useState('');
   const [filterVille, setFilterVille] = useState('Toutes');
   const [showImport,  setShowImport]  = useState(false);
@@ -4085,14 +4087,16 @@ function SectorsView({ secteurs }) {
           <div className="section-title">Gestion des Secteurs</div>
           <div className="section-sub">{actifCount} actif{actifCount!==1?'s':''} · {inactifCount} inactif{inactifCount!==1?'s':''} · {secteurs.length} total</div>
         </div>
-        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-          <button className="btn btn-ghost" onClick={downloadTemplate}>
-            <i data-lucide="file-spreadsheet" style={{width:15,height:15}}></i>Template / Extraction
-          </button>
-          <button className="btn btn-primary" onClick={() => setShowImport(true)}>
-            <i data-lucide="upload" style={{width:15,height:15}}></i>Importer Excel
-          </button>
-        </div>
+        {!readOnly && (
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            <button className="btn btn-ghost" onClick={downloadTemplate}>
+              <i data-lucide="file-spreadsheet" style={{width:15,height:15}}></i>Template / Extraction
+            </button>
+            <button className="btn btn-primary" onClick={() => setShowImport(true)}>
+              <i data-lucide="upload" style={{width:15,height:15}}></i>Importer Excel
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="table-card">
@@ -4135,16 +4139,19 @@ function SectorsView({ secteurs }) {
                       </span>
                     </td>
                     <td>
-                      <div style={{display:'flex',gap:5}}>
-                        <button className="btn btn-sm" onClick={() => handleToggle(s)} title={s.actif!==false?'Désactiver':'Activer'}
-                          style={{background:s.actif!==false?'#FFF7ED':'#DCFCE7',color:s.actif!==false?'#C2410C':'#15803D',border:`1.5px solid ${s.actif!==false?'#FED7AA':'#BBF7D0'}`}}>
-                          <i data-lucide={s.actif!==false?'toggle-right':'toggle-left'} style={{width:13,height:13}}></i>
-                        </button>
-                        <button className="btn btn-sm" onClick={() => handleDelete(s)} title="Supprimer"
-                          style={{background:'#FEE2E2',color:'#991B1B',border:'1.5px solid #FECACA'}}>
-                          <i data-lucide="trash-2" style={{width:13,height:13}}></i>
-                        </button>
-                      </div>
+                      {readOnly
+                        ? <span style={{fontSize:11,color:'var(--neutral-400)',fontStyle:'italic'}}>Lecture seule</span>
+                        : <div style={{display:'flex',gap:5}}>
+                            <button className="btn btn-sm" onClick={() => handleToggle(s)} title={s.actif!==false?'Désactiver':'Activer'}
+                              style={{background:s.actif!==false?'#FFF7ED':'#DCFCE7',color:s.actif!==false?'#C2410C':'#15803D',border:`1.5px solid ${s.actif!==false?'#FED7AA':'#BBF7D0'}`}}>
+                              <i data-lucide={s.actif!==false?'toggle-right':'toggle-left'} style={{width:13,height:13}}></i>
+                            </button>
+                            <button className="btn btn-sm" onClick={() => handleDelete(s)} title="Supprimer"
+                              style={{background:'#FEE2E2',color:'#991B1B',border:'1.5px solid #FECACA'}}>
+                              <i data-lucide="trash-2" style={{width:13,height:13}}></i>
+                            </button>
+                          </div>
+                      }
                     </td>
                   </tr>
                 );
@@ -5564,7 +5571,7 @@ function App() {
 
         <div className="content">
           {view === 'dashboard'  && <DashboardView accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} sessions={sessions} pointages={filteredPtgs} onRefresh={refresh} animateurs={activeAnims} secteurs={isTL ? secteurs.filter(s=>s.ville===session.ville) : secteurs} />}
-          {view === 'secteurs'   && !isTL && <SectorsView secteurs={secteurs} />}
+          {view === 'secteurs'   && (!isTL || tlHas('secteurs')) && <SectorsView secteurs={secteurs} readOnly={isTL} />}
           {view === 'accounts'   && !isTL && <AccountsView accounts={accounts} sessions={sessions} onRefresh={refresh} />}
           {view === 'tlaccess'   && !isTL && <TLAccessView accounts={accounts} />}
           {view === 'animateurs' && <AnimateursView animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
@@ -5572,7 +5579,7 @@ function App() {
           {view === 'activity'   && <ActivityView pointages={filteredPtgs} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
           {view === 'weekly'     && <WeeklyPresenceView pointages={filteredPtgs} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} animateurs={activeAnims} />}
           {view === 'analytics'  && <AnalyticsView pointages={filteredPtgs} animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} secteurs={isTL ? secteurs.filter(s=>s.ville===session.ville) : secteurs} isTL={isTL} cityFilter={cityFilter} />}
-          {view === 'overlaps'   && !isTL && <OverlapView />}
+          {view === 'overlaps'   && (!isTL || tlHas('overlaps')) && <OverlapView />}
           {view === 'geozone'    && <GeoZoningView />}
           {view === 'polygones'  && <KmlMapView pointages={filteredPtgs} animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} isTL={isTL} />}
           {view === 'scores'     && <ScoresView pointages={filteredPtgs} animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
