@@ -309,6 +309,20 @@ const VILLES = ['Agadir','Beni Mellal','Casablanca','Fes','Marrakech','Meknes','
 const STATUS_FR = { present:'Présent', absent:'Absent', malade:'Malade', demission:'Démission', nonpointe:'Non pointé', recupe:'Récupe', conge:'Congé', renfort:'Renfort' };
 const STATUS_COLOR = { present:'#16A34A', absent:'#DC2626', malade:'#D97706', demission:'#7C3AED', nonpointe:'#64748B', recupe:'#0E7490', conge:'#4338CA', renfort:'#C2410C' };
 
+// Pages accessibles aux Team Leads (configurables par le manager)
+const TL_PAGES = [
+  { key:'dashboard',  label:'Dashboard',       icon:'layout-dashboard', locked:true  },
+  { key:'animateurs', label:'Animateurs',      icon:'user-cog',         locked:false },
+  { key:'carte',      label:'Carte temps réel',icon:'map-pin',          locked:false },
+  { key:'activity',   label:'Journal',         icon:'clipboard-list',   locked:false },
+  { key:'weekly',     label:'Présence hebdo',  icon:'calendar-days',    locked:false },
+  { key:'analytics',  label:'Analyses',        icon:'bar-chart-2',      locked:false },
+  { key:'scores',     label:'Scores',          icon:'award',            locked:false },
+  { key:'polygones',  label:'Cartographie',    icon:'layers',           locked:false },
+  { key:'geozone',    label:'Geo Zoning',      icon:'map',              locked:false },
+];
+const TL_DEFAULT_ACCESS = { dashboard:true, animateurs:true };
+
 /* ── TL NAME → EMAIL MAPPING (mirrors TEAM_LEADS_DB in pointage tool) ── */
 const TL_NAME_TO_EMAIL = {
   'Y. Boualaihi':          'y.boualaihi@labelvie.ma',
@@ -5237,6 +5251,157 @@ function KmlMapView({ animateurs, pointages, accounts, isTL }) {
   );
 }
 
+/* ── TL ACCESS VIEW ── */
+function TLAccessView({ accounts }) {
+  const [toast,    setToast]    = useState('');
+  const [saving,   setSaving]   = useState(null); // acc.id being saved
+  const showToast = m => { setToast(m); setTimeout(() => setToast(''), 2500); };
+
+  const getAccess = (acc, key) => {
+    if (TL_PAGES.find(p=>p.key===key)?.locked) return true;
+    return acc.managerAccess?.[key] ?? TL_DEFAULT_ACCESS[key] ?? false;
+  };
+
+  const handleToggle = async (acc, key) => {
+    const page = TL_PAGES.find(p=>p.key===key);
+    if (page?.locked) return;
+    const current = getAccess(acc, key);
+    const newAccess = { ...(acc.managerAccess||{}), [key]: !current };
+    setSaving(acc.id + key);
+    await LS.updateAccount(acc.id, { managerAccess: newAccess });
+    setSaving(null);
+    showToast(`${acc.name} — ${page?.label} ${!current?'activé':'désactivé'}`);
+  };
+
+  const handleToggleAll = async (acc, value) => {
+    const newAccess = {};
+    TL_PAGES.forEach(p => { if (!p.locked) newAccess[p.key] = value; });
+    setSaving(acc.id + '_all');
+    await LS.updateAccount(acc.id, { managerAccess: newAccess });
+    setSaving(null);
+    showToast(`${acc.name} — ${value ? 'Tous les accès activés' : 'Accès réinitialisés'}`);
+  };
+
+  return (
+    <>
+      {toast && <div style={{position:'fixed',bottom:24,right:24,background:'#1E293B',color:'white',padding:'10px 18px',borderRadius:10,fontSize:13,fontWeight:600,zIndex:200,boxShadow:'0 8px 24px rgba(0,0,0,0.2)'}}>{toast}</div>}
+
+      <div className="section-hd">
+        <div>
+          <div className="section-title">Accès des pages — Team Leads</div>
+          <div className="section-sub">Activez ou désactivez les pages visibles pour chaque Team Lead</div>
+        </div>
+      </div>
+
+      {accounts.length === 0 ? (
+        <div className="empty">
+          <i data-lucide="users" style={{width:48,height:48,opacity:0.25}}></i>
+          <div className="empty-text">Aucun compte Team Lead enregistré</div>
+        </div>
+      ) : (
+        <div className="table-card" style={{overflowX:'auto'}}>
+          <table className="tbl" style={{minWidth:900}}>
+            <thead>
+              <tr>
+                <th style={{minWidth:200,position:'sticky',left:0,background:'white',zIndex:2}}>Team Lead</th>
+                {TL_PAGES.map(p => (
+                  <th key={p.key} style={{textAlign:'center',minWidth:100,padding:'10px 8px'}}>
+                    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
+                      <i data-lucide={p.icon} style={{width:14,height:14,color:'var(--neutral-500)'}}></i>
+                      <span style={{fontSize:10,fontWeight:700,color:'var(--neutral-600)',whiteSpace:'nowrap'}}>{p.label}</span>
+                      {p.locked && <span style={{fontSize:9,color:'var(--primary-500)',fontWeight:700}}>Obligatoire</span>}
+                    </div>
+                  </th>
+                ))}
+                <th style={{textAlign:'center',minWidth:110}}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {accounts.map(acc => {
+                const color = CITY_COLORS[acc.ville] || '#64748B';
+                const allOn = TL_PAGES.filter(p=>!p.locked).every(p => getAccess(acc, p.key));
+                return (
+                  <tr key={acc.id}>
+                    <td style={{position:'sticky',left:0,background:'white',zIndex:1}}>
+                      <div style={{display:'flex',alignItems:'center',gap:10}}>
+                        <div className="av" style={{background:avatarColor(acc.name),flexShrink:0}}>{initials(acc.name)}</div>
+                        <div>
+                          <div style={{fontWeight:700,fontSize:13,color:'var(--neutral-900)'}}>{acc.name}</div>
+                          <span style={{fontSize:10,fontWeight:700,padding:'1px 7px',borderRadius:99,background:color+'20',color}}>{acc.ville}</span>
+                        </div>
+                      </div>
+                    </td>
+                    {TL_PAGES.map(p => {
+                      const on = getAccess(acc, p.key);
+                      const isSaving = saving === acc.id + p.key;
+                      return (
+                        <td key={p.key} style={{textAlign:'center',padding:'10px 8px'}}>
+                          <button
+                            onClick={() => handleToggle(acc, p.key)}
+                            disabled={p.locked || !!saving}
+                            title={p.locked ? 'Page obligatoire' : on ? 'Désactiver' : 'Activer'}
+                            style={{
+                              width:36, height:20, borderRadius:99, border:'none', cursor:p.locked?'default':'pointer',
+                              background: on ? 'var(--primary-600)' : '#E2E8F0',
+                              position:'relative', transition:'background 200ms', outline:'none', padding:0,
+                              opacity: isSaving ? 0.5 : 1,
+                            }}
+                          >
+                            <div style={{
+                              width:14, height:14, borderRadius:'50%', background:'white',
+                              position:'absolute', top:3, transition:'left 200ms',
+                              left: on ? 19 : 3,
+                              boxShadow:'0 1px 3px rgba(0,0,0,0.2)',
+                            }}></div>
+                          </button>
+                        </td>
+                      );
+                    })}
+                    <td style={{textAlign:'center'}}>
+                      <div style={{display:'flex',gap:5,justifyContent:'center'}}>
+                        <button className="btn btn-sm" onClick={() => handleToggleAll(acc, true)}
+                          disabled={allOn || !!saving}
+                          style={{background:'#DCFCE7',color:'#15803D',border:'1.5px solid #BBF7D0',fontSize:11,opacity:(allOn||!!saving)?0.5:1}}>
+                          Tout activer
+                        </button>
+                        <button className="btn btn-sm" onClick={() => handleToggleAll(acc, false)}
+                          disabled={!!saving}
+                          style={{background:'#FEE2E2',color:'#991B1B',border:'1.5px solid #FECACA',fontSize:11,opacity:!!saving?0.5:1}}>
+                          Réinitialiser
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Légende */}
+      <div style={{marginTop:16,display:'flex',alignItems:'center',gap:16,fontSize:12,color:'var(--neutral-500)',flexWrap:'wrap'}}>
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <div style={{width:32,height:18,borderRadius:99,background:'var(--primary-600)',position:'relative'}}>
+            <div style={{width:12,height:12,borderRadius:'50%',background:'white',position:'absolute',top:3,left:17,boxShadow:'0 1px 3px rgba(0,0,0,0.2)'}}></div>
+          </div>
+          <span>Page activée — visible pour le TL</span>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <div style={{width:32,height:18,borderRadius:99,background:'#E2E8F0',position:'relative'}}>
+            <div style={{width:12,height:12,borderRadius:'50%',background:'white',position:'absolute',top:3,left:3,boxShadow:'0 1px 3px rgba(0,0,0,0.2)'}}></div>
+          </div>
+          <span>Page désactivée — masquée pour le TL</span>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <span style={{fontSize:9,fontWeight:700,color:'var(--primary-500)',border:'1px solid var(--primary-200)',padding:'1px 6px',borderRadius:99}}>Obligatoire</span>
+          <span>Toujours visible, non modifiable</span>
+        </div>
+      </div>
+    </>
+  );
+}
+
 /* ── APP ── */
 function App() {
   const [session,     setSession]     = useState(() => { try { return JSON.parse(localStorage.getItem('ptg_manager_session')); } catch { return null; } });
@@ -5285,22 +5450,37 @@ function App() {
   const liveCount  = (isTL ? accounts.filter(a => a.email === session.email) : accounts).filter(a => LS.isLive(a.email)).length;
   const todayPtgN  = filteredPtgs.filter(p => p.date === new Date().toDateString()).length;
   const LIVE_LOC_THRESH = 120000;
-  const PAGE_TITLES = { dashboard:'Dashboard', accounts:'Comptes Team Leads', animateurs:'Gestion des animateurs', secteurs:'Gestion des Secteurs', carte:'Localisation en temps réel', activity:'Journal des pointages', weekly:'Présence hebdomadaire', analytics:'Analyses de pointage', geozone:'Geo Zoning', scores:'Scores & Performance', polygones:'Cartographie des Polygones', overlaps:'Correction des Overlaps' };
+  const PAGE_TITLES = { dashboard:'Dashboard', accounts:'Comptes Team Leads', tlaccess:'Accès des pages TL', animateurs:'Gestion des animateurs', secteurs:'Gestion des Secteurs', carte:'Localisation en temps réel', activity:'Journal des pointages', weekly:'Présence hebdomadaire', analytics:'Analyses de pointage', geozone:'Geo Zoning', scores:'Scores & Performance', polygones:'Cartographie des Polygones', overlaps:'Correction des Overlaps' };
   const pageTitle  = PAGE_TITLES[view] || 'Dashboard';
 
-  const navItems = [
-    { key:'dashboard',  icon:'layout-dashboard', label:'Dashboard',        badge:0 },
-    ...(!isTL ? [{ key:'accounts',  icon:'users',       label:'Team Lead',          badge:accounts.length }] : []),
-    { key:'animateurs', icon:'user-cog',          label:'Animateurs',         badge:allAnims.length },
-    ...(!isTL ? [{ key:'secteurs',  icon:'grid-3x3',   label:'Gestion des Secteurs', badge:secteurs.length }] : []),
-    { key:'carte',      icon:'map-pin',          label:'Carte temps réel', badge:liveCount },
-    { key:'activity',   icon:'clipboard-list',   label:'Journal',          badge:todayPtgN },
-    { key:'weekly',     icon:'calendar-days',    label:'Présence hebdo',   badge:0 },
-    { key:'analytics',  icon:'bar-chart-2',      label:'Analyses',         badge:0 },
-    ...(!isTL ? [{ key:'overlaps', icon:'git-merge', label:'Correction Overlaps', badge:0 }] : []),
-    { key:'geozone',   icon:'map',              label:'Geo Zoning',       badge:0 },
-    { key:'polygones', icon:'layers',           label:'Cartographie',     badge:0 },
-    { key:'scores',    icon:'award',            label:'Scores',           badge:0 },
+  // Permissions TL lues en temps réel depuis Firebase
+  const tlAccess = useMemo(() => {
+    if (!isTL) return null;
+    const acc = accounts.find(a => a.email === session.email);
+    return acc?.managerAccess || {};
+  }, [isTL, accounts, session]);
+  const tlHas = (key) => { const p = TL_PAGES.find(x=>x.key===key); if (p?.locked) return true; return tlAccess?.[key] ?? TL_DEFAULT_ACCESS[key] ?? false; };
+
+  const navItems = isTL ? [
+    ...TL_PAGES.filter(p => tlHas(p.key)).map(p => ({ key:p.key, icon:p.icon, label:p.label, badge:
+      p.key==='animateurs' ? allAnims.length :
+      p.key==='activity'   ? todayPtgN :
+      p.key==='carte'      ? liveCount : 0
+    })),
+  ] : [
+    { key:'dashboard',  icon:'layout-dashboard', label:'Dashboard',            badge:0 },
+    { key:'accounts',   icon:'users',            label:'Team Lead',            badge:accounts.length },
+    { key:'tlaccess',   icon:'shield-check',     label:'Accès pages TL',       badge:0 },
+    { key:'animateurs', icon:'user-cog',         label:'Animateurs',           badge:allAnims.length },
+    { key:'secteurs',   icon:'grid-3x3',         label:'Gestion des Secteurs', badge:secteurs.length },
+    { key:'carte',      icon:'map-pin',          label:'Carte temps réel',     badge:liveCount },
+    { key:'activity',   icon:'clipboard-list',   label:'Journal',              badge:todayPtgN },
+    { key:'weekly',     icon:'calendar-days',    label:'Présence hebdo',       badge:0 },
+    { key:'analytics',  icon:'bar-chart-2',      label:'Analyses',             badge:0 },
+    { key:'overlaps',   icon:'git-merge',        label:'Correction Overlaps',  badge:0 },
+    { key:'geozone',    icon:'map',              label:'Geo Zoning',           badge:0 },
+    { key:'polygones',  icon:'layers',           label:'Cartographie',         badge:0 },
+    { key:'scores',     icon:'award',            label:'Scores',               badge:0 },
   ];
 
   const handleLogout = () => { localStorage.removeItem('ptg_manager_session'); setSession(null); setSidebarOpen(false); };
@@ -5386,6 +5566,7 @@ function App() {
           {view === 'dashboard'  && <DashboardView accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} sessions={sessions} pointages={filteredPtgs} onRefresh={refresh} animateurs={activeAnims} secteurs={isTL ? secteurs.filter(s=>s.ville===session.ville) : secteurs} />}
           {view === 'secteurs'   && !isTL && <SectorsView secteurs={secteurs} />}
           {view === 'accounts'   && !isTL && <AccountsView accounts={accounts} sessions={sessions} onRefresh={refresh} />}
+          {view === 'tlaccess'   && !isTL && <TLAccessView accounts={accounts} />}
           {view === 'animateurs' && <AnimateursView animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
           {view === 'carte'      && <MapView accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
           {view === 'activity'   && <ActivityView pointages={filteredPtgs} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
