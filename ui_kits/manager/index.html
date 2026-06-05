@@ -4579,8 +4579,15 @@ function OverlapView() {
       const first = coords[0], last = coords[coords.length-1];
       if (first[0]!==last[0] || first[1]!==last[1]) coords.push([...first]);
       if (coords.length < 4) return null;
-      return turf.polygon([coords], { name: poly.name, folder: poly.folder || '' });
+      const feature = turf.polygon([coords], { name: poly.name, folder: poly.folder || '' });
+      // Normalise le winding order (GeoJSON: anneau externe contre-horaire)
+      return turf.rewind(feature, { reverse: false, mutate: true });
     } catch { return null; }
+  };
+
+  // Normalise un feature avant turf.difference (requis pour polygones KML)
+  const rewindGeo = (geo) => {
+    try { return turf.rewind(JSON.parse(JSON.stringify(geo)), { reverse: false, mutate: true }); } catch { return geo; }
   };
 
   // ── Init map via callback ref
@@ -4717,7 +4724,8 @@ function OverlapView() {
           try {
             const ba = turf.bbox(a), bb = turf.bbox(b);
             if (ba[0]>bb[2]||bb[0]>ba[2]||ba[1]>bb[3]||bb[1]>ba[3]) continue;
-            const inter = turf.intersect(a, b);
+            const rA = rewindGeo(a), rB = rewindGeo(b);
+            const inter = turf.intersect(rA, rB);
             if (inter) {
               found.push({ a:i, b:j, nameA:a.properties?.name||`P${i}`, nameB:b.properties?.name||`P${j}`, intersection:inter });
             }
@@ -4745,8 +4753,10 @@ function OverlapView() {
       sorted.forEach(({ a, b }) => {
         if (!work[a]?.geometry || !work[b]?.geometry) return;
         try {
-          const diff = turf.difference(work[b], work[a]);
-          if (diff?.geometry) { work[b] = diff; fixed.add(b); }
+          const cleanA = rewindGeo(work[a]);
+          const cleanB = rewindGeo(work[b]);
+          const diff   = turf.difference(cleanB, cleanA);
+          if (diff?.geometry) { work[b] = rewindGeo(diff); fixed.add(b); }
         } catch(e) {}
       });
       // Verify no remaining overlaps
