@@ -750,7 +750,6 @@ function AnimateurRow({ animateur: a, onSelect }) {
 /* ── ANIMATEURS LIST ── */
 function AnimateursList({ animateurs, onSelectAnimateur, defaultVille }) {
   const [search,         setSearch]         = useState('');
-  const [statusFilter,   setStatusFilter]   = useState('tous');
   const [selectedCity,   setSelectedCity]   = useState(defaultVille || 'Toutes');
   const [selectedSector, setSelectedSector] = useState('Tous');
 
@@ -783,24 +782,9 @@ function AnimateursList({ animateurs, onSelectAnimateur, defaultVille }) {
   const sectorTotal    = allSectors.length;
   const sectorGap      = sectorTotal - sectorCovered;
 
-  // ── Filtre 3 : STATUT ──
-  const statusFilters = [
-    { key:'tous',      label:`Tous (${bySector.length})` },
-    { key:'nonpointe', label:`Non pointés (${counts.nonpointe})` },
-    { key:'present',   label:`Présents (${counts.present})` },
-    { key:'absent',    label:`Absents (${counts.absent})` },
-    { key:'malade',    label:`Malades (${counts.malade})` },
-    { key:'demission', label:`Démissions (${counts.demission})` },
-    { key:'recupe',    label:`Récupe (${counts.recupe})` },
-    { key:'conge',     label:`Congé (${counts.conge})` },
-    { key:'renfort',   label:`Renfort (${counts.renfort})` },
-  ];
-
   const filtered = bySector.filter(a => {
     const q = search.toLowerCase();
-    const matchSearch = a.name.toLowerCase().includes(q) || a.sector.toLowerCase().includes(q) || a.phone.includes(q);
-    const matchStatus = statusFilter === 'tous' || a.status === statusFilter;
-    return matchSearch && matchStatus;
+    return a.name.toLowerCase().includes(q) || a.sector.toLowerCase().includes(q) || a.phone.includes(q);
   });
 
   const sorted = [...filtered].sort((a,b) => {
@@ -815,7 +799,6 @@ function AnimateursList({ animateurs, onSelectAnimateur, defaultVille }) {
   const handleCityChange = (v) => {
     setSelectedCity(v);
     setSelectedSector('Tous');
-    setStatusFilter('tous');
   };
 
   const subtitle = [
@@ -860,7 +843,7 @@ function AnimateursList({ animateurs, onSelectAnimateur, defaultVille }) {
           <div className="filter-dropdown-wrap">
             <i data-lucide="store" className="dropdown-icon" style={{ width:14, height:14 }}></i>
             <select className="filter-select" value={selectedSector}
-              onChange={e => { setSelectedSector(e.target.value); setStatusFilter('tous'); }}>
+              onChange={e => setSelectedSector(e.target.value)}>
               <option value="Tous">Tous les secteurs</option>
               {sectors.filter(s => s !== 'Tous').map(s => (
                 <option key={s} value={s}>{s} ({byCity.filter(a=>a.sector===s).length})</option>
@@ -885,15 +868,6 @@ function AnimateursList({ animateurs, onSelectAnimateur, defaultVille }) {
           {sectorGap > 0 && <div className="stat-chip" style={{background:'#FEE2E2',color:'#B91C1C'}}><span className="stat-chip-dot" style={{background:'#EF4444'}}></span>{sectorGap} Non couvert{sectorGap>1?'s':''}</div>}
         </div>
 
-        {/* ── FILTRE STATUT ── */}
-        <div className="filter-scroll">
-          {statusFilters.map(f => (
-            <button key={f.key} className={`filter-chip ${statusFilter === f.key ? 'active' : ''}`}
-              onClick={() => setStatusFilter(f.key)}>
-              {f.label}
-            </button>
-          ))}
-        </div>
       </div>
 
       {sorted.length === 0 && (
@@ -903,15 +877,14 @@ function AnimateursList({ animateurs, onSelectAnimateur, defaultVille }) {
         </div>
       )}
 
-      {statusFilter === 'tous' && nonPointes.length > 0 && (
+      {nonPointes.length > 0 && (
         <><div className="section-label">À pointer — {nonPointes.length}</div>
         {nonPointes.map(a => <AnimateurRow key={a.id} animateur={a} onSelect={onSelectAnimateur} />)}</>
       )}
-      {statusFilter === 'tous' && pointes.length > 0 && (
+      {pointes.length > 0 && (
         <><div className="section-label">Pointés — {pointes.length}</div>
         {pointes.map(a => <AnimateurRow key={a.id} animateur={a} onSelect={onSelectAnimateur} />)}</>
       )}
-      {statusFilter !== 'tous' && sorted.map(a => <AnimateurRow key={a.id} animateur={a} onSelect={onSelectAnimateur} />)}
     </>
   );
 }
