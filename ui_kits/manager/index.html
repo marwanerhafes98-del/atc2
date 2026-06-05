@@ -4568,6 +4568,7 @@ function OverlapView() {
 
   const mapRef      = useRef(null);
   const layersRef   = useRef([]);
+  const fitRef      = useRef(false); // fitBounds uniquement sur chargement/correction
   const showToast   = (m) => { setToast(m); setTimeout(() => setToast(''), 4000); };
 
   // ── Convert KML polygon → turf GeoJSON (lat,lng) → (lng,lat)
@@ -4641,7 +4642,8 @@ function OverlapView() {
     }
 
     layersRef.current = newLayers;
-    if (newLayers.length) {
+    if (newLayers.length && fitRef.current) {
+      fitRef.current = false;
       try { mapRef.current.fitBounds(L.featureGroup(newLayers).getBounds(), { padding:[30,30] }); } catch(e) {}
     }
   }, [phase]);
@@ -4660,6 +4662,7 @@ function OverlapView() {
     const parsed = parseKML(text);
     if (!parsed.length) { showToast('Aucun polygone trouvé dans ce fichier KML'); return; }
     const geos = parsed.map(toGeo).filter(Boolean);
+    fitRef.current = true;
     setFileName(file.name);
     setRawPolys(parsed);
     setGeoPolys(geos);
@@ -4729,6 +4732,7 @@ function OverlapView() {
           } catch(e) {}
         }
       }
+      fitRef.current = true;
       setCorrected(work);
       setFixedIds(fixed);
       setPhase('corrected');
