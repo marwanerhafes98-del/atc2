@@ -4036,7 +4036,7 @@ function SectorsView({ secteurs, readOnly = false }) {
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
 
-  const VILLES_LIST = [...new Set(secteurs.map(s => s.ville).filter(Boolean))].sort();
+  const VILLES_LIST = [...new Set([...VILLES, ...secteurs.map(s => s.ville).filter(Boolean)])].sort();
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
