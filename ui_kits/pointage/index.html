@@ -891,7 +891,7 @@ function AnimateursList({ animateurs, onSelectAnimateur, defaultVille }) {
 
 /* ── EDIT ANIMATEUR MODAL ── */
 function EditAnimateurModal({ animateur, onClose, onSave }) {
-  const cities = [...new Set(ANIMATEURS_DB.map(a => a.ville))].sort();
+  const cities = ['Agadir','Beni Mellal','Casablanca','Fes','Marrakech','Meknes','Nador','Oqba','oujda','Rabat','Tanger'];
   const [form, setForm] = useState({
     name: animateur.name, sector: animateur.sector,
     ville: animateur.ville, phone: animateur.phone || '',
