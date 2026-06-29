@@ -748,7 +748,7 @@ function AnimateurRow({ animateur: a, onSelect }) {
 }
 
 /* ── ANIMATEURS LIST ── */
-function AnimateursList({ animateurs, onSelectAnimateur, defaultVille }) {
+function AnimateursList({ animateurs, onSelectAnimateur, defaultVille, secteurs = [] }) {
   const [search,         setSearch]         = useState('');
   const [selectedCity,   setSelectedCity]   = useState(defaultVille || 'Toutes');
   const [selectedSector, setSelectedSector] = useState('Tous');
@@ -760,7 +760,10 @@ function AnimateursList({ animateurs, onSelectAnimateur, defaultVille }) {
     : animateurs.filter(a => a.ville === selectedCity);
 
   // ── Filtre 2 : SECTEUR / MAGASIN ──
-  const sectors = ['Tous', ...new Set(byCity.map(a => a.sector))].sort((a,b) => a === 'Tous' ? -1 : b === 'Tous' ? 1 : a.localeCompare(b));
+  const citySecteursFromDB = secteurs.filter(s => selectedCity === 'Toutes' || s.ville === selectedCity);
+  const sectors = citySecteursFromDB.length > 0
+    ? citySecteursFromDB.map(s => s.sector).sort((a,b) => a.localeCompare(b))
+    : [...new Set(byCity.map(a => a.sector))].sort((a,b) => a.localeCompare(b));
   const bySector = selectedSector === 'Tous'
     ? byCity
     : byCity.filter(a => a.sector === selectedSector);
@@ -845,7 +848,7 @@ function AnimateursList({ animateurs, onSelectAnimateur, defaultVille }) {
             <select className="filter-select" value={selectedSector}
               onChange={e => setSelectedSector(e.target.value)}>
               <option value="Tous">Tous les secteurs</option>
-              {sectors.filter(s => s !== 'Tous').map(s => (
+              {sectors.map(s => (
                 <option key={s} value={s}>{s} ({byCity.filter(a=>a.sector===s).length})</option>
               ))}
             </select>
@@ -890,7 +893,7 @@ function AnimateursList({ animateurs, onSelectAnimateur, defaultVille }) {
 }
 
 /* ── EDIT ANIMATEUR MODAL ── */
-function EditAnimateurModal({ animateur, onClose, onSave }) {
+function EditAnimateurModal({ animateur, onClose, onSave, secteurs = [] }) {
   const cities = ['Agadir','Beni Mellal','Casablanca','Fes','Marrakech','Meknes','Nador','Oqba','oujda','Rabat','Tanger'];
   const [form, setForm] = useState({
     name: animateur.name, sector: animateur.sector,
@@ -898,6 +901,8 @@ function EditAnimateurModal({ animateur, onClose, onSave }) {
     teamLead: animateur.teamLead || '', matricule: animateur.matricule || '',
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const villeSectors = secteurs.filter(s => s.ville === form.ville).map(s => s.sector).sort((a,b) => a.localeCompare(b));
+  const handleVilleChange = (v) => setForm(f => ({ ...f, ville: v, sector: '' }));
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -925,8 +930,17 @@ function EditAnimateurModal({ animateur, onClose, onSave }) {
             </div>
             <div className="form-group">
               <label className="form-label">Secteur *</label>
-              <input className="form-input" value={form.sector}
-                onChange={e => set('sector', e.target.value)} required />
+              <div className="select-wrap">
+                {villeSectors.length > 0 ? (
+                  <select className="form-select" value={form.sector} onChange={e => set('sector', e.target.value)} required>
+                    <option value="">— Choisir un secteur —</option>
+                    {villeSectors.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                ) : (
+                  <input className="form-input" placeholder="Secteur" value={form.sector}
+                    onChange={e => set('sector', e.target.value)} required />
+                )}
+              </div>
             </div>
             <div className="form-row">
               <div className="form-group">
@@ -944,7 +958,7 @@ function EditAnimateurModal({ animateur, onClose, onSave }) {
               <div className="form-group">
                 <label className="form-label">Ville</label>
                 <div className="select-wrap">
-                  <select className="form-select" value={form.ville} onChange={e => set('ville', e.target.value)}>
+                  <select className="form-select" value={form.ville} onChange={e => handleVilleChange(e.target.value)}>
                     {cities.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
@@ -969,7 +983,7 @@ function EditAnimateurModal({ animateur, onClose, onSave }) {
 }
 
 /* ── POINTAGE FORM ── */
-function PointageForm({ animateur, onBack, onConfirm, onEdit, onDelete }) {
+function PointageForm({ animateur, onBack, onConfirm, onEdit, onDelete, secteurs = [] }) {
   const [selected, setSelected] = useState(animateur.status !== 'nonpointe' ? animateur.status : null);
   const [note, setNote]         = useState(animateur.note || '');
   const [gpsReady, setGpsReady] = useState(false);
@@ -1071,6 +1085,7 @@ function PointageForm({ animateur, onBack, onConfirm, onEdit, onDelete }) {
           animateur={animateur}
           onClose={() => setShowEdit(false)}
           onSave={data => onEdit(animateur.id, data)}
+          secteurs={secteurs}
         />
       )}
     </div>
@@ -1078,13 +1093,15 @@ function PointageForm({ animateur, onBack, onConfirm, onEdit, onDelete }) {
 }
 
 /* ── ADD ANIMATEUR MODAL ── */
-function AddAnimateurModal({ onClose, onAdd, defaultVille }) {
-const cities = ['Agadir','Beni Mellal','Casablanca','Fes','Marrakech','Meknes','Nador','Oqba','oujda','Rabat','Tanger'];
+function AddAnimateurModal({ onClose, onAdd, defaultVille, secteurs = [] }) {
+  const cities = ['Agadir','Beni Mellal','Casablanca','Fes','Marrakech','Meknes','Nador','Oqba','oujda','Rabat','Tanger'];
   const [form, setForm] = useState({
     name: '', sector: '', ville: defaultVille || 'Casablanca',
     phone: '', teamLead: '', matricule: ''
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const villeSectors = secteurs.filter(s => s.ville === form.ville).map(s => s.sector).sort((a,b) => a.localeCompare(b));
+  const handleVilleChange = (v) => setForm(f => ({ ...f, ville: v, sector: '' }));
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -1126,15 +1143,24 @@ const cities = ['Agadir','Beni Mellal','Casablanca','Fes','Marrakech','Meknes','
               <div className="form-group">
                 <label className="form-label">Ville *</label>
                 <div className="select-wrap">
-                  <select className="form-select" value={form.ville} onChange={e => set('ville', e.target.value)}>
+                  <select className="form-select" value={form.ville} onChange={e => handleVilleChange(e.target.value)}>
                     {cities.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
               </div>
               <div className="form-group">
                 <label className="form-label">Secteur *</label>
-                <input className="form-input" placeholder="Ex: Hay Salam 1, Tassila 2..."
-                  value={form.sector} onChange={e => set('sector', e.target.value)} required />
+                <div className="select-wrap">
+                  {villeSectors.length > 0 ? (
+                    <select className="form-select" value={form.sector} onChange={e => set('sector', e.target.value)} required>
+                      <option value="">— Choisir —</option>
+                      {villeSectors.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  ) : (
+                    <input className="form-input" placeholder="Ex: Hay Salam 1..."
+                      value={form.sector} onChange={e => set('sector', e.target.value)} required />
+                  )}
+                </div>
               </div>
             </div>
             <div className="form-group">
@@ -1410,6 +1436,7 @@ function App() {
   const [showAdd, setShowAdd]     = useState(false);
   const [todayCount, setTodayCount] = useState(0);
   const [gpsStatus,  setGpsStatus]  = useState('idle'); // idle | ok | needs-tap | denied | error
+  const [secteurs,   setSecteurs]   = useState([]);
   const nextId    = useRef(ANIMATEURS_DB.length + 1);
   const mainRef   = useRef(null);
   const watchIdRef = useRef(null);
@@ -1525,6 +1552,11 @@ function App() {
       } catch (e) { /* ignore parse errors */ }
     });
 
+    const sectRef = db.ref('ptg/secteurs');
+    const sectHandler = sectRef.on('value', snap => {
+      setSecteurs(snap.exists() ? Object.values(snap.val()).filter(Boolean) : []);
+    });
+
     const ping = setInterval(() => LS.pingSession(user.email), 30000);
     const onUnload = () => LS.endSession(user.email);
     window.addEventListener('beforeunload', onUnload);
@@ -1533,6 +1565,7 @@ function App() {
       accRef.off('value', accHandler);
       animRef.off('value', animHandler);
       ref.off('value', handler);
+      sectRef.off('value', sectHandler);
       clearInterval(ping);
       window.removeEventListener('beforeunload', onUnload);
     };
@@ -1696,10 +1729,11 @@ function App() {
             animateurs={visibleAnimateurs}
             onSelectAnimateur={setSelectedAnimateur}
             defaultVille={user.ville}
+            secteurs={secteurs}
           />
         )}
         {currentView === 'list' && selectedAnimateur && (
-          <PointageForm animateur={selectedAnimateur} onBack={() => setSelectedAnimateur(null)} onConfirm={handleConfirmPointage} onEdit={handleEditAnimateur} onDelete={handleDeleteAnimateur} />
+          <PointageForm animateur={selectedAnimateur} onBack={() => setSelectedAnimateur(null)} onConfirm={handleConfirmPointage} onEdit={handleEditAnimateur} onDelete={handleDeleteAnimateur} secteurs={secteurs} />
         )}
         {currentView === 'kpi' && (
           <KpiView animateurs={visibleAnimateurs} />
@@ -1739,6 +1773,7 @@ function App() {
           onClose={() => setShowAdd(false)}
           onAdd={handleAddAnimateur}
           defaultVille={user.ville}
+          secteurs={secteurs}
         />
       )}
 
