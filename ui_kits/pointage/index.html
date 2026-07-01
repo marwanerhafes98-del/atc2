@@ -735,6 +735,7 @@ function AnimateurRow({ animateur: a, onSelect }) {
           <span>{a.sector}</span>
           <span>·</span>
           <span>{a.ville}</span>
+          {a.moto && <><span>·</span><span style={{color:'#D97706',fontWeight:700}}>🏍 Moto</span></>}
         </div>
         <div className="animateur-phone">{a.phone}</div>
         {a.pointedAt && <div className="animateur-time">Pointé à {a.pointedAt}{a.note ? ` · ${a.note}` : ''}</div>}
@@ -899,6 +900,7 @@ function EditAnimateurModal({ animateur, onClose, onSave, secteurs = [] }) {
     name: animateur.name, sector: animateur.sector,
     ville: animateur.ville, phone: animateur.phone || '',
     teamLead: animateur.teamLead || '', matricule: animateur.matricule || '',
+    moto: animateur.moto || false,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const villeSectors = secteurs.filter(s => s.ville === form.ville).map(s => s.sector).sort((a,b) => a.localeCompare(b));
@@ -967,6 +969,17 @@ function EditAnimateurModal({ animateur, onClose, onSave, secteurs = [] }) {
                 <label className="form-label">Team Lead</label>
                 <input className="form-input" value={form.teamLead}
                   onChange={e => set('teamLead', e.target.value)} />
+              </div>
+            </div>
+            <div className="form-group" style={{display:'flex',alignItems:'center',gap:10,paddingTop:4}}>
+              <label className="form-label" style={{margin:0}}>A une moto</label>
+              <div style={{display:'flex',gap:8}}>
+                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:form.moto?'#16A34A':'var(--neutral-500)'}}>
+                  <input type="radio" name="moto_edit" checked={form.moto===true} onChange={()=>set('moto',true)} style={{accentColor:'#16A34A'}} /> Oui
+                </label>
+                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:!form.moto?'#EF4444':'var(--neutral-500)'}}>
+                  <input type="radio" name="moto_edit" checked={form.moto===false} onChange={()=>set('moto',false)} style={{accentColor:'#EF4444'}} /> Non
+                </label>
               </div>
             </div>
           </div>
@@ -1097,7 +1110,7 @@ function AddAnimateurModal({ onClose, onAdd, defaultVille, secteurs = [] }) {
   const cities = ['Agadir','Beni Mellal','Casablanca','Fes','Marrakech','Meknes','Nador','Oqba','oujda','Rabat','Tanger'];
   const [form, setForm] = useState({
     name: '', sector: '', ville: defaultVille || 'Casablanca',
-    phone: '', teamLead: '', matricule: ''
+    phone: '', teamLead: '', matricule: '', moto: false,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const villeSectors = secteurs.filter(s => s.ville === form.ville).map(s => s.sector).sort((a,b) => a.localeCompare(b));
@@ -1167,6 +1180,17 @@ function AddAnimateurModal({ onClose, onAdd, defaultVille, secteurs = [] }) {
               <label className="form-label">Team Lead</label>
               <input className="form-input" placeholder="Nom du responsable"
                 value={form.teamLead} onChange={e => set('teamLead', e.target.value)} />
+            </div>
+            <div className="form-group" style={{display:'flex',alignItems:'center',gap:10,paddingTop:4}}>
+              <label className="form-label" style={{margin:0}}>A une moto</label>
+              <div style={{display:'flex',gap:8}}>
+                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:form.moto?'#16A34A':'var(--neutral-500)'}}>
+                  <input type="radio" name="moto_add" checked={form.moto===true} onChange={()=>set('moto',true)} style={{accentColor:'#16A34A'}} /> Oui
+                </label>
+                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:!form.moto?'#EF4444':'var(--neutral-500)'}}>
+                  <input type="radio" name="moto_add" checked={form.moto===false} onChange={()=>set('moto',false)} style={{accentColor:'#EF4444'}} /> Non
+                </label>
+              </div>
             </div>
           </div>
           <div className="modal-footer">
@@ -1654,6 +1678,7 @@ function App() {
       ville: form.ville, phone: form.phone || '',
       matricule: form.matricule || '',
       teamLead: form.teamLead || user.name,
+      moto: form.moto || false,
     };
     db.ref(`ptg/animateurs/${id}`).set(newAnim);
     setAnimateurs(prev => [...prev, { ...newAnim, status:'nonpointe', pointedAt:null, note:undefined }]);
