@@ -4198,6 +4198,28 @@ function SectorsView({ secteurs, readOnly = false }) {
   );
 }
 
+/* ── ANALYTICS ERROR BOUNDARY ── */
+class AnalyticsErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error) { console.error('AnalyticsView error:', error); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{padding:40,textAlign:'center',color:'var(--neutral-500)'}}>
+          <i data-lucide="alert-triangle" style={{width:48,height:48,marginBottom:16,color:'#F59E0B',opacity:0.7}}></i>
+          <div style={{fontSize:15,fontWeight:700,color:'var(--neutral-700)',marginBottom:8}}>Erreur d'affichage des analyses</div>
+          <div style={{fontSize:13,marginBottom:20}}>Une erreur est survenue lors du calcul. Veuillez réinitialiser les filtres ou actualiser.</div>
+          <button className="btn btn-primary" onClick={() => this.setState({ hasError:false, error:null })}>
+            Réessayer
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 /* ── ANALYTICS VIEW ── */
 const STAT_COLS = [
   { key:'present',   label:'Présent',   color:'#15803D', bg:'#DCFCE7' },
@@ -4288,7 +4310,7 @@ function AnalyticsView({ pointages, animateurs, accounts, secteurs, isTL, cityFi
 
   // ── Animateur rows
   const animRows = useMemo(() => {
-    return filteredAnims.map(anim => {
+    return filteredAnims.filter(anim => anim && anim.id != null).map(anim => {
       const ptgs = filteredPtgs.filter(p => p.animateurId===anim.id || p.animateurName===anim.name);
       const stats = {};
       STAT_COLS.forEach(c => { stats[c.key] = 0; });
@@ -4301,15 +4323,15 @@ function AnalyticsView({ pointages, animateurs, accounts, secteurs, isTL, cityFi
       if (sortKey==='taux')    return v*(a.taux-b.taux);
       if (sortKey==='present') return v*(a.present-b.present);
       if (sortKey==='absent')  return v*(a.absent-b.absent);
-      return v*a.name.localeCompare(b.name);
+      return v*(a.name||'').localeCompare(b.name||'');
     });
   }, [filteredAnims, filteredPtgs, sortKey, sortDir]);
 
   // ── Secteur rows
   const sectorRows = useMemo(() => {
     const base = secteurs.length > 0
-      ? secteurs.filter(s => filterVille==='Toutes' || s.ville===filterVille)
-      : [...new Map(animateurs.filter(a=>filterVille==='Toutes'||a.ville===filterVille).map(a=>[a.sector+'|'+a.ville, {sector:a.sector, ville:a.ville, actif:true}])).values()];
+      ? secteurs.filter(s => s && s.sector && s.ville && (filterVille==='Toutes' || s.ville===filterVille))
+      : [...new Map(animateurs.filter(a=>a && a.sector && a.ville && (filterVille==='Toutes'||a.ville===filterVille)).map(a=>[a.sector+'|'+a.ville, {sector:a.sector, ville:a.ville, actif:true}])).values()];
     return base.map(s => {
       const linked = animateurs.filter(a => a.actif!==false && (a.sector||'').toLowerCase()===(s.sector||'').toLowerCase() && (a.ville||'').toLowerCase()===(s.ville||'').toLowerCase());
       const coveredDays = new Set();
@@ -4321,7 +4343,7 @@ function AnalyticsView({ pointages, animateurs, accounts, secteurs, isTL, cityFi
       const covered = coveredDays.size;
       const total   = workingDays.length;
       return { sector:s.sector, ville:s.ville, actif:s.actif!==false, animNames:linked.map(a=>a.name), covered, uncovered:total-covered, total, taux:total>0?Math.round(covered/total*100):0 };
-    }).sort((a,b)=>a.ville.localeCompare(b.ville)||a.sector.localeCompare(b.sector));
+    }).sort((a,b)=>(a.ville||'').localeCompare(b.ville||'')||(a.sector||'').localeCompare(b.sector||''));
   }, [secteurs, animateurs, workingDays, filteredPtgs, filterVille]);
 
   // ── Jour rows
@@ -5618,7 +5640,7 @@ function App() {
           {view === 'carte'      && <MapView accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
           {view === 'activity'   && <ActivityView pointages={filteredPtgs} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
           {view === 'weekly'     && <WeeklyPresenceView pointages={filteredPtgs} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} animateurs={activeAnims} />}
-          {view === 'analytics'  && <AnalyticsView pointages={filteredPtgs} animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} secteurs={isTL ? secteurs.filter(s=>s.ville===session.ville) : secteurs} isTL={isTL} cityFilter={cityFilter} />}
+          {view === 'analytics'  && <AnalyticsErrorBoundary><AnalyticsView pointages={filteredPtgs} animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} secteurs={isTL ? secteurs.filter(s=>s.ville===session.ville) : secteurs} isTL={isTL} cityFilter={cityFilter} /></AnalyticsErrorBoundary>}
           {view === 'overlaps'   && (!isTL || tlHas('overlaps')) && <OverlapView />}
           {view === 'geozone'    && <GeoZoningView />}
           {view === 'polygones'  && <KmlMapView pointages={filteredPtgs} animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} isTL={isTL} />}
