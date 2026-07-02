@@ -2454,6 +2454,7 @@ function EditAnimateurMgrModal({ animateur, animateurs, accounts, onClose, onSav
     name: animateur.name, sector: animateur.sector,
     ville: animateur.ville, teamLead: animateur.teamLead, phone: animateur.phone || '',
     moto: animateur.moto || false,
+    contractOp: animateur.contractOp || '',
   });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -2476,6 +2477,7 @@ function EditAnimateurMgrModal({ animateur, animateurs, accounts, onClose, onSav
       name: form.name.trim(), sector: form.sector.trim(),
       ville: form.ville, teamLead: form.teamLead, phone: form.phone,
       moto: form.moto || false,
+      contractOp: form.contractOp || '',
     });
     onSaved(); onClose();
   };
@@ -2505,15 +2507,24 @@ function EditAnimateurMgrModal({ animateur, animateurs, accounts, onClose, onSav
                 {tlsForVille.map(name=><option key={name} value={name}>{name}</option>)}
               </select>
             </div>
-            <div className="mg" style={{display:'flex',alignItems:'center',gap:12}}>
-              <label style={{margin:0,fontWeight:700,fontSize:12,color:'var(--neutral-600)',textTransform:'uppercase',letterSpacing:'0.5px'}}>A une moto</label>
-              <div style={{display:'flex',gap:10}}>
-                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:form.moto?'#16A34A':'var(--neutral-500)'}}>
-                  <input type="radio" name="moto_mgr_edit" checked={form.moto===true} onChange={()=>set('moto',true)} style={{accentColor:'#16A34A'}} /> Oui
-                </label>
-                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:!form.moto?'#EF4444':'var(--neutral-500)'}}>
-                  <input type="radio" name="moto_mgr_edit" checked={form.moto===false} onChange={()=>set('moto',false)} style={{accentColor:'#EF4444'}} /> Non
-                </label>
+            <div className="mg-row">
+              <div className="mg" style={{display:'flex',alignItems:'center',gap:12}}>
+                <label style={{margin:0,fontWeight:700,fontSize:12,color:'var(--neutral-600)',textTransform:'uppercase',letterSpacing:'0.5px'}}>A une moto</label>
+                <div style={{display:'flex',gap:10}}>
+                  <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:form.moto?'#16A34A':'var(--neutral-500)'}}>
+                    <input type="radio" name="moto_mgr_edit" checked={form.moto===true} onChange={()=>set('moto',true)} style={{accentColor:'#16A34A'}} /> Oui
+                  </label>
+                  <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:!form.moto?'#EF4444':'var(--neutral-500)'}}>
+                    <input type="radio" name="moto_mgr_edit" checked={form.moto===false} onChange={()=>set('moto',false)} style={{accentColor:'#EF4444'}} /> Non
+                  </label>
+                </div>
+              </div>
+              <div className="mg"><label>Contrat OP</label>
+                <select value={form.contractOp} onChange={e=>set('contractOp',e.target.value)}>
+                  <option value="">— Sélectionner —</option>
+                  <option value="ANAPEC">ANAPEC</option>
+                  <option value="CDI">CDI</option>
+                </select>
               </div>
             </div>
           </div>
@@ -2532,7 +2543,7 @@ function EditAnimateurMgrModal({ animateur, animateurs, accounts, onClose, onSav
 
 /* ── ADD ANIMATEUR MODAL (MANAGER) ── */
 function AddAnimateurMgrModal({ animateurs, accounts, onClose, onCreated }) {
-  const [form, setForm] = useState({ name:'', sector:'', ville:'Casablanca', teamLead:'', phone:'', moto:false });
+  const [form, setForm] = useState({ name:'', sector:'', ville:'Casablanca', teamLead:'', phone:'', moto:false, contractOp:'' });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
   const set = (k,v) => setForm(f => ({...f,[k]:v}));
@@ -2558,6 +2569,7 @@ function AddAnimateurMgrModal({ animateurs, accounts, onClose, onCreated }) {
       id: maxId + 1, name: form.name.trim(), sector: form.sector.trim(),
       ville: form.ville, teamLead: form.teamLead, phone: form.phone || '',
       moto: form.moto || false,
+      contractOp: form.contractOp || '',
     };
     await LS.addAnimateur(newAnim);
     onCreated(); onClose();
@@ -2589,15 +2601,24 @@ function AddAnimateurMgrModal({ animateurs, accounts, onClose, onCreated }) {
                 {tlsForVille.map(name=><option key={name} value={name}>{name}</option>)}
               </select>
             </div>
-            <div className="mg" style={{display:'flex',alignItems:'center',gap:12}}>
-              <label style={{margin:0,fontWeight:700,fontSize:12,color:'var(--neutral-600)',textTransform:'uppercase',letterSpacing:'0.5px'}}>A une moto</label>
-              <div style={{display:'flex',gap:10}}>
-                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:form.moto?'#16A34A':'var(--neutral-500)'}}>
-                  <input type="radio" name="moto_mgr_add" checked={form.moto===true} onChange={()=>set('moto',true)} style={{accentColor:'#16A34A'}} /> Oui
-                </label>
-                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:!form.moto?'#EF4444':'var(--neutral-500)'}}>
-                  <input type="radio" name="moto_mgr_add" checked={form.moto===false} onChange={()=>set('moto',false)} style={{accentColor:'#EF4444'}} /> Non
-                </label>
+            <div className="mg-row">
+              <div className="mg" style={{display:'flex',alignItems:'center',gap:12}}>
+                <label style={{margin:0,fontWeight:700,fontSize:12,color:'var(--neutral-600)',textTransform:'uppercase',letterSpacing:'0.5px'}}>A une moto</label>
+                <div style={{display:'flex',gap:10}}>
+                  <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:form.moto?'#16A34A':'var(--neutral-500)'}}>
+                    <input type="radio" name="moto_mgr_add" checked={form.moto===true} onChange={()=>set('moto',true)} style={{accentColor:'#16A34A'}} /> Oui
+                  </label>
+                  <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:!form.moto?'#EF4444':'var(--neutral-500)'}}>
+                    <input type="radio" name="moto_mgr_add" checked={form.moto===false} onChange={()=>set('moto',false)} style={{accentColor:'#EF4444'}} /> Non
+                  </label>
+                </div>
+              </div>
+              <div className="mg"><label>Contrat OP</label>
+                <select value={form.contractOp} onChange={e=>set('contractOp',e.target.value)}>
+                  <option value="">— Sélectionner —</option>
+                  <option value="ANAPEC">ANAPEC</option>
+                  <option value="CDI">CDI</option>
+                </select>
               </div>
             </div>
           </div>
@@ -2624,16 +2645,16 @@ function ImportAnimateursModal({ animateurs, accounts, onClose, onImported }) {
   const downloadTemplate = () => {
     const sorted = [...animateurs].sort((a,b) => a.ville.localeCompare(b.ville) || a.teamLead.localeCompare(b.teamLead) || a.name.localeCompare(b.name));
     const data = [
-      ['TEAM LEAD','EMAIL','VILLE','NOM ANIMATEUR','SECTEUR','MATRICULE','TÉLÉPHONE','DÉMISSION','MOTO'],
+      ['TEAM LEAD','EMAIL','VILLE','NOM ANIMATEUR','SECTEUR','MATRICULE','TÉLÉPHONE','DÉMISSION','MOTO','CONTRACT OP'],
       ...sorted.map(a => {
         const acc = accounts.find(ac => ac.name === a.teamLead);
-        return [a.teamLead, acc?.email || '', a.ville, a.name, a.sector, a.matricule||'', a.phone||'', a.actif === false ? 'Oui' : 'Non', a.moto ? 'Oui' : 'Non'];
+        return [a.teamLead, acc?.email || '', a.ville, a.name, a.sector, a.matricule||'', a.phone||'', a.actif === false ? 'Oui' : 'Non', a.moto ? 'Oui' : 'Non', a.contractOp||''];
       }),
     ];
     const ws = XLSX.utils.aoa_to_sheet(data);
-    ws['!cols'] = [{wch:24},{wch:28},{wch:14},{wch:26},{wch:26},{wch:14},{wch:16},{wch:12},{wch:10}];
+    ws['!cols'] = [{wch:24},{wch:28},{wch:14},{wch:26},{wch:26},{wch:14},{wch:16},{wch:12},{wch:10},{wch:14}];
     const hStyle = { font:{bold:true,color:{rgb:'FFFFFF'},sz:11}, fill:{fgColor:{rgb:'0052CC'}}, alignment:{horizontal:'center'} };
-    ['A1','B1','C1','D1','E1','F1','G1','H1','I1'].forEach(c => { if (ws[c]) ws[c].s = hStyle; });
+    ['A1','B1','C1','D1','E1','F1','G1','H1','I1','J1'].forEach(c => { if (ws[c]) ws[c].s = hStyle; });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Animateurs');
     XLSX.writeFile(wb, 'template_animateurs.xlsx');
@@ -2659,7 +2680,8 @@ function ImportAnimateursModal({ animateurs, accounts, onClose, onImported }) {
         const colMat = hdr.indexOf('MATRICULE');
         const colPh  = hdr.indexOf('TÉLÉPHONE');
         const colDem = hdr.indexOf('DÉMISSION');
-        const colMoto= hdr.indexOf('MOTO');
+        const colMoto    = hdr.indexOf('MOTO');
+        const colContract= hdr.indexOf('CONTRACT OP');
         if ([colTL,colMail,colV,colN,colS].includes(-1)) {
           setPreview({ error:'Colonnes manquantes — utilisez le template fourni.' }); return;
         }
@@ -2676,13 +2698,15 @@ function ImportAnimateursModal({ animateurs, accounts, onClose, onImported }) {
           const phone    = colPh  >= 0 ? String(row[colPh] ||'').trim() : '';
           const demRaw   = colDem >= 0 ? String(row[colDem]||'').trim().toLowerCase() : '';
           const actif    = (demRaw === 'oui') ? false : true;
-          const motoRaw  = colMoto >= 0 ? String(row[colMoto]||'').trim().toLowerCase() : '';
-          const moto     = motoRaw === 'oui';
+          const motoRaw    = colMoto >= 0 ? String(row[colMoto]||'').trim().toLowerCase() : '';
+          const moto       = motoRaw === 'oui';
+          const contractRaw= colContract >= 0 ? String(row[colContract]||'').trim().toUpperCase() : '';
+          const contractOp = ['ANAPEC','CDI'].includes(contractRaw) ? contractRaw : '';
           if (!name) return;
           if (!teamLead || !ville || !sector) { errors.push({ row:i+2, name, reason:'Données incomplètes (TL, ville ou secteur manquant)' }); return; }
           const existing = animateurs.find(a => a.name.toLowerCase() === name.toLowerCase());
-          if (existing) toUpdate.push({ ...existing, teamLead, ville, sector, matricule, phone, tlEmail, actif, moto });
-          else          toCreate.push({ name, teamLead, ville, sector, matricule, phone, tlEmail, actif, moto });
+          if (existing) toUpdate.push({ ...existing, teamLead, ville, sector, matricule, phone, tlEmail, actif, moto, contractOp });
+          else          toCreate.push({ name, teamLead, ville, sector, matricule, phone, tlEmail, actif, moto, contractOp });
         });
         setPreview({ toUpdate, toCreate, errors });
       } catch { setPreview({ error:'Impossible de lire le fichier.' }); }
@@ -2701,7 +2725,7 @@ function ImportAnimateursModal({ animateurs, accounts, onClose, onImported }) {
       });
       const maxId = Math.max(...animateurs.map(a => a.id), 0);
       let next = maxId + 1;
-      preview.toCreate.forEach(a => { updates[next] = { id:next, name:a.name, teamLead:a.teamLead, ville:a.ville, sector:a.sector, matricule:a.matricule||'', phone:a.phone||'', actif: a.actif !== false, moto: a.moto || false }; next++; });
+      preview.toCreate.forEach(a => { updates[next] = { id:next, name:a.name, teamLead:a.teamLead, ville:a.ville, sector:a.sector, matricule:a.matricule||'', phone:a.phone||'', actif: a.actif !== false, moto: a.moto || false, contractOp: a.contractOp||'' }; next++; });
       await db.ref('ptg/animateurs').update(updates);
 
       // Update TL account emails where the Excel provides one
@@ -2939,7 +2963,7 @@ function AnimateursView({ animateurs, accounts }) {
           <div className="tbl-scroll"><table className="tbl">
             <thead>
               <tr>
-                <th>#</th><th>Animateur</th><th>Secteur</th><th>Ville</th><th>Team Lead</th><th>Moto</th><th>Actions</th>
+                <th>#</th><th>Animateur</th><th>Secteur</th><th>Ville</th><th>Team Lead</th><th>Moto</th><th>Contrat</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -2967,6 +2991,12 @@ function AnimateursView({ animateurs, accounts }) {
                       {anim.moto
                         ? <span style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:'#DCFCE7',color:'#16A34A'}}>🏍 Oui</span>
                         : <span style={{fontSize:11,color:'var(--neutral-400)',fontWeight:500}}>Non</span>
+                      }
+                    </td>
+                    <td>
+                      {anim.contractOp
+                        ? <span style={{display:'inline-flex',padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:'#EDE9FE',color:'#6D28D9'}}>{anim.contractOp}</span>
+                        : <span style={{fontSize:11,color:'var(--neutral-300)'}}>—</span>
                       }
                     </td>
                     <td>
@@ -4363,9 +4393,9 @@ function AnalyticsView({ pointages, animateurs, accounts, secteurs, isTL, cityFi
     const periodLabel = period==='week'?'Cette semaine':period==='month'?'Ce mois':period==='prevmonth'?'Mois précédent':`${customFrom} - ${customTo}`;
 
     // Sheet 1 — Animateurs
-    const hA = ['Animateur','Matricule','Ville','Secteur','Team Lead','Moto','Jours pointés','Présent','Absent','Malade','Récupe','Congé','Renfort','Démission','Non pointé','Taux présence %'];
-    const wsA = XLSX.utils.aoa_to_sheet([hA,...animRows.map(r=>[r.name,r.matricule||'',r.ville,r.sector,r.teamLead,r.moto?'Oui':'Non',r.totalPointed,r.present,r.absent,r.malade,r.recupe,r.conge,r.renfort,r.demission,r.nonpointe,r.taux+'%'])]);
-    wsA['!cols'] = [{wch:26},{wch:14},{wch:14},{wch:26},{wch:20},{wch:8},{wch:12},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:12},{wch:12},{wch:14}];
+    const hA = ['Animateur','Matricule','Ville','Secteur','Team Lead','Moto','Contrat OP','Jours pointés','Présent','Absent','Malade','Récupe','Congé','Renfort','Démission','Non pointé','Taux présence %'];
+    const wsA = XLSX.utils.aoa_to_sheet([hA,...animRows.map(r=>[r.name,r.matricule||'',r.ville,r.sector,r.teamLead,r.moto?'Oui':'Non',r.contractOp||'',r.totalPointed,r.present,r.absent,r.malade,r.recupe,r.conge,r.renfort,r.demission,r.nonpointe,r.taux+'%'])]);
+    wsA['!cols'] = [{wch:26},{wch:14},{wch:14},{wch:26},{wch:20},{wch:8},{wch:12},{wch:12},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:12},{wch:12},{wch:14}];
     hA.forEach((_,i)=>{ const c=XLSX.utils.encode_cell({r:0,c:i}); if(wsA[c]) wsA[c].s=hStyle; });
     XLSX.utils.book_append_sheet(wb, wsA, 'Animateurs');
 

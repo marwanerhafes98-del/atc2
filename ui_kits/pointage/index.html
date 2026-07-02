@@ -736,6 +736,7 @@ function AnimateurRow({ animateur: a, onSelect }) {
           <span>·</span>
           <span>{a.ville}</span>
           {a.moto && <><span>·</span><span style={{color:'#D97706',fontWeight:700}}>🏍 Moto</span></>}
+          {a.contractOp && <><span>·</span><span style={{color:'#6D28D9',fontWeight:700}}>{a.contractOp}</span></>}
         </div>
         <div className="animateur-phone">{a.phone}</div>
         {a.pointedAt && <div className="animateur-time">Pointé à {a.pointedAt}{a.note ? ` · ${a.note}` : ''}</div>}
@@ -901,6 +902,7 @@ function EditAnimateurModal({ animateur, onClose, onSave, secteurs = [] }) {
     ville: animateur.ville, phone: animateur.phone || '',
     teamLead: animateur.teamLead || '', matricule: animateur.matricule || '',
     moto: animateur.moto || false,
+    contractOp: animateur.contractOp || '',
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const villeSectors = secteurs.filter(s => s.ville === form.ville).map(s => s.sector).sort((a,b) => a.localeCompare(b));
@@ -971,15 +973,27 @@ function EditAnimateurModal({ animateur, onClose, onSave, secteurs = [] }) {
                   onChange={e => set('teamLead', e.target.value)} />
               </div>
             </div>
-            <div className="form-group" style={{display:'flex',alignItems:'center',gap:10,paddingTop:4}}>
-              <label className="form-label" style={{margin:0}}>A une moto</label>
-              <div style={{display:'flex',gap:8}}>
-                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:form.moto?'#16A34A':'var(--neutral-500)'}}>
-                  <input type="radio" name="moto_edit" checked={form.moto===true} onChange={()=>set('moto',true)} style={{accentColor:'#16A34A'}} /> Oui
-                </label>
-                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:!form.moto?'#EF4444':'var(--neutral-500)'}}>
-                  <input type="radio" name="moto_edit" checked={form.moto===false} onChange={()=>set('moto',false)} style={{accentColor:'#EF4444'}} /> Non
-                </label>
+            <div className="form-row">
+              <div className="form-group" style={{display:'flex',alignItems:'center',gap:10,paddingTop:4}}>
+                <label className="form-label" style={{margin:0}}>A une moto</label>
+                <div style={{display:'flex',gap:8}}>
+                  <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:form.moto?'#16A34A':'var(--neutral-500)'}}>
+                    <input type="radio" name="moto_edit" checked={form.moto===true} onChange={()=>set('moto',true)} style={{accentColor:'#16A34A'}} /> Oui
+                  </label>
+                  <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:!form.moto?'#EF4444':'var(--neutral-500)'}}>
+                    <input type="radio" name="moto_edit" checked={form.moto===false} onChange={()=>set('moto',false)} style={{accentColor:'#EF4444'}} /> Non
+                  </label>
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Contrat OP</label>
+                <div className="select-wrap">
+                  <select className="form-select" value={form.contractOp} onChange={e=>set('contractOp',e.target.value)}>
+                    <option value="">— Sélectionner —</option>
+                    <option value="ANAPEC">ANAPEC</option>
+                    <option value="CDI">CDI</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
@@ -1110,7 +1124,7 @@ function AddAnimateurModal({ onClose, onAdd, defaultVille, secteurs = [] }) {
   const cities = ['Agadir','Beni Mellal','Casablanca','Fes','Marrakech','Meknes','Nador','Oqba','oujda','Rabat','Tanger'];
   const [form, setForm] = useState({
     name: '', sector: '', ville: defaultVille || 'Casablanca',
-    phone: '', teamLead: '', matricule: '', moto: false,
+    phone: '', teamLead: '', matricule: '', moto: false, contractOp: '',
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const villeSectors = secteurs.filter(s => s.ville === form.ville).map(s => s.sector).sort((a,b) => a.localeCompare(b));
@@ -1181,15 +1195,27 @@ function AddAnimateurModal({ onClose, onAdd, defaultVille, secteurs = [] }) {
               <input className="form-input" placeholder="Nom du responsable"
                 value={form.teamLead} onChange={e => set('teamLead', e.target.value)} />
             </div>
-            <div className="form-group" style={{display:'flex',alignItems:'center',gap:10,paddingTop:4}}>
-              <label className="form-label" style={{margin:0}}>A une moto</label>
-              <div style={{display:'flex',gap:8}}>
-                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:form.moto?'#16A34A':'var(--neutral-500)'}}>
-                  <input type="radio" name="moto_add" checked={form.moto===true} onChange={()=>set('moto',true)} style={{accentColor:'#16A34A'}} /> Oui
-                </label>
-                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:!form.moto?'#EF4444':'var(--neutral-500)'}}>
-                  <input type="radio" name="moto_add" checked={form.moto===false} onChange={()=>set('moto',false)} style={{accentColor:'#EF4444'}} /> Non
-                </label>
+            <div className="form-row">
+              <div className="form-group" style={{display:'flex',alignItems:'center',gap:10,paddingTop:4}}>
+                <label className="form-label" style={{margin:0}}>A une moto</label>
+                <div style={{display:'flex',gap:8}}>
+                  <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:form.moto?'#16A34A':'var(--neutral-500)'}}>
+                    <input type="radio" name="moto_add" checked={form.moto===true} onChange={()=>set('moto',true)} style={{accentColor:'#16A34A'}} /> Oui
+                  </label>
+                  <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:!form.moto?'#EF4444':'var(--neutral-500)'}}>
+                    <input type="radio" name="moto_add" checked={form.moto===false} onChange={()=>set('moto',false)} style={{accentColor:'#EF4444'}} /> Non
+                  </label>
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Contrat OP</label>
+                <div className="select-wrap">
+                  <select className="form-select" value={form.contractOp} onChange={e=>set('contractOp',e.target.value)}>
+                    <option value="">— Sélectionner —</option>
+                    <option value="ANAPEC">ANAPEC</option>
+                    <option value="CDI">CDI</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
@@ -1679,6 +1705,7 @@ function App() {
       matricule: form.matricule || '',
       teamLead: form.teamLead || user.name,
       moto: form.moto || false,
+      contractOp: form.contractOp || '',
     };
     db.ref(`ptg/animateurs/${id}`).set(newAnim);
     setAnimateurs(prev => [...prev, { ...newAnim, status:'nonpointe', pointedAt:null, note:undefined }]);
