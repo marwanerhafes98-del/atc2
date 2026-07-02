@@ -986,12 +986,13 @@ function EditAnimateurModal({ animateur, onClose, onSave, secteurs = [] }) {
                 </div>
               </div>
               <div className="form-group">
-                <label className="form-label">Contrat OP</label>
+                <label className="form-label">Type de contrat</label>
                 <div className="select-wrap">
                   <select className="form-select" value={form.contractOp} onChange={e=>set('contractOp',e.target.value)}>
                     <option value="">— Sélectionner —</option>
                     <option value="ANAPEC">ANAPEC</option>
                     <option value="CDI">CDI</option>
+                    <option value="Contrat OP">Contrat OP</option>
                   </select>
                 </div>
               </div>
@@ -1208,12 +1209,13 @@ function AddAnimateurModal({ onClose, onAdd, defaultVille, secteurs = [] }) {
                 </div>
               </div>
               <div className="form-group">
-                <label className="form-label">Contrat OP</label>
+                <label className="form-label">Type de contrat</label>
                 <div className="select-wrap">
                   <select className="form-select" value={form.contractOp} onChange={e=>set('contractOp',e.target.value)}>
                     <option value="">— Sélectionner —</option>
                     <option value="ANAPEC">ANAPEC</option>
                     <option value="CDI">CDI</option>
+                    <option value="Contrat OP">Contrat OP</option>
                   </select>
                 </div>
               </div>

@@ -2519,11 +2519,12 @@ function EditAnimateurMgrModal({ animateur, animateurs, accounts, onClose, onSav
                   </label>
                 </div>
               </div>
-              <div className="mg"><label>Contrat OP</label>
+              <div className="mg"><label>Type de contrat</label>
                 <select value={form.contractOp} onChange={e=>set('contractOp',e.target.value)}>
                   <option value="">— Sélectionner —</option>
                   <option value="ANAPEC">ANAPEC</option>
                   <option value="CDI">CDI</option>
+                  <option value="Contrat OP">Contrat OP</option>
                 </select>
               </div>
             </div>
@@ -2613,11 +2614,12 @@ function AddAnimateurMgrModal({ animateurs, accounts, onClose, onCreated }) {
                   </label>
                 </div>
               </div>
-              <div className="mg"><label>Contrat OP</label>
+              <div className="mg"><label>Type de contrat</label>
                 <select value={form.contractOp} onChange={e=>set('contractOp',e.target.value)}>
                   <option value="">— Sélectionner —</option>
                   <option value="ANAPEC">ANAPEC</option>
                   <option value="CDI">CDI</option>
+                  <option value="Contrat OP">Contrat OP</option>
                 </select>
               </div>
             </div>
@@ -2701,7 +2703,7 @@ function ImportAnimateursModal({ animateurs, accounts, onClose, onImported }) {
           const motoRaw    = colMoto >= 0 ? String(row[colMoto]||'').trim().toLowerCase() : '';
           const moto       = motoRaw === 'oui';
           const contractRaw= colContract >= 0 ? String(row[colContract]||'').trim().toUpperCase() : '';
-          const contractOp = ['ANAPEC','CDI'].includes(contractRaw) ? contractRaw : '';
+          const contractOp = contractRaw === 'ANAPEC' ? 'ANAPEC' : contractRaw === 'CDI' ? 'CDI' : contractRaw === 'CONTRAT OP' ? 'Contrat OP' : '';
           if (!name) return;
           if (!teamLead || !ville || !sector) { errors.push({ row:i+2, name, reason:'Données incomplètes (TL, ville ou secteur manquant)' }); return; }
           const existing = animateurs.find(a => a.name.toLowerCase() === name.toLowerCase());
@@ -2963,7 +2965,7 @@ function AnimateursView({ animateurs, accounts }) {
           <div className="tbl-scroll"><table className="tbl">
             <thead>
               <tr>
-                <th>#</th><th>Animateur</th><th>Secteur</th><th>Ville</th><th>Team Lead</th><th>Moto</th><th>Contrat</th><th>Actions</th>
+                <th>#</th><th>Animateur</th><th>Secteur</th><th>Ville</th><th>Team Lead</th><th>Moto</th><th>Type de contrat</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -4393,7 +4395,7 @@ function AnalyticsView({ pointages, animateurs, accounts, secteurs, isTL, cityFi
     const periodLabel = period==='week'?'Cette semaine':period==='month'?'Ce mois':period==='prevmonth'?'Mois précédent':`${customFrom} - ${customTo}`;
 
     // Sheet 1 — Animateurs
-    const hA = ['Animateur','Matricule','Ville','Secteur','Team Lead','Moto','Contrat OP','Jours pointés','Présent','Absent','Malade','Récupe','Congé','Renfort','Démission','Non pointé','Taux présence %'];
+    const hA = ['Animateur','Matricule','Ville','Secteur','Team Lead','Moto','Type de contrat','Jours pointés','Présent','Absent','Malade','Récupe','Congé','Renfort','Démission','Non pointé','Taux présence %'];
     const wsA = XLSX.utils.aoa_to_sheet([hA,...animRows.map(r=>[r.name,r.matricule||'',r.ville,r.sector,r.teamLead,r.moto?'Oui':'Non',r.contractOp||'',r.totalPointed,r.present,r.absent,r.malade,r.recupe,r.conge,r.renfort,r.demission,r.nonpointe,r.taux+'%'])]);
     wsA['!cols'] = [{wch:26},{wch:14},{wch:14},{wch:26},{wch:20},{wch:8},{wch:12},{wch:12},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:12},{wch:12},{wch:14}];
     hA.forEach((_,i)=>{ const c=XLSX.utils.encode_cell({r:0,c:i}); if(wsA[c]) wsA[c].s=hStyle; });
