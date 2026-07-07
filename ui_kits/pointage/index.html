@@ -738,6 +738,7 @@ function AnimateurRow({ animateur: a, onSelect }) {
           <span>{a.ville}</span>
           {a.moto && <><span>·</span><span style={{color:'#D97706',fontWeight:700}}>🏍 Moto</span></>}
           {a.contractOp && <><span>·</span><span style={{color:'#6D28D9',fontWeight:700}}>{a.contractOp}</span></>}
+          {a.dateIntegration && <><span>·</span><span style={{color:'#0E7490',fontWeight:600}}>Intégré le {a.dateIntegration.split('-').reverse().join('/')}</span></>}
         </div>
         <div className="animateur-phone">{a.phone}</div>
         {a.pointedAt && <div className="animateur-time">Pointé à {a.pointedAt}{a.note ? ` · ${a.note}` : ''}</div>}
@@ -904,6 +905,7 @@ function EditAnimateurModal({ animateur, onClose, onSave, secteurs = [] }) {
     teamLead: animateur.teamLead || '', matricule: animateur.matricule || '',
     moto: animateur.moto || false,
     contractOp: animateur.contractOp || '',
+    dateIntegration: animateur.dateIntegration || '',
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const villeSectors = secteurs.filter(s => s.ville === form.ville).map(s => s.sector).sort((a,b) => a.localeCompare(b));
@@ -997,6 +999,11 @@ function EditAnimateurModal({ animateur, onClose, onSave, secteurs = [] }) {
                   </select>
                 </div>
               </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Date d'intégration</label>
+              <input className="form-input" type="date" value={form.dateIntegration}
+                onChange={e => set('dateIntegration', e.target.value)} />
             </div>
           </div>
           <div className="modal-footer">
@@ -1126,7 +1133,7 @@ function AddAnimateurModal({ onClose, onAdd, defaultVille, secteurs = [] }) {
   const cities = ['Agadir','Beni Mellal','Casablanca','Fes','Marrakech','Meknes','Nador','Oqba','oujda','Rabat','Tanger'];
   const [form, setForm] = useState({
     name: '', sector: '', ville: defaultVille || 'Casablanca',
-    phone: '', teamLead: '', matricule: '', moto: false, contractOp: '',
+    phone: '', teamLead: '', matricule: '', moto: false, contractOp: '', dateIntegration: '',
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const villeSectors = secteurs.filter(s => s.ville === form.ville).map(s => s.sector).sort((a,b) => a.localeCompare(b));
@@ -1220,6 +1227,11 @@ function AddAnimateurModal({ onClose, onAdd, defaultVille, secteurs = [] }) {
                   </select>
                 </div>
               </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Date d'intégration</label>
+              <input className="form-input" type="date" value={form.dateIntegration}
+                onChange={e => set('dateIntegration', e.target.value)} />
             </div>
           </div>
           <div className="modal-footer">
@@ -1919,6 +1931,7 @@ function App() {
       teamLead: form.teamLead || user.name,
       moto: form.moto || false,
       contractOp: form.contractOp || '',
+      dateIntegration: form.dateIntegration || '',
     };
     db.ref(`ptg/animateurs/${id}`).set(newAnim);
     setAnimateurs(prev => [...prev, { ...newAnim, status:'nonpointe', pointedAt:null, note:undefined }]);
