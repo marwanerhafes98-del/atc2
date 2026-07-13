@@ -897,8 +897,8 @@ function AnimateursList({ animateurs, onSelectAnimateur, defaultVille, secteurs 
 }
 
 /* ── EDIT ANIMATEUR MODAL ── */
-function EditAnimateurModal({ animateur, onClose, onSave, secteurs = [] }) {
-  const cities = ['Agadir','Beni Mellal','Casablanca','Fes','Kenitra','Marrakech','Meknes','Nador','Oqba','oujda','Rabat','Tanger'];
+function EditAnimateurModal({ animateur, onClose, onSave, secteurs = [], villesDB = [] }) {
+  const cities = villesDB.length > 0 ? villesDB.map(v => v.name) : ['Agadir','Beni Mellal','Casablanca','Fes','Kenitra','Marrakech','Meknes','Nador','Oqba','oujda','Rabat','Tanger'];
   const [form, setForm] = useState({
     name: animateur.name, sector: animateur.sector,
     ville: animateur.ville, phone: animateur.phone || '',
@@ -1019,7 +1019,7 @@ function EditAnimateurModal({ animateur, onClose, onSave, secteurs = [] }) {
 }
 
 /* ── POINTAGE FORM ── */
-function PointageForm({ animateur, onBack, onConfirm, onEdit, onDelete, secteurs = [] }) {
+function PointageForm({ animateur, onBack, onConfirm, onEdit, onDelete, secteurs = [], villesDB = [] }) {
   const [selected, setSelected] = useState(animateur.status !== 'nonpointe' ? animateur.status : null);
   const [note, setNote]         = useState(animateur.note || '');
   const [gpsReady, setGpsReady] = useState(false);
@@ -1122,6 +1122,7 @@ function PointageForm({ animateur, onBack, onConfirm, onEdit, onDelete, secteurs
           onClose={() => setShowEdit(false)}
           onSave={data => onEdit(animateur.id, data)}
           secteurs={secteurs}
+          villesDB={villesDB}
         />
       )}
     </div>
@@ -1129,8 +1130,8 @@ function PointageForm({ animateur, onBack, onConfirm, onEdit, onDelete, secteurs
 }
 
 /* ── ADD ANIMATEUR MODAL ── */
-function AddAnimateurModal({ onClose, onAdd, defaultVille, secteurs = [] }) {
-  const cities = ['Agadir','Beni Mellal','Casablanca','Fes','Kenitra','Marrakech','Meknes','Nador','Oqba','oujda','Rabat','Tanger'];
+function AddAnimateurModal({ onClose, onAdd, defaultVille, secteurs = [], villesDB = [] }) {
+  const cities = villesDB.length > 0 ? villesDB.map(v => v.name) : ['Agadir','Beni Mellal','Casablanca','Fes','Kenitra','Marrakech','Meknes','Nador','Oqba','oujda','Rabat','Tanger'];
   const [form, setForm] = useState({
     name: '', sector: '', ville: defaultVille || 'Casablanca',
     phone: '', teamLead: '', matricule: '', moto: false, contractOp: '', dateIntegration: '',
@@ -1712,6 +1713,7 @@ function App() {
   const [todayCount, setTodayCount] = useState(0);
   const [gpsStatus,  setGpsStatus]  = useState('idle'); // idle | ok | needs-tap | denied | error
   const [secteurs,   setSecteurs]   = useState([]);
+  const [villesDB,   setVillesDB]   = useState([]);
   const nextId    = useRef(ANIMATEURS_DB.length + 1);
   const mainRef   = useRef(null);
   const watchIdRef = useRef(null);
@@ -1832,6 +1834,11 @@ function App() {
       setSecteurs(snap.exists() ? Object.values(snap.val()).filter(Boolean) : []);
     });
 
+    const villeRef = db.ref('ptg/villes');
+    const villeHandler = villeRef.on('value', snap => {
+      setVillesDB(snap.exists() ? Object.values(snap.val()).filter(Boolean).sort((a,b)=>(a.name||'').localeCompare(b.name||'')) : []);
+    });
+
     const ping = setInterval(() => LS.pingSession(user.email), 30000);
     const onUnload = () => LS.endSession(user.email);
     window.addEventListener('beforeunload', onUnload);
@@ -1841,6 +1848,7 @@ function App() {
       animRef.off('value', animHandler);
       ref.off('value', handler);
       sectRef.off('value', sectHandler);
+      villeRef.off('value', villeHandler);
       clearInterval(ping);
       window.removeEventListener('beforeunload', onUnload);
     };
@@ -2011,7 +2019,7 @@ function App() {
           />
         )}
         {currentView === 'list' && selectedAnimateur && (
-          <PointageForm animateur={selectedAnimateur} onBack={() => setSelectedAnimateur(null)} onConfirm={handleConfirmPointage} onEdit={handleEditAnimateur} onDelete={handleDeleteAnimateur} secteurs={secteurs} />
+          <PointageForm animateur={selectedAnimateur} onBack={() => setSelectedAnimateur(null)} onConfirm={handleConfirmPointage} onEdit={handleEditAnimateur} onDelete={handleDeleteAnimateur} secteurs={secteurs} villesDB={villesDB} />
         )}
         {currentView === 'kpi' && (
           <KpiView animateurs={visibleAnimateurs} userEmail={user.email} />
@@ -2052,6 +2060,7 @@ function App() {
           onAdd={handleAddAnimateur}
           defaultVille={user.ville}
           secteurs={secteurs}
+          villesDB={villesDB}
         />
       )}
 
