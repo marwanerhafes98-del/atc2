@@ -1228,10 +1228,12 @@ function SummaryTable({ animateurs, todayPtgs, filterVille, secteurs = [] }) {
 /* ── SECTOR GAP PANEL ── */
 function SectorGapPanel({ animateurs, todayPtgs, secteurs = [] }) {
   const [open, setOpen] = useState(false);
+  const [openAbs, setOpenAbs] = useState(false);
+  const [openNoAnim, setOpenNoAnim] = useState(false);
 
   const gaps = useMemo(() => {
     if (secteurs.length > 0) {
-      return secteurs.map(s => {
+      return secteurs.filter(s => s.actif !== false).map(s => {
         const linked = animateurs.filter(a =>
           (a.sector||'').toLowerCase() === (s.sector||'').toLowerCase() &&
           (a.ville||'').toLowerCase() === (s.ville||'').toLowerCase()
@@ -1260,10 +1262,33 @@ function SectorGapPanel({ animateurs, todayPtgs, secteurs = [] }) {
       .sort((a,b) => a.ville.localeCompare(b.ville) || a.sector.localeCompare(b.sector));
   }, [animateurs, todayPtgs, secteurs]);
 
+  const noAnim   = gaps.filter(g => g.type === 'noanimateur');
+  const absences = gaps.filter(g => g.type === 'absence');
+
   if (gaps.length === 0) return (
     <div className="alert-banner alert-info" style={{marginBottom:20}}>
       <i data-lucide="check-circle" style={{width:16,height:16,flexShrink:0}}></i>
       Tous les secteurs ont au moins un animateur présent aujourd'hui.
+    </div>
+  );
+
+  const GapCard = ({ g }) => (
+    <div key={g.sector+g.ville} className="gap-item">
+      <span className="gap-dot" style={{background: g.type==='noanimateur'?'#F59E0B':'#EF4444'}}></span>
+      <div>
+        <div className="gap-sector">{g.sector}</div>
+        <div className="gap-ville">{g.ville}</div>
+        {g.type === 'noanimateur'
+          ? <div style={{fontSize:11,color:'#D97706',fontWeight:600,marginTop:3}}>Aucun animateur rattaché</div>
+          : <div style={{marginTop:4,display:'flex',gap:4,flexWrap:'wrap'}}>
+              {g.anims.map((a,i) => (
+                <span key={i} style={{fontSize:10,padding:'1px 7px',borderRadius:99,background:(STATUS_COLOR[a.status]||'#64748B')+'22',color:STATUS_COLOR[a.status]||'#64748B',fontWeight:700}}>
+                  {STATUS_FR[a.status]||a.status}
+                </span>
+              ))}
+            </div>
+        }
+      </div>
     </div>
   );
 
@@ -1283,29 +1308,43 @@ function SectorGapPanel({ animateurs, todayPtgs, secteurs = [] }) {
         <i data-lucide={open ? 'chevron-up' : 'chevron-down'} style={{width:18,height:18,color:'var(--neutral-400)',flexShrink:0}}></i>
       </div>
       {open && (
-        <div className="gap-grid">
-          {gaps.map(g => (
-            <div key={g.sector+g.ville} className="gap-item">
-              <span className="gap-dot" style={{background: g.actif===false?'#94A3B8':'#EF4444'}}></span>
-              <div>
-                <div style={{display:'flex',alignItems:'center',gap:6}}>
-                  <div className="gap-sector">{g.sector}</div>
-                  {g.actif === false && <span style={{fontSize:9,padding:'1px 5px',borderRadius:99,background:'#F1F5F9',color:'#64748B',fontWeight:700,textTransform:'uppercase'}}>Inactif</span>}
-                </div>
-                <div className="gap-ville">{g.ville}</div>
-                {g.type === 'noanimateur'
-                  ? <div style={{fontSize:11,color:'#D97706',fontWeight:600,marginTop:3}}>⚠️ Aucun animateur rattaché</div>
-                  : <div style={{marginTop:4,display:'flex',gap:4,flexWrap:'wrap'}}>
-                      {g.anims.map((a,i) => (
-                        <span key={i} style={{fontSize:10,padding:'1px 7px',borderRadius:99,background:(STATUS_COLOR[a.status]||'#64748B')+'22',color:STATUS_COLOR[a.status]||'#64748B',fontWeight:700}}>
-                          ⚠️ {STATUS_FR[a.status]||a.status}
-                        </span>
-                      ))}
-                    </div>
-                }
+        <div style={{padding:'0 16px 16px'}}>
+          {absences.length > 0 && (
+            <div style={{marginBottom: noAnim.length > 0 ? 12 : 0}}>
+              <div
+                onClick={() => setOpenAbs(o => !o)}
+                style={{display:'flex',alignItems:'center',gap:8,padding:'8px 0',cursor:'pointer',userSelect:'none',borderBottom: openAbs ? '1px solid var(--neutral-100)' : 'none', marginBottom: openAbs ? 10 : 0}}
+              >
+                <span style={{width:8,height:8,borderRadius:'50%',background:'#EF4444',display:'inline-block',flexShrink:0}}></span>
+                <span style={{fontWeight:700,fontSize:13,color:'#B91C1C',flex:1}}>Secteurs non pointés</span>
+                <span style={{padding:'1px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:'#FEE2E2',color:'#B91C1C'}}>{absences.length}</span>
+                <i data-lucide={openAbs ? 'chevron-up' : 'chevron-down'} style={{width:15,height:15,color:'#94A3B8',flexShrink:0}}></i>
               </div>
+              {openAbs && (
+                <div className="gap-grid">
+                  {absences.map(g => <GapCard key={g.sector+g.ville} g={g} />)}
+                </div>
+              )}
             </div>
-          ))}
+          )}
+          {noAnim.length > 0 && (
+            <div>
+              <div
+                onClick={() => setOpenNoAnim(o => !o)}
+                style={{display:'flex',alignItems:'center',gap:8,padding:'8px 0',cursor:'pointer',userSelect:'none',borderBottom: openNoAnim ? '1px solid var(--neutral-100)' : 'none', marginBottom: openNoAnim ? 10 : 0}}
+              >
+                <span style={{width:8,height:8,borderRadius:'50%',background:'#F59E0B',display:'inline-block',flexShrink:0}}></span>
+                <span style={{fontWeight:700,fontSize:13,color:'#B45309',flex:1}}>Secteurs sans animateur</span>
+                <span style={{padding:'1px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:'#FEF3C7',color:'#B45309'}}>{noAnim.length}</span>
+                <i data-lucide={openNoAnim ? 'chevron-up' : 'chevron-down'} style={{width:15,height:15,color:'#94A3B8',flexShrink:0}}></i>
+              </div>
+              {openNoAnim && (
+                <div className="gap-grid">
+                  {noAnim.map(g => <GapCard key={g.sector+g.ville} g={g} />)}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1352,9 +1391,10 @@ function DashboardView({ accounts, sessions, pointages, onRefresh, animateurs, s
   const stats = useMemo(() => {
     const base = computeStats(filteredAnims, filteredPtgs);
     if (secteurs.length > 0) {
+      const activeSecteurs = secteurs.filter(s => s.actif !== false);
       const villeSecteursCount = filterVille === 'Toutes'
-        ? secteurs.length
-        : secteurs.filter(s => s.ville === filterVille).length;
+        ? activeSecteurs.length
+        : activeSecteurs.filter(s => s.ville === filterVille).length;
       if (villeSecteursCount > 0) {
         base.totalSectors   = villeSecteursCount;
         base.gapSectors     = Math.max(0, villeSecteursCount - base.coveredSectors);
