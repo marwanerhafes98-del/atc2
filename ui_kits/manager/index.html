@@ -4366,25 +4366,42 @@ function SectorsView({ secteurs, villes = [], readOnly = false, animateurs = [] 
   };
 
   const downloadTemplate = () => {
-    const data = [
-      ['VILLE', 'SECTEUR', 'STATUT', 'DATE LANCEMENT', 'EFFECTIF CIBLE'],
-      ...secteurs.sort((a,b) => a.ville.localeCompare(b.ville)||a.sector.localeCompare(b.sector))
-        .map(s => [
+    const rows = secteurs
+      .sort((a,b) => a.ville.localeCompare(b.ville)||a.sector.localeCompare(b.sector))
+      .map(s => {
+        const effActuel = animateurs.filter(a =>
+          (a.sector||'').toLowerCase() === (s.sector||'').toLowerCase() &&
+          (a.ville||'').toLowerCase()  === (s.ville||'').toLowerCase()
+        ).length;
+        const months  = ancienneteMonths(s.dateLancement);
+        const effTheo = effectifTheorique(months);
+        const gap     = effTheo !== null ? effActuel - effTheo : '';
+        return [
           s.ville,
           s.sector,
           s.actif !== false ? 'VRAI' : 'FAUX',
           s.dateLancement || '',
           s.effectifCible != null ? s.effectifCible : '',
-        ]),
+          months != null ? months : '',
+          effActuel,
+          effTheo != null ? effTheo : '',
+          gap !== '' ? gap : '',
+        ];
+      });
+    if (rows.length === 0) rows.push(['Casablanca', 'Exemple Secteur 1', 'VRAI', '2025-01-15', 10, '', '', '', '']);
+    const data = [
+      ['VILLE', 'SECTEUR', 'STATUT', 'DATE LANCEMENT', 'EFFECTIF CIBLE', 'ANCIENNETÉ (mois)', 'EFFECTIF ACTUEL', 'EFFECTIF THÉORIQUE', 'GAP EFFECTIF'],
+      ...rows,
     ];
-    if (data.length === 1) data.push(['Casablanca', 'Exemple Secteur 1', 'VRAI', '2025-01-15', 10]);
     const ws = XLSX.utils.aoa_to_sheet(data);
-    ws['!cols'] = [{wch:20},{wch:32},{wch:10},{wch:18},{wch:16}];
-    const hStyle = { font:{bold:true,color:{rgb:'FFFFFF'},sz:11}, fill:{fgColor:{rgb:'0052CC'}}, alignment:{horizontal:'center'} };
+    ws['!cols'] = [{wch:20},{wch:32},{wch:10},{wch:18},{wch:16},{wch:18},{wch:16},{wch:19},{wch:14}];
+    const hStyle    = { font:{bold:true,color:{rgb:'FFFFFF'},sz:11}, fill:{fgColor:{rgb:'0052CC'}}, alignment:{horizontal:'center'} };
+    const calcStyle = { font:{bold:true,color:{rgb:'FFFFFF'},sz:11}, fill:{fgColor:{rgb:'374151'}}, alignment:{horizontal:'center'} };
     ['A1','B1','C1','D1','E1'].forEach(c => { if (ws[c]) ws[c].s = hStyle; });
+    ['F1','G1','H1','I1'].forEach(c => { if (ws[c]) ws[c].s = calcStyle; });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Secteurs');
-    XLSX.writeFile(wb, 'secteurs.xlsx');
+    XLSX.writeFile(wb, 'secteurs_extraction.xlsx');
   };
 
   const actifCount   = secteurs.filter(s => s.actif !== false).length;
