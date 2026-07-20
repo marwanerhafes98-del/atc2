@@ -852,10 +852,15 @@ const LS = {
         s.ville.toLowerCase() === item.ville.toLowerCase() &&
         s.sector.toLowerCase() === item.sector.toLowerCase()
       );
+      const patch = {
+        actif: item.actif,
+        dateLancement: item.dateLancement || '',
+        ...(item.effectifCible != null ? { effectifCible: item.effectifCible } : {}),
+      };
       if (found) {
-        updates[found.id] = { ...found, actif: item.actif };
+        updates[found.id] = { ...found, ...patch };
       } else {
-        updates[nextId] = { id: nextId, ville: item.ville, sector: item.sector, actif: item.actif };
+        updates[nextId] = { id: nextId, ville: item.ville, sector: item.sector, ...patch };
         nextId++;
       }
     });
@@ -4108,6 +4113,8 @@ function ImportSecteursModal({ onClose, onImported }) {
         const colV  = hdr.indexOf('VILLE');
         const colS  = hdr.indexOf('SECTEUR');
         const colSt = hdr.indexOf('STATUT');
+        const colDL = hdr.indexOf('DATE LANCEMENT');
+        const colEC = hdr.indexOf('EFFECTIF CIBLE');
         if ([colV, colS].includes(-1)) { setPreview({ error:'Colonnes manquantes (VILLE, SECTEUR requis).' }); return; }
         const items = [];
         rows.slice(1).forEach(row => {
@@ -4116,7 +4123,9 @@ function ImportSecteursModal({ onClose, onImported }) {
           if (!ville || !sector) return;
           const statutRaw = colSt >= 0 ? String(row[colSt]||'').trim().toUpperCase() : 'VRAI';
           const actif = statutRaw !== 'FAUX' && statutRaw !== 'FALSE' && statutRaw !== '0';
-          items.push({ ville, sector, actif });
+          const dateLancement = colDL >= 0 ? String(row[colDL]||'').trim() : '';
+          const effectifCible = colEC >= 0 && row[colEC] !== '' ? Number(row[colEC]) : null;
+          items.push({ ville, sector, actif, dateLancement, effectifCible });
         });
         setPreview({ items });
       } catch { setPreview({ error:'Impossible de lire le fichier.' }); }
@@ -4142,7 +4151,7 @@ function ImportSecteursModal({ onClose, onImported }) {
         </div>
         <div className="modal-body">
           <div style={{background:'#F8FAFC',border:'1px solid var(--neutral-200)',borderRadius:8,padding:'10px 14px',marginBottom:14,fontSize:12,color:'var(--neutral-600)'}}>
-            Colonnes attendues : <strong>VILLE</strong>, <strong>SECTEUR</strong>, <strong>STATUT</strong> (VRAI = actif, FAUX = inactif)
+            Colonnes attendues : <strong>VILLE</strong>, <strong>SECTEUR</strong>, <strong>STATUT</strong> (VRAI/FAUX), <strong>DATE LANCEMENT</strong> (YYYY-MM-DD), <strong>EFFECTIF CIBLE</strong>
           </div>
           <label style={{display:'flex',alignItems:'center',gap:8,height:40,padding:'0 16px',background:'var(--primary-600)',color:'white',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',width:'fit-content'}}>
             <i data-lucide="upload" style={{width:14,height:14}}></i>
@@ -4312,7 +4321,20 @@ function VillesView({ villes }) {
 }
 
 /* ── SECTORS VIEW ── */
-function SectorsView({ secteurs, villes = [], readOnly = false }) {
+function ancienneteMonths(dateLancement) {
+  if (!dateLancement) return null;
+  const diff = (Date.now() - new Date(dateLancement).getTime()) / 86400000;
+  if (diff < 0) return 0;
+  return Math.ceil(diff / 30);
+}
+function effectifTheorique(months) {
+  if (months === null || months === undefined) return null;
+  if (months <= 1) return 7;
+  if (months === 2) return 2;
+  return 1;
+}
+
+function SectorsView({ secteurs, villes = [], readOnly = false, animateurs = [] }) {
   const [search,      setSearch]      = useState('');
   const [filterVille, setFilterVille] = useState('Toutes');
   const [showImport,  setShowImport]  = useState(false);
@@ -4345,15 +4367,21 @@ function SectorsView({ secteurs, villes = [], readOnly = false }) {
 
   const downloadTemplate = () => {
     const data = [
-      ['VILLE', 'SECTEUR', 'STATUT'],
+      ['VILLE', 'SECTEUR', 'STATUT', 'DATE LANCEMENT', 'EFFECTIF CIBLE'],
       ...secteurs.sort((a,b) => a.ville.localeCompare(b.ville)||a.sector.localeCompare(b.sector))
-        .map(s => [s.ville, s.sector, s.actif !== false ? 'VRAI' : 'FAUX']),
+        .map(s => [
+          s.ville,
+          s.sector,
+          s.actif !== false ? 'VRAI' : 'FAUX',
+          s.dateLancement || '',
+          s.effectifCible != null ? s.effectifCible : '',
+        ]),
     ];
-    if (data.length === 1) data.push(['Casablanca', 'Exemple Secteur 1', 'VRAI']);
+    if (data.length === 1) data.push(['Casablanca', 'Exemple Secteur 1', 'VRAI', '2025-01-15', 10]);
     const ws = XLSX.utils.aoa_to_sheet(data);
-    ws['!cols'] = [{wch:20},{wch:32},{wch:10}];
+    ws['!cols'] = [{wch:20},{wch:32},{wch:10},{wch:18},{wch:16}];
     const hStyle = { font:{bold:true,color:{rgb:'FFFFFF'},sz:11}, fill:{fgColor:{rgb:'0052CC'}}, alignment:{horizontal:'center'} };
-    ['A1','B1','C1'].forEach(c => { if (ws[c]) ws[c].s = hStyle; });
+    ['A1','B1','C1','D1','E1'].forEach(c => { if (ws[c]) ws[c].s = hStyle; });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Secteurs');
     XLSX.writeFile(wb, 'secteurs.xlsx');
@@ -4405,11 +4433,31 @@ function SectorsView({ secteurs, villes = [], readOnly = false }) {
         ) : (
           <div className="tbl-scroll"><table className="tbl">
             <thead>
-              <tr><th>Ville</th><th>Secteur</th><th style={{textAlign:'center'}}>Statut</th><th style={{width:100}}>Actions</th></tr>
+              <tr>
+                <th>Ville</th>
+                <th>Secteur</th>
+                <th style={{textAlign:'center'}}>Statut</th>
+                <th style={{textAlign:'center',whiteSpace:'nowrap'}}>Date lancement</th>
+                <th style={{textAlign:'center',whiteSpace:'nowrap'}}>Ancienneté</th>
+                <th style={{textAlign:'center',whiteSpace:'nowrap'}}>Eff. cible</th>
+                <th style={{textAlign:'center',whiteSpace:'nowrap'}}>Eff. actuel</th>
+                <th style={{textAlign:'center',whiteSpace:'nowrap'}}>Eff. théorique</th>
+                <th style={{textAlign:'center',whiteSpace:'nowrap'}}>Gap effectif</th>
+                <th style={{width:100}}>Actions</th>
+              </tr>
             </thead>
             <tbody>
               {filtered.map(s => {
-                const color = CITY_COLORS[s.ville] || '#64748B';
+                const color      = CITY_COLORS[s.ville] || '#64748B';
+                const months     = ancienneteMonths(s.dateLancement);
+                const effActuel  = animateurs.filter(a =>
+                  (a.sector||'').toLowerCase() === (s.sector||'').toLowerCase() &&
+                  (a.ville||'').toLowerCase()  === (s.ville||'').toLowerCase()
+                ).length;
+                const effTheo    = effectifTheorique(months);
+                const gap        = effTheo !== null ? effActuel - effTheo : null;
+                const gapColor   = gap === null ? '#94A3B8' : gap >= 0 ? '#15803D' : '#B91C1C';
+                const gapBg      = gap === null ? '#F1F5F9' : gap >= 0 ? '#DCFCE7' : '#FEE2E2';
                 return (
                   <tr key={s.id}>
                     <td>
@@ -4422,6 +4470,30 @@ function SectorsView({ secteurs, villes = [], readOnly = false }) {
                       <span style={{fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:99,background:s.actif!==false?'#DCFCE7':'#FEE2E2',color:s.actif!==false?'#15803D':'#991B1B'}}>
                         {s.actif!==false ? 'Actif' : 'Inactif'}
                       </span>
+                    </td>
+                    <td style={{textAlign:'center',fontSize:12,color:'var(--neutral-700)',whiteSpace:'nowrap'}}>
+                      {s.dateLancement ? s.dateLancement.split('-').reverse().join('/') : <span style={{color:'var(--neutral-300)'}}>—</span>}
+                    </td>
+                    <td style={{textAlign:'center'}}>
+                      {months !== null
+                        ? <span style={{fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:99,background:'#EFF6FF',color:'#1D4ED8'}}>{months} mois</span>
+                        : <span style={{color:'var(--neutral-300)'}}>—</span>}
+                    </td>
+                    <td style={{textAlign:'center',fontSize:13,fontWeight:600,color:'var(--neutral-700)'}}>
+                      {s.effectifCible != null && s.effectifCible !== '' ? s.effectifCible : <span style={{color:'var(--neutral-300)'}}>—</span>}
+                    </td>
+                    <td style={{textAlign:'center',fontSize:13,fontWeight:700,color:'var(--neutral-900)'}}>
+                      {effActuel}
+                    </td>
+                    <td style={{textAlign:'center'}}>
+                      {effTheo !== null
+                        ? <span style={{fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:99,background:'#F3E8FF',color:'#6D28D9'}}>{effTheo}</span>
+                        : <span style={{color:'var(--neutral-300)'}}>—</span>}
+                    </td>
+                    <td style={{textAlign:'center'}}>
+                      {gap !== null
+                        ? <span style={{fontSize:12,fontWeight:700,padding:'2px 10px',borderRadius:99,background:gapBg,color:gapColor}}>{gap > 0 ? '+' : ''}{gap}</span>
+                        : <span style={{color:'var(--neutral-300)'}}>—</span>}
                     </td>
                     <td>
                       {readOnly
@@ -5897,7 +5969,7 @@ function App() {
         <div className="content">
           {view === 'dashboard'  && <DashboardView accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} sessions={sessions} pointages={filteredPtgs} onRefresh={refresh} animateurs={activeAnims} secteurs={isTL ? secteurs.filter(s=>s.ville===session.ville) : secteurs} />}
           {view === 'villes'     && !isTL && <VillesView villes={villes} />}
-          {view === 'secteurs'   && (!isTL || tlHas('secteurs')) && <SectorsView secteurs={secteurs} villes={villes} readOnly={isTL} />}
+          {view === 'secteurs'   && (!isTL || tlHas('secteurs')) && <SectorsView secteurs={secteurs} villes={villes} readOnly={isTL} animateurs={allAnims} />}
           {view === 'accounts'   && !isTL && <AccountsView accounts={accounts} sessions={sessions} onRefresh={refresh} />}
           {view === 'tlaccess'   && !isTL && <TLAccessView accounts={accounts} />}
           {view === 'animateurs' && <AnimateursView animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
