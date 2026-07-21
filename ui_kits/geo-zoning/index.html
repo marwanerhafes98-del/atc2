@@ -1,0 +1,1316 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🗺 Geo-Zoning Tool | MARWANE RHAFES</title>
+
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🗺</text></svg>">
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- SheetJS pour lire Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f0f4ff 0%, #e6e9f5 100%);
+            min-height: 100vh;
+            padding: 25px;
+        }
+
+        .container { max-width: 1900px; margin: 0 auto; }
+
+        .header {
+            background: white;
+            padding: 30px 40px;
+            border-radius: 20px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.12);
+            border: 1px solid rgba(102, 126, 234, 0.1);
+        }
+
+        .header h1 {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 2.3rem;
+            margin-bottom: 8px;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 420px 1fr;
+            gap: 25px;
+        }
+
+        .sidebar { display: flex; flex-direction: column; gap: 20px; }
+
+        .card {
+            background: white;
+            padding: 28px;
+            border-radius: 18px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .card h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            border: 2px dashed #667eea;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 15px;
+        }
+
+        .file-input-wrapper:hover { background: #f8f9ff; border-color: #764ba2; }
+
+        .file-input-wrapper input {
+            position: absolute;
+            width: 100%; height: 100%;
+            top: 0; left: 0;
+            opacity: 0; cursor: pointer;
+        }
+
+        .file-icon { font-size: 2.2rem; color: #667eea; margin-bottom: 10px; }
+        .file-text { color: #667eea; font-weight: 600; font-size: 1rem; }
+        .file-hint { color: #999; font-size: 0.85rem; margin-top: 5px; }
+        .file-selected { color: #10b981; font-size: 0.9rem; margin-top: 10px; font-weight: 600; }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.05rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .btn-primary { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .btn-success {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            margin-top: 15px;
+        }
+        .btn-success:hover {
+            background: linear-gradient(135deg, #059669, #047857);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.3);
+        }
+
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 22px;
+            border-radius: 14px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .stat-card.blue   { background: linear-gradient(135deg, #3b82f6, #2563eb); box-shadow: 0 4px 15px rgba(59, 130, 246, 0.25); }
+        .stat-card.green  { background: linear-gradient(135deg, #10b981, #059669); box-shadow: 0 4px 15px rgba(16, 185, 129, 0.25); }
+        .stat-card.orange { background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 4px 15px rgba(245, 158, 11, 0.25); }
+        .stat-card.red    { background: linear-gradient(135deg, #ef4444, #dc2626); box-shadow: 0 4px 15px rgba(239, 68, 68, 0.25); }
+
+        .stat-value { font-size: 2.2rem; font-weight: bold; margin-bottom: 6px; }
+        .stat-label { font-size: 0.9rem; opacity: 0.95; }
+
+        .chart-container { margin-top: 20px; height: 450px; background: white; padding: 15px; border-radius: 10px; }
+
+        .zone-list { max-height: 400px; overflow-y: auto; }
+
+        .zone-item {
+            background: #f8f9ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 4px solid #667eea;
+        }
+
+        .zone-name { font-weight: 600; color: #333; }
+        .zone-count { background: #667eea; color: white; padding: 6px 15px; border-radius: 20px; font-weight: bold; }
+        .hors-zone { border-left-color: #ef4444; }
+        .hors-zone .zone-count { background: #ef4444; }
+
+        #map { width: 100%; height: 700px; border-radius: 10px; }
+
+        .map-legend { background: #f8f9ff; padding: 12px; border-radius: 8px; margin-bottom: 15px; display: none; }
+        .map-legend.show { display: block; }
+
+        .legend-items { display: flex; gap: 25px; align-items: center; justify-content: center; flex-wrap: wrap; }
+
+        .legend-item { display: flex; align-items: center; gap: 8px; }
+        .legend-dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+
+        .message { padding: 12px 15px; border-radius: 8px; margin: 15px 0; display: none; }
+        .message.show { display: block; }
+        .message.error   { background: #fee2e2; color: #991b1b; border-left: 4px solid #ef4444; }
+        .message.success { background: #d1fae5; color: #065f46; border-left: 4px solid #10b981; }
+        .message.info    { background: #dbeafe; color: #1e40af; border-left: 4px solid #3b82f6; }
+
+        .loading { text-align: center; padding: 30px; display: none; }
+        .loading.show { display: block; }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px; height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .progress-bar { width: 100%; height: 8px; background: #f3f4f6; border-radius: 10px; overflow: hidden; margin: 15px 0; display: none; }
+        .progress-bar.show { display: block; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); width: 0%; transition: width 0.3s; }
+
+        @media (max-width: 1400px) { .main-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-map-marked-alt"></i> Geo-Zoning Tool</h1>
+            <p>Analysez vos clients par zone | Points colorés | Graphique détaillé | Export CSV</p>
+        </div>
+
+        <div class="main-grid">
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <!-- Upload -->
+                <div class="card">
+                    <h3><i class="fas fa-upload"></i> Upload des fichiers</h3>
+
+                    <div class="file-input-wrapper">
+                        <input type="file" id="clients-file" accept=".csv,.xlsx,.xls" onchange="handleClientFile(event)">
+                        <div class="file-icon"><i class="fas fa-users"></i></div>
+                        <div class="file-text">Fichier Clients</div>
+                        <div class="file-hint">CSV ou Excel (.xlsx, .xls)</div>
+                        <div class="file-selected" id="clients-status"></div>
+                    </div>
+
+                    <div class="file-input-wrapper">
+                        <input type="file" id="polygons-file" accept=".csv" onchange="handlePolygonFile(event)">
+                        <div class="file-icon"><i class="fas fa-draw-polygon"></i></div>
+                        <div class="file-text">Fichier Polygones (CSV)</div>
+                        <div class="file-hint">Format: nom,WKT</div>
+                        <div class="file-selected" id="polygons-status"></div>
+                    </div>
+
+                    <button class="btn btn-primary" id="analyze-btn" onclick="analyzeData()" disabled>
+                        <i class="fas fa-rocket"></i> Analyser
+                    </button>
+
+                    <div class="progress-bar" id="progress-bar">
+                        <div class="progress-fill" id="progress-fill"></div>
+                    </div>
+
+                    <div class="message error"   id="error-msg"></div>
+                    <div class="message success" id="success-msg"></div>
+                    <div class="message info"    id="info-msg"></div>
+                </div>
+
+                <!-- Stats -->
+                <div class="card" id="stats-card" style="display: none;">
+                    <h3><i class="fas fa-chart-bar"></i> Statistiques</h3>
+                    <div class="stats-grid">
+                        <div class="stat-card blue">
+                            <div class="stat-value" id="total-clients">0</div>
+                            <div class="stat-label">Clients</div>
+                        </div>
+                        <div class="stat-card orange">
+                            <div class="stat-value" id="total-zones">0</div>
+                            <div class="stat-label">Zones</div>
+                        </div>
+                        <div class="stat-card green">
+                            <div class="stat-value" id="assigned-clients">0</div>
+                            <div class="stat-label">Assignés</div>
+                        </div>
+                        <div class="stat-card red">
+                            <div class="stat-value" id="hors-zone-count">0</div>
+                            <div class="stat-label">Hors Zone</div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-success" onclick="downloadResults()" id="download-btn"
+                        style="display: none; background: linear-gradient(135deg, #3b82f6, #2563eb);">
+                        <i class="fas fa-download"></i> Télécharger CSV
+                    </button>
+
+                    <button class="btn btn-success" onclick="downloadExcel()" id="download-excel-btn"
+                        style="display: none; background: linear-gradient(135deg, #10b981, #059669); margin-top: 10px;">
+                        <i class="fas fa-file-excel"></i> Télécharger Excel
+                    </button>
+
+                    <div id="density-btns" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 2px solid #2d3a5c;">
+                        <p style="margin: 0 0 10px 0; font-size: 0.82rem; font-weight: 700; color: #f59e0b; display: flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-fire"></i> POINTS DE DENSITÉ
+                        </p>
+
+                        <!-- Config distance -->
+                        <div style="background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); border-radius: 8px; padding: 10px; margin-bottom: 10px;">
+                            <label style="display: block; margin-bottom: 6px; font-size: 0.8rem; font-weight: 600; color: #f59e0b;">
+                                <i class="fas fa-ruler"></i> Rayon de recherche
+                            </label>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="number" id="density-radius" value="500" min="50" max="5000" step="50"
+                                    style="flex: 1; padding: 7px 10px; border: 1px solid rgba(245,158,11,0.4); border-radius: 6px; background: #151b35; color: #ffffff; font-size: 0.9rem; font-weight: 600;"
+                                    onchange="onRadiusChange()">
+                                <span style="color: #f59e0b; font-size: 0.85rem; font-weight: 600; white-space: nowrap;">mètres</span>
+                            </div>
+                            <div style="display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap;">
+                                <button onclick="setRadius(200)"  style="flex:1; padding: 3px; border: 1px solid rgba(245,158,11,0.4); border-radius: 4px; background: transparent; color: #f59e0b; font-size: 0.72rem; cursor: pointer;">200m</button>
+                                <button onclick="setRadius(500)"  style="flex:1; padding: 3px; border: 1px solid rgba(245,158,11,0.4); border-radius: 4px; background: transparent; color: #f59e0b; font-size: 0.72rem; cursor: pointer;">500m</button>
+                                <button onclick="setRadius(1000)" style="flex:1; padding: 3px; border: 1px solid rgba(245,158,11,0.4); border-radius: 4px; background: transparent; color: #f59e0b; font-size: 0.72rem; cursor: pointer;">1km</button>
+                                <button onclick="setRadius(2000)" style="flex:1; padding: 3px; border: 1px solid rgba(245,158,11,0.4); border-radius: 4px; background: transparent; color: #f59e0b; font-size: 0.72rem; cursor: pointer;">2km</button>
+                            </div>
+                            <p style="margin: 5px 0 0 0; font-size: 0.72rem; color: #94a3b8;">
+                                <i class="fas fa-info-circle"></i> Zone de recherche du cluster le plus dense
+                            </p>
+                        </div>
+
+                        <button class="btn" onclick="toggleDensityOnMap()" id="density-map-btn"
+                            style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; width: 100%; margin-bottom: 8px;">
+                            <i class="fas fa-map-pin"></i> Afficher sur la carte
+                        </button>
+                        <button class="btn" onclick="downloadDensityCSV()"
+                            style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; width: 100%; margin-bottom: 8px; opacity: 0.85;">
+                            <i class="fas fa-file-csv"></i> Export CSV Densité
+                        </button>
+                        <button class="btn" onclick="downloadDensityExcel()"
+                            style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; width: 100%;">
+                            <i class="fas fa-file-excel"></i> Export Excel Densité
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Recherche client -->
+                <div class="card" id="search-card" style="display: none;">
+                    <h3><i class="fas fa-search"></i> Rechercher un client</h3>
+
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; margin-bottom: 6px; font-weight: 600; color: #333; font-size: 0.9rem;">
+                            Colonne de recherche
+                        </label>
+                        <select id="search-column" onchange="updateSearchPlaceholder()"
+                            style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 0.95rem;">
+                            <option value="coords">Coordonnées (Lat;Lon)</option>
+                        </select>
+                    </div>
+
+                    <div style="margin-bottom: 12px;">
+                        <input type="text" id="client-search" placeholder="Ex: 33.9148483;-5.549115"
+                            style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 0.95rem;">
+                    </div>
+
+                    <button class="btn btn-primary" onclick="searchClient()" style="width: 100%; padding: 12px;">
+                        <i class="fas fa-search"></i> Rechercher
+                    </button>
+
+                    <div id="search-result" style="margin-top: 15px; display: none; padding: 15px; background: #f0f9ff; border-radius: 8px; border-left: 4px solid #3b82f6;"></div>
+                </div>
+
+                <!-- Liste zones -->
+                <div class="card" id="zones-card" style="display: none;">
+                    <h3><i class="fas fa-list"></i> Clients par zone</h3>
+                    <div style="margin-bottom: 15px;">
+                        <input type="text" id="zone-search" placeholder="🔍 Rechercher une zone..."
+                            onkeyup="filterZones()"
+                            style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 0.95rem;">
+                    </div>
+                    <div class="zone-list" id="zone-list"></div>
+                </div>
+            </div>
+
+            <!-- Main content -->
+            <div>
+                <!-- Filtres -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <h3><i class="fas fa-filter"></i> Filtres</h3>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">
+                                <i class="fas fa-map-marker-alt"></i> Localisation
+                            </label>
+                            <select id="filter-zone" style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 0.95rem;">
+                                <option value="all" selected>Tous les clients</option>
+                                <option value="in">✅ Dans les zones</option>
+                                <option value="out">❌ Hors zone</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">
+                                <i class="fas fa-check-circle"></i> Statut Activation
+                            </label>
+                            <select id="filter-statut" multiple style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 0.95rem;">
+                                <option value="activated" selected>activated</option>
+                                <option value="pending">pending</option>
+                                <option value="inactive">inactive</option>
+                                <option value="">Non défini</option>
+                            </select>
+                            <small style="color: #666; font-size: 0.8rem;">Maintenez Ctrl pour sélection multiple</small>
+                        </div>
+
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">
+                                <i class="fas fa-users"></i> Groupe Client
+                            </label>
+                            <select id="filter-group" multiple style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 0.95rem;">
+                                <option value="shop-owners" selected>shop-owners</option>
+                                <option value="wholesalers">wholesalers</option>
+                                <option value="retailers">retailers</option>
+                                <option value="">Non défini</option>
+                            </select>
+                            <small style="color: #666; font-size: 0.8rem;">Maintenez Ctrl pour sélection multiple</small>
+                        </div>
+                    </div>
+
+                    <!-- Filtre Secteur collapsible -->
+                    <div style="border: 2px solid #e5e7eb; border-radius: 8px; padding: 15px; background: #f9fafb;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleSecteurFilter()">
+                            <label style="font-weight: 600; color: #333; cursor: pointer; margin: 0;">
+                                <i class="fas fa-draw-polygon"></i> Secteurs / Zones
+                            </label>
+                            <button type="button" id="secteur-toggle-btn" style="background: none; border: none; color: #667eea; font-size: 1.2rem; cursor: pointer; padding: 5px;">
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
+                        </div>
+
+                        <div id="secteur-filter-content" style="display: none; margin-top: 10px;">
+                            <input type="text" id="secteur-search" placeholder="🔍 Rechercher un secteur..."
+                                onkeyup="filterSecteurList()"
+                                style="width: 100%; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 10px; font-size: 0.9rem;">
+
+                            <div style="margin-bottom: 10px; padding: 8px; background: white; border-radius: 6px;">
+                                <label style="display: flex; align-items: center; cursor: pointer; font-weight: 600;">
+                                    <input type="checkbox" id="secteur-select-all" onchange="toggleAllSecteurs()" checked
+                                        style="margin-right: 8px; width: 16px; height: 16px; cursor: pointer;">
+                                    <span>Sélectionner tout</span>
+                                </label>
+                            </div>
+
+                            <div id="secteur-list" style="max-height: 200px; overflow-y: auto; background: white; border-radius: 6px; padding: 8px;">
+                                <p style="color: #999; text-align: center; padding: 20px;">Chargez les polygones pour voir les secteurs</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="applyFilters()" style="margin-top: 15px;">
+                        <i class="fas fa-filter"></i> Appliquer les filtres
+                    </button>
+                </div>
+
+                <!-- Carte -->
+                <div class="card">
+                    <h3><i class="fas fa-map"></i> Carte Interactive</h3>
+
+                    <div class="map-legend" id="map-legend">
+                        <div class="legend-items">
+                            <div class="legend-item">
+                                <div class="legend-dot" style="background: #10b981;"></div>
+                                <span style="font-weight: 600;">Clients dans les zones</span>
+                                <span style="font-weight: 700; color: #10b981; margin-left: 8px;" id="legend-in-zone">0</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-dot" style="background: #ef4444;"></div>
+                                <span style="font-weight: 600;">Clients hors zone</span>
+                                <span style="font-weight: 700; color: #ef4444; margin-left: 8px;" id="legend-out-zone">0</span>
+                            </div>
+                            <div class="legend-item" id="legend-density-item" style="display: none;">
+                                <div style="width: 18px; height: 18px; background: #f59e0b; border-radius: 50%; border: 3px solid #ffffff; box-shadow: 0 0 6px rgba(245,158,11,0.8); display: flex; align-items: center; justify-content: center;">
+                                    <span style="font-size: 9px;">🔥</span>
+                                </div>
+                                <span style="font-weight: 600; margin-left: 6px;">Point de densité</span>
+                                <span style="font-weight: 700; color: #f59e0b; margin-left: 8px;" id="legend-density-count">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="loading" id="loading">
+                        <div class="spinner"></div>
+                        <p id="loading-text">Chargement...</p>
+                    </div>
+
+                    <div id="map"></div>
+                </div>
+
+                <!-- Graphique -->
+                <div class="card" id="chart-card" style="display: none; margin-top: 20px;">
+                    <h3><i class="fas fa-chart-bar"></i> Tableau : Nombre de clients par zone</h3>
+                    <div class="chart-container">
+                        <canvas id="zoneChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <script>
+        let clientsData         = null;
+        let clientsDataOriginal = null;
+        let polygonsData        = null;
+        let map                 = null;
+        let clientMarkers       = {};
+        let resultsData         = [];
+        let zoneChart           = null;
+
+        function extractPhoneFromEmail(email) {
+            if (!email) return '';
+            const match = email.match(/^(\d+)@/);
+            return match ? match[1] : '';
+        }
+
+        function initMap() {
+            if (!map) {
+                map = L.map('map').setView([33.5731, -7.6176], 6);
+
+                const osmStandard = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors', maxZoom: 19, subdomains: ['a', 'b', 'c']
+                });
+
+                const stadiaOutdoors = L.tileLayer('https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}{r}.png', {
+                    attribution: '© Stadia Maps © OpenMapTiles © OpenStreetMap', maxZoom: 20
+                });
+
+                const cartoDBVoyager = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                    attribution: '© CartoDB © OpenStreetMap', maxZoom: 19, subdomains: 'abcd'
+                });
+
+                cartoDBVoyager.addTo(map);
+
+                L.control.layers({
+                    'CartoDB Voyager (recommandé)': cartoDBVoyager,
+                    'OpenStreetMap': osmStandard,
+                    'Stadia Outdoors': stadiaOutdoors
+                }, null, { position: 'topright' }).addTo(map);
+            }
+        }
+
+        initMap();
+
+        function showMessage(type, text) {
+            ['error-msg', 'success-msg', 'info-msg'].forEach(id => {
+                document.getElementById(id).classList.remove('show');
+            });
+            const msg = document.getElementById(`${type}-msg`);
+            msg.textContent = text;
+            msg.classList.add('show');
+        }
+
+        function updateProgress(percent) {
+            document.getElementById('progress-bar').classList.add('show');
+            document.getElementById('progress-fill').style.width = percent + '%';
+        }
+
+        function detectLatLonColumns(headers) {
+            const latPatterns = ['custom.fields.latitude', 'latitude', 'Latitude', 'lat', 'Lat', 'LAT'];
+            const lonPatterns = ['custom.fields.longitude', 'longitude', 'Longitude', 'lon', 'Lon', 'lng', 'Lng', 'LON', 'LNG'];
+            let latCol = null, lonCol = null;
+            for (let p of latPatterns) { if (headers.includes(p)) { latCol = p; break; } }
+            for (let p of lonPatterns) { if (headers.includes(p)) { lonCol = p; break; } }
+            return { latCol, lonCol };
+        }
+
+        function handleClientFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            showMessage('info', 'Chargement des clients...');
+            document.getElementById('clients-status').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Chargement...';
+
+            const fileName = file.name.toLowerCase();
+            const isExcel  = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+
+            if (isExcel) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const data     = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        const firstSheet = workbook.SheetNames[0];
+                        const worksheet  = workbook.Sheets[firstSheet];
+                        let jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+                        if (jsonData.length > 0) {
+                            const firstRowKeys = Object.keys(jsonData[0]);
+                            const hasUnnamed   = firstRowKeys.some(k => k.startsWith('Unnamed:'));
+                            const hasFilter    = firstRowKeys.some(k => k.includes('Filtres appliqués') || k.includes('Date est'));
+                            if (hasUnnamed || hasFilter) {
+                                jsonData = XLSX.utils.sheet_to_json(worksheet, { range: 1, defval: '' });
+                            }
+                        }
+
+                        processClientsData(jsonData, Object.keys(jsonData[0] || {}));
+                    } catch (error) {
+                        showMessage('error', 'Erreur lecture Excel: ' + error.message);
+                        document.getElementById('clients-status').innerHTML = '';
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                Papa.parse(file, {
+                    header: true, skipEmptyLines: true,
+                    complete: function(results) { processClientsData(results.data, results.meta.fields); },
+                    error: function(error) {
+                        showMessage('error', 'Erreur lecture CSV: ' + error.message);
+                        document.getElementById('clients-status').innerHTML = '';
+                    }
+                });
+            }
+        }
+
+        function processClientsData(data, headers) {
+            const { latCol, lonCol } = detectLatLonColumns(headers);
+            if (!latCol || !lonCol) {
+                showMessage('error', 'Colonnes latitude/longitude non trouvées !');
+                document.getElementById('clients-status').innerHTML = '';
+                return;
+            }
+
+            clientsData = data.filter(row => {
+                const lat = parseFloat(row[latCol]);
+                const lon = parseFloat(row[lonCol]);
+                if (!row[latCol] || !row[lonCol] || row[latCol] === '' || row[lonCol] === '') return false;
+                if (isNaN(lat) || isNaN(lon)) return false;
+                if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return false;
+                return true;
+            }).map(row => ({
+                firstName: row.firstName || row.prenom || '',
+                lastName:  row.lastName  || row.nom    || '',
+                email:     row.email     || '',
+                phone:     extractPhoneFromEmail(row.email || ''),
+                city:      row['addresses.city'] || row.city || row.ville || '',
+                latitude:  parseFloat(row[latCol]),
+                longitude: parseFloat(row[lonCol]),
+                statutActivation: row['custom.fields.statutActivationATCPlus'] || '',
+                customerGroup:    row['customerGroup.key'] || '',
+                originalData:     row
+            }));
+
+            clientsDataOriginal = JSON.parse(JSON.stringify(clientsData));
+
+            document.getElementById('clients-status').innerHTML =
+                `<i class="fas fa-check-circle"></i> ${clientsData.length.toLocaleString('fr-FR')} clients valides`;
+            showMessage('success', `${clientsData.length.toLocaleString('fr-FR')} clients chargés`);
+            checkReadyToAnalyze();
+            populateFilterOptions();
+        }
+
+        function handlePolygonFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            showMessage('info', 'Chargement des polygones...');
+
+            Papa.parse(file, {
+                header: true, skipEmptyLines: true,
+                complete: function(results) {
+                    polygonsData = results.data
+                        .filter(row => row.nom || row.name)
+                        .map(poly => {
+                            if (poly.WKT) poly.coordinates = parseWKT(poly.WKT);
+                            poly.nom = poly.nom || poly.name || 'Zone sans nom';
+                            return poly;
+                        })
+                        .filter(poly => poly.coordinates !== null);
+
+                    document.getElementById('polygons-status').innerHTML =
+                        `<i class="fas fa-check-circle"></i> ${polygonsData.length} zones`;
+                    showMessage('success', `${polygonsData.length} zones chargées`);
+                    checkReadyToAnalyze();
+                    populateSecteurList();
+                },
+                error: function(error) { showMessage('error', 'Erreur: ' + error.message); }
+            });
+        }
+
+        function parseWKT(wkt) {
+            try {
+                const match = wkt.match(/POLYGON\s*\(\((.*?)\)\)/i);
+                if (!match) return null;
+                const coords = match[1].split(',').map(pair => {
+                    const [lon, lat] = pair.trim().split(/\s+/).map(Number);
+                    if (isNaN(lat) || isNaN(lon)) return null;
+                    return [lat, lon];
+                }).filter(c => c !== null);
+                return coords.length > 0 ? coords : null;
+            } catch (e) { return null; }
+        }
+
+        function checkReadyToAnalyze() {
+            document.getElementById('analyze-btn').disabled =
+                !(clientsData && polygonsData && clientsData.length > 0 && polygonsData.length > 0);
+        }
+
+        function pointInPolygon(point, polygon) {
+            const x = point[0], y = point[1];
+            let inside = false;
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                const xi = polygon[i][0], yi = polygon[i][1];
+                const xj = polygon[j][0], yj = polygon[j][1];
+                const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        async function analyzeData() {
+            document.getElementById('loading').classList.add('show');
+            document.getElementById('loading-text').textContent = 'Analyse en cours...';
+            showMessage('info', 'Analyse en cours...');
+            updateProgress(0);
+
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            try {
+                map.eachLayer(layer => {
+                    if (layer instanceof L.Polygon || layer instanceof L.CircleMarker) map.removeLayer(layer);
+                });
+
+                updateProgress(10);
+
+                const zoneCounts = {};
+                const zoneClients = {};
+                polygonsData.forEach(zone => { zoneCounts[zone.nom] = 0; zoneClients[zone.nom] = []; });
+                zoneCounts['Hors Zone'] = 0; zoneClients['Hors Zone'] = [];
+
+                updateProgress(20);
+                document.getElementById('loading-text').textContent =
+                    `Assignation de ${clientsData.length.toLocaleString('fr-FR')} clients...`;
+
+                const batchSize = 1000;
+                let assigned = 0;
+
+                for (let i = 0; i < clientsData.length; i += batchSize) {
+                    const batch = clientsData.slice(i, i + batchSize);
+                    batch.forEach(client => {
+                        const { latitude, longitude } = client;
+                        let foundZone = false;
+                        for (let zone of polygonsData) {
+                            if (zone.coordinates && pointInPolygon([latitude, longitude], zone.coordinates)) {
+                                zoneCounts[zone.nom]++;
+                                zoneClients[zone.nom].push(client);
+                                client.zone = zone.nom;
+                                foundZone = true;
+                                break;
+                            }
+                        }
+                        if (!foundZone) { zoneCounts['Hors Zone']++; zoneClients['Hors Zone'].push(client); client.zone = 'Hors Zone'; }
+                    });
+                    assigned += batch.length;
+                    updateProgress(20 + (assigned / clientsData.length) * 30);
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                }
+
+                updateProgress(50);
+                document.getElementById('loading-text').textContent = 'Dessin des polygones...';
+
+                polygonsData.forEach(zone => {
+                    if (!zone.coordinates) return;
+                    const count = zoneCounts[zone.nom];
+                    const color = getColorByCount(count);
+                    L.polygon(zone.coordinates, { color: '#333', weight: 2, fillColor: color, fillOpacity: 0.4 })
+                        .bindPopup(`<b>${zone.nom}</b><br>${count.toLocaleString('fr-FR')} clients`)
+                        .addTo(map);
+                });
+
+                updateProgress(60);
+                document.getElementById('loading-text').textContent = 'Ajout des points clients...';
+
+                const maxMarkersToShow = 30000;
+                const step = Math.max(1, Math.floor(clientsData.length / maxMarkersToShow));
+                let addedMarkers = 0;
+
+                for (let i = 0; i < clientsData.length; i += step) {
+                    const client = clientsData[i];
+                    const marker = L.circleMarker([client.latitude, client.longitude], {
+                        radius: 5,
+                        fillColor: client.zone === 'Hors Zone' ? '#ef4444' : '#10b981',
+                        color: '#fff', weight: 1.5, opacity: 1, fillOpacity: 0.8
+                    });
+
+                    const name  = `${client.firstName} ${client.lastName}`.trim() || 'Client';
+                    const phone = extractPhoneFromEmail(client.email);
+
+                    marker.bindPopup(`
+                        <div style="font-family: sans-serif;">
+                            <b style="font-size: 1.1em;">${name}</b><br>
+                            ${phone ? '📞 ' + phone + '<br>' : ''}
+                            ${client.city ? '📍 ' + client.city + '<br>' : ''}
+                            <b>Zone:</b> <span style="color: ${client.zone === 'Hors Zone' ? '#ef4444' : '#10b981'};">${client.zone}</span>
+                        </div>
+                    `);
+                    marker.addTo(map);
+
+                    const markerKey = `${client.latitude.toFixed(6)}_${client.longitude.toFixed(6)}`;
+                    clientMarkers[markerKey] = marker;
+                    addedMarkers++;
+                }
+
+                updateProgress(80);
+
+                if (clientsData.length > 0) {
+                    const sampleSize = Math.min(100, clientsData.length);
+                    const sampleStep = Math.floor(clientsData.length / sampleSize);
+                    const samplePoints = [];
+                    for (let i = 0; i < clientsData.length; i += sampleStep) {
+                        samplePoints.push([clientsData[i].latitude, clientsData[i].longitude]);
+                    }
+                    map.fitBounds(L.latLngBounds(samplePoints), { padding: [50, 50] });
+                }
+
+                updateProgress(90);
+
+                const totalAssigned = clientsData.length - zoneCounts['Hors Zone'];
+                document.getElementById('total-clients').textContent    = clientsData.length.toLocaleString('fr-FR');
+                document.getElementById('total-zones').textContent      = polygonsData.length;
+                document.getElementById('assigned-clients').textContent = totalAssigned.toLocaleString('fr-FR');
+                document.getElementById('hors-zone-count').textContent  = zoneCounts['Hors Zone'].toLocaleString('fr-FR');
+                document.getElementById('legend-in-zone').textContent   = totalAssigned.toLocaleString('fr-FR');
+                document.getElementById('legend-out-zone').textContent  = zoneCounts['Hors Zone'].toLocaleString('fr-FR');
+
+                document.getElementById('stats-card').style.display       = 'block';
+                document.getElementById('download-btn').style.display     = 'flex';
+                document.getElementById('download-excel-btn').style.display = 'flex';
+                document.getElementById('density-btns').style.display     = 'block';
+
+                const zoneList = document.getElementById('zone-list');
+                zoneList.innerHTML = '';
+                Object.entries(zoneCounts).sort((a, b) => b[1] - a[1]).forEach(([zone, count]) => {
+                    const div = document.createElement('div');
+                    div.className = zone === 'Hors Zone' ? 'zone-item hors-zone' : 'zone-item';
+                    div.innerHTML = `<span class="zone-name">${zone}</span><span class="zone-count">${count.toLocaleString('fr-FR')}</span>`;
+                    zoneList.appendChild(div);
+                });
+
+                document.getElementById('zones-card').style.display  = 'block';
+                document.getElementById('search-card').style.display = 'block';
+                populateSearchColumns();
+                createChart(zoneCounts);
+
+                resultsData = clientsData;
+
+                updateProgress(100);
+                document.getElementById('loading').classList.remove('show');
+                document.getElementById('progress-bar').classList.remove('show');
+                document.getElementById('map-legend').classList.add('show');
+                showMessage('success', `✅ Analyse terminée ! ${addedMarkers.toLocaleString('fr-FR')} points affichés`);
+
+            } catch (error) {
+                document.getElementById('loading').classList.remove('show');
+                document.getElementById('progress-bar').classList.remove('show');
+                showMessage('error', 'Erreur: ' + error.message);
+                console.error(error);
+            }
+        }
+
+        function createChart(zoneCounts) {
+            const ctx = document.getElementById('zoneChart').getContext('2d');
+            if (zoneChart) zoneChart.destroy();
+
+            const sortedEntries = Object.entries(zoneCounts).sort((a, b) => b[1] - a[1]);
+            const labels = sortedEntries.map(([zone]) => zone);
+            const data   = sortedEntries.map(([, count]) => count);
+            const colors = labels.map(label => label === 'Hors Zone' ? '#ef4444' : '#667eea');
+
+            zoneChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{ label: 'Nombre de clients', data, backgroundColor: colors, borderColor: colors, borderWidth: 2, borderRadius: 8 }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: ctx => ctx.parsed.x.toLocaleString('fr-FR') + ' clients' } }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            ticks: { callback: v => v.toLocaleString('fr-FR') },
+                            title: { display: true, text: 'Nombre de clients', font: { size: 13, weight: 'bold' } }
+                        },
+                        y: { title: { display: true, text: 'Zones', font: { size: 13, weight: 'bold' } } }
+                    }
+                }
+            });
+
+            document.getElementById('chart-card').style.display = 'block';
+        }
+
+        function getColorByCount(count) {
+            if (count === 0) return '#e5e7eb';
+            if (count <= 500)   return '#86efac';
+            if (count <= 2000)  return '#fde047';
+            if (count <= 5000)  return '#fdba74';
+            if (count <= 10000) return '#fb923c';
+            return '#f87171';
+        }
+
+        function downloadResults() {
+            if (!resultsData.length) { showMessage('error', 'Aucune donnée à télécharger'); return; }
+            showMessage('info', 'Préparation du fichier CSV...');
+            const exportData = resultsData.map(client => {
+                const row = { ...client.originalData };
+                row['Latitude']  = client.latitude;
+                row['Longitude'] = client.longitude;
+                row.ZONE         = client.zone || 'Hors Zone';
+                return row;
+            });
+            const csv  = Papa.unparse(exportData, { delimiter: ',', header: true });
+            const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const date = new Date().toISOString().split('T')[0];
+            link.href     = URL.createObjectURL(blob);
+            link.download = `clients_avec_zones_${date}.csv`;
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            showMessage('success', `✅ CSV téléchargé : clients_avec_zones_${date}.csv`);
+        }
+
+        function downloadExcel() {
+            if (!resultsData.length) { showMessage('error', 'Aucune donnée à télécharger'); return; }
+            showMessage('info', 'Préparation du fichier Excel...');
+            const exportData = resultsData.map(client => {
+                const row = { ...client.originalData };
+                row['Latitude']  = client.latitude;
+                row['Longitude'] = client.longitude;
+                row.ZONE         = client.zone || 'Hors Zone';
+                return row;
+            });
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Clients avec Zones');
+            const date = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(wb, `clients_avec_zones_${date}.xlsx`);
+            showMessage('success', `✅ Excel téléchargé : clients_avec_zones_${date}.xlsx`);
+        }
+
+        function filterZones() {
+            const searchTerm = document.getElementById('zone-search').value.toLowerCase();
+            document.querySelectorAll('.zone-item').forEach(item => {
+                const zoneName = item.querySelector('.zone-name').textContent.toLowerCase();
+                item.style.display = zoneName.includes(searchTerm) ? 'flex' : 'none';
+            });
+        }
+
+        function applyFilters() {
+            if (!clientsDataOriginal || !polygonsData) {
+                showMessage('error', "Veuillez d'abord charger les fichiers clients et polygones");
+                return;
+            }
+
+            const zoneFilter      = document.getElementById('filter-zone').value;
+            const selectedStatuts = Array.from(document.getElementById('filter-statut').selectedOptions).map(o => o.value);
+            const selectedGroups  = Array.from(document.getElementById('filter-group').selectedOptions).map(o => o.value);
+            const selectedSecteurs = [];
+            document.querySelectorAll('.secteur-checkbox:checked').forEach(cb => selectedSecteurs.push(cb.value));
+
+            clientsData = clientsDataOriginal.filter(client => {
+                let zoneMatch = true;
+                if (client.zone) {
+                    if (zoneFilter === 'in')  zoneMatch = client.zone !== 'Hors Zone';
+                    if (zoneFilter === 'out') zoneMatch = client.zone === 'Hors Zone';
+                }
+                let secteurMatch = true;
+                if (selectedSecteurs.length > 0 && client.zone) secteurMatch = selectedSecteurs.includes(client.zone);
+                const statutMatch = selectedStatuts.length === 0 || selectedStatuts.includes(client.statutActivation);
+                const groupMatch  = selectedGroups.length  === 0 || selectedGroups.includes(client.customerGroup);
+                return zoneMatch && secteurMatch && statutMatch && groupMatch;
+            });
+
+            if (clientsData.length === 0) { showMessage('error', 'Aucun client ne correspond aux filtres sélectionnés'); return; }
+            showMessage('success', `${clientsData.length.toLocaleString('fr-FR')} clients filtrés sur ${clientsDataOriginal.length.toLocaleString('fr-FR')}`);
+            analyzeData();
+        }
+
+        function populateFilterOptions() {
+            const statuts = [...new Set(clientsDataOriginal.map(c => c.statutActivation || ''))].sort();
+            const groups  = [...new Set(clientsDataOriginal.map(c => c.customerGroup    || ''))].sort();
+
+            const statutSelect = document.getElementById('filter-statut');
+            statutSelect.innerHTML = '';
+            statuts.forEach(s => {
+                const o = document.createElement('option');
+                o.value = s; o.textContent = s || 'Non défini'; o.selected = s === 'activated';
+                statutSelect.appendChild(o);
+            });
+
+            const groupSelect = document.getElementById('filter-group');
+            groupSelect.innerHTML = '';
+            groups.forEach(g => {
+                const o = document.createElement('option');
+                o.value = g; o.textContent = g || 'Non défini'; o.selected = g === 'shop-owners';
+                groupSelect.appendChild(o);
+            });
+        }
+
+        function populateSecteurList() {
+            const secteurList = document.getElementById('secteur-list');
+            secteurList.innerHTML = '';
+            if (!polygonsData || polygonsData.length === 0) {
+                secteurList.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">Aucun secteur disponible</p>';
+                return;
+            }
+            [...polygonsData].sort((a, b) => a.nom.localeCompare(b.nom)).forEach(poly => {
+                const div  = document.createElement('div');
+                div.className = 'secteur-item';
+                div.style.cssText = 'padding: 6px; margin: 2px 0; border-radius: 4px; transition: background 0.2s;';
+                const label    = document.createElement('label');
+                label.style.cssText = 'display: flex; align-items: center; cursor: pointer; font-size: 0.9rem;';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox'; checkbox.className = 'secteur-checkbox'; checkbox.value = poly.nom; checkbox.checked = true;
+                checkbox.style.cssText = 'margin-right: 8px; width: 14px; height: 14px; cursor: pointer;';
+                checkbox.onchange = updateSelectAllCheckbox;
+                const text = document.createElement('span'); text.textContent = poly.nom;
+                label.appendChild(checkbox); label.appendChild(text); div.appendChild(label);
+                div.onmouseenter = () => div.style.background = '#f3f4f6';
+                div.onmouseleave = () => div.style.background = 'transparent';
+                secteurList.appendChild(div);
+            });
+        }
+
+        function toggleAllSecteurs() {
+            const selectAll   = document.getElementById('secteur-select-all');
+            document.querySelectorAll('.secteur-checkbox').forEach(cb => cb.checked = selectAll.checked);
+        }
+
+        function updateSelectAllCheckbox() {
+            const selectAll  = document.getElementById('secteur-select-all');
+            const checkboxes = document.querySelectorAll('.secteur-checkbox');
+            const checked    = document.querySelectorAll('.secteur-checkbox:checked').length;
+            selectAll.checked       = checked === checkboxes.length;
+            selectAll.indeterminate = checked > 0 && checked < checkboxes.length;
+        }
+
+        function toggleSecteurFilter() {
+            const content = document.getElementById('secteur-filter-content');
+            const btn     = document.getElementById('secteur-toggle-btn');
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                btn.innerHTML = '<i class="fas fa-chevron-up"></i>';
+            } else {
+                content.style.display = 'none';
+                btn.innerHTML = '<i class="fas fa-chevron-down"></i>';
+            }
+        }
+
+        function populateSearchColumns() {
+            const select = document.getElementById('search-column');
+            select.innerHTML = '<option value="coords">Coordonnées (Lat;Lon)</option>';
+            if (clientsDataOriginal && clientsDataOriginal.length > 0) {
+                Object.keys(clientsDataOriginal[0].originalData || {}).forEach(col => {
+                    const o = document.createElement('option'); o.value = col; o.textContent = col;
+                    select.appendChild(o);
+                });
+            }
+        }
+
+        function updateSearchPlaceholder() {
+            const select = document.getElementById('search-column');
+            const input  = document.getElementById('client-search');
+            const resultDiv = document.getElementById('search-result');
+            input.value = '';
+            if (resultDiv) resultDiv.style.display = 'none';
+            input.placeholder = select.value === 'coords' ? 'Ex: 33.9148483;-5.549115' : `Rechercher par ${select.value}...`;
+        }
+
+        function searchClient() {
+            const column      = document.getElementById('search-column').value;
+            const searchValue = document.getElementById('client-search').value.trim();
+            const resultDiv   = document.getElementById('search-result');
+
+            if (!searchValue) { resultDiv.style.display = 'none'; return; }
+
+            let found = null;
+
+            if (column === 'coords') {
+                const parts = searchValue.replace(',', '.').split(';');
+                if (parts.length === 2) {
+                    const searchLat = parseFloat(parts[0].trim());
+                    const searchLon = parseFloat(parts[1].trim());
+                    if (!isNaN(searchLat) && !isNaN(searchLon)) {
+                        let minDist = Infinity;
+                        resultsData.forEach(client => {
+                            const d = Math.sqrt(Math.pow(client.latitude - searchLat, 2) + Math.pow(client.longitude - searchLon, 2));
+                            if (d < minDist && d < 0.01) { minDist = d; found = client; }
+                        });
+                    }
+                }
+            } else {
+                found = resultsData.find(client => {
+                    const v = client.originalData[column];
+                    return v && v.toString().toLowerCase().includes(searchValue.toLowerCase());
+                });
+            }
+
+            if (found) {
+                const name  = `${found.firstName} ${found.lastName}`.trim() || 'Client';
+                const phone = extractPhoneFromEmail(found.email);
+                resultDiv.innerHTML = `
+                    <h4 style="margin: 0 0 10px 0; color: #1e40af; font-size: 1.05rem;"><i class="fas fa-check-circle"></i> Client trouvé</h4>
+                    <div style="font-size: 0.9rem; color: #333; line-height: 1.6;">
+                        <strong>${name}</strong><br>
+                        ${phone ? '📞 ' + phone + '<br>' : ''}
+                        ${found.email ? '📧 ' + found.email + '<br>' : ''}
+                        ${found.city  ? '📍 ' + found.city  + '<br>' : ''}
+                        📌 ${found.latitude}, ${found.longitude}<br>
+                        <strong style="color: ${found.zone === 'Hors Zone' ? '#ef4444' : '#10b981'};">Zone: ${found.zone}</strong>
+                    </div>`;
+                resultDiv.style.display     = 'block';
+                resultDiv.style.background  = '#f0f9ff';
+                resultDiv.style.borderColor = '#3b82f6';
+
+                const markerKey   = `${found.latitude.toFixed(6)}_${found.longitude.toFixed(6)}`;
+                const foundMarker = clientMarkers[markerKey];
+                if (foundMarker && map) {
+                    foundMarker.setStyle({ fillColor: '#000000', radius: 8, weight: 2 });
+                    map.setView([found.latitude, found.longitude], 17);
+                    setTimeout(() => foundMarker.openPopup(), 300);
+                }
+            } else {
+                resultDiv.innerHTML = `
+                    <h4 style="margin: 0 0 8px 0; color: #dc2626; font-size: 1.05rem;"><i class="fas fa-times-circle"></i> Aucun client trouvé</h4>
+                    <p style="margin: 0; font-size: 0.9rem; color: #666;">Vérifiez votre recherche et réessayez.</p>`;
+                resultDiv.style.display     = 'block';
+                resultDiv.style.background  = '#fef2f2';
+                resultDiv.style.borderColor = '#ef4444';
+            }
+        }
+
+        function filterSecteurList() {
+            const searchTerm = document.getElementById('secteur-search').value.toLowerCase();
+            document.querySelectorAll('.secteur-item').forEach(item => {
+                item.style.display = item.textContent.toLowerCase().includes(searchTerm) ? 'block' : 'none';
+            });
+        }
+
+        // ── Rayon ──
+        function setRadius(meters) { document.getElementById('density-radius').value = meters; onRadiusChange(); }
+
+        function onRadiusChange() {
+            if (densityVisible) {
+                densityMarkers.forEach(m => map.removeLayer(m));
+                densityMarkers = []; densityVisible = false;
+                toggleDensityOnMap();
+            }
+        }
+
+        function getRadiusInDegrees() {
+            const meters = parseFloat(document.getElementById('density-radius').value) || 500;
+            return meters / 111000;
+        }
+
+        // ── Densité ──
+        let densityMarkers = [];
+        let densityVisible = false;
+
+        function getActiveSecteurs() {
+            const checked = [];
+            document.querySelectorAll('.secteur-checkbox:checked').forEach(cb => checked.push(cb.value));
+            return checked;
+        }
+
+        function computeDensityPoints() {
+            if (!clientsData || clientsData.length === 0) return [];
+
+            const radiusDeg   = getRadiusInDegrees();
+            const radiusLarge = radiusDeg * 2;
+            const radiusFine  = radiusDeg;
+            const activeSecteurs = getActiveSecteurs();
+
+            const byZone = {};
+            clientsData.forEach(client => {
+                const zone = client.zone || 'Hors Zone';
+                if (zone === 'Hors Zone') return;
+                if (activeSecteurs.length > 0 && !activeSecteurs.includes(zone)) return;
+                if (!byZone[zone]) byZone[zone] = [];
+                byZone[zone].push({ lat: client.latitude, lon: client.longitude });
+            });
+
+            const results = [];
+
+            Object.entries(byZone).forEach(([zone, clients]) => {
+                if (clients.length === 0) return;
+
+                const gridLarge = {};
+                clients.forEach(c => {
+                    const cLat = Math.round(c.lat / radiusLarge) * radiusLarge;
+                    const cLon = Math.round(c.lon / radiusLarge) * radiusLarge;
+                    const key  = `${cLat.toFixed(8)}_${cLon.toFixed(8)}`;
+                    if (!gridLarge[key]) gridLarge[key] = { cLat, cLon, count: 0 };
+                    gridLarge[key].count++;
+                });
+
+                let bestRegion = null;
+                Object.values(gridLarge).forEach(cell => { if (!bestRegion || cell.count > bestRegion.count) bestRegion = cell; });
+
+                const localClients = clients.filter(c =>
+                    Math.abs(c.lat - bestRegion.cLat) <= radiusLarge &&
+                    Math.abs(c.lon - bestRegion.cLon) <= radiusLarge
+                );
+
+                const gridFine = {};
+                localClients.forEach(c => {
+                    const cLat = Math.round(c.lat / radiusFine) * radiusFine;
+                    const cLon = Math.round(c.lon / radiusFine) * radiusFine;
+                    const key  = `${cLat.toFixed(8)}_${cLon.toFixed(8)}`;
+                    if (!gridFine[key]) gridFine[key] = { count: 0, sumLat: 0, sumLon: 0 };
+                    gridFine[key].count++;
+                    gridFine[key].sumLat += c.lat;
+                    gridFine[key].sumLon += c.lon;
+                });
+
+                let bestCell = null;
+                Object.values(gridFine).forEach(cell => { if (!bestCell || cell.count > bestCell.count) bestCell = cell; });
+
+                if (bestCell) {
+                    results.push({
+                        Secteur: zone,
+                        Latitude:  parseFloat((bestCell.sumLat / bestCell.count).toFixed(6)),
+                        Longitude: parseFloat((bestCell.sumLon / bestCell.count).toFixed(6)),
+                        Total_clients_zone:  clients.length,
+                        Clients_point_dense: bestCell.count,
+                        Rayon_metres: parseFloat(document.getElementById('density-radius').value) || 500
+                    });
+                }
+            });
+
+            return results.sort((a, b) => b.Total_clients_zone - a.Total_clients_zone);
+        }
+
+        function toggleDensityOnMap() {
+            const btn = document.getElementById('density-map-btn');
+
+            if (densityVisible) {
+                densityMarkers.forEach(m => map.removeLayer(m));
+                densityMarkers = []; densityVisible = false;
+                btn.innerHTML = '<i class="fas fa-map-pin"></i> Afficher sur la carte';
+                document.getElementById('legend-density-item').style.display = 'none';
+                showMessage('info', 'Points de densité masqués');
+                return;
+            }
+
+            const points = computeDensityPoints();
+            if (points.length === 0) { showMessage('error', "Lancez d'abord une analyse"); return; }
+
+            const radiusMeters = parseFloat(document.getElementById('density-radius').value) || 500;
+
+            points.forEach(p => {
+                const icon = L.divIcon({
+                    className: '',
+                    html: `<div style="width:36px;height:36px;background:linear-gradient(135deg,#f59e0b,#d97706);border:3px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 0 10px rgba(245,158,11,0.8),0 0 20px rgba(245,158,11,0.4);cursor:pointer;">🔥</div>`,
+                    iconSize: [36, 36], iconAnchor: [18, 18], popupAnchor: [0, -22]
+                });
+
+                const marker = L.marker([p.Latitude, p.Longitude], { icon }).addTo(map).bindPopup(`
+                    <div style="min-width: 210px; font-family: sans-serif;">
+                        <div style="background: linear-gradient(135deg,#f59e0b,#d97706); color: white; padding: 10px 14px; border-radius: 6px 6px 0 0; margin: -14px -14px 10px -14px;">
+                            <strong style="font-size: 1rem;">🔥 Point de départ animateur</strong>
+                        </div>
+                        <table style="width:100%;font-size:0.88rem;border-collapse:collapse;">
+                            <tr><td style="padding:4px 0;color:#64748b;">Secteur</td><td style="font-weight:700;">${p.Secteur}</td></tr>
+                            <tr><td style="padding:4px 0;color:#64748b;">Latitude</td><td>${p.Latitude}</td></tr>
+                            <tr><td style="padding:4px 0;color:#64748b;">Longitude</td><td>${p.Longitude}</td></tr>
+                            <tr><td style="padding:4px 0;color:#64748b;">Rayon utilisé</td><td style="font-weight:600;color:#f59e0b;">${radiusMeters}m</td></tr>
+                            <tr style="border-top:1px solid #e5e7eb;">
+                                <td style="padding:6px 0;color:#64748b;">Total zone</td>
+                                <td style="font-weight:700;color:#10b981;">${p.Total_clients_zone.toLocaleString('fr-FR')}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:4px 0;color:#64748b;">Dans ce rayon</td>
+                                <td style="font-weight:700;color:#f59e0b;">${p.Clients_point_dense.toLocaleString('fr-FR')}</td>
+                            </tr>
+                        </table>
+                    </div>
+                `);
+                densityMarkers.push(marker);
+            });
+
+            densityVisible = true;
+            btn.innerHTML = '<i class="fas fa-eye-slash"></i> Masquer de la carte';
+            document.getElementById('legend-density-item').style.display = 'flex';
+            document.getElementById('legend-density-count').textContent  = points.length;
+            showMessage('success', `${points.length} points affichés (rayon ${radiusMeters}m)`);
+        }
+
+        function downloadDensityCSV() {
+            const points = computeDensityPoints();
+            if (points.length === 0) { showMessage('error', "Lancez d'abord une analyse"); return; }
+            const csv  = Papa.unparse(points, { delimiter: ',', header: true });
+            const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href     = URL.createObjectURL(blob);
+            link.download = `points_densite_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+            showMessage('success', `${points.length} points exportés en CSV !`);
+        }
+
+        function downloadDensityExcel() {
+            const points = computeDensityPoints();
+            if (points.length === 0) { showMessage('error', "Lancez d'abord une analyse"); return; }
+            const ws = XLSX.utils.json_to_sheet(points);
+            ws['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 14 }, { wch: 20 }, { wch: 22 }, { wch: 16 }];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Points de Densité');
+            XLSX.writeFile(wb, `points_densite_${new Date().toISOString().split('T')[0]}.xlsx`);
+            showMessage('success', `${points.length} points exportés en Excel !`);
+        }
+    </script>
+
+    <!-- Signature -->
+    <div style="position: fixed; bottom: 10px; right: 20px; background: rgba(255,255,255,0.95); padding: 8px 16px; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); backdrop-filter: blur(10px); z-index: 9999;">
+        <p style="margin: 0; font-size: 0.85rem; color: #666; font-weight: 500;">
+            Created by
+            <span style="background: linear-gradient(135deg, #667eea, #764ba2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 700; font-size: 0.95rem;">MARWANE RHAFES</span>
+        </p>
+    </div>
+</body>
+</html>
