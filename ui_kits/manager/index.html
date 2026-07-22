@@ -823,8 +823,10 @@ const LS = {
     await db.ref(`ptg/animateurs/${anim.id}`).set(anim);
   },
 
-  async deactivateAnimateur(id) {
-    await db.ref(`ptg/animateurs/${id}`).update({ actif: false });
+  async deactivateAnimateur(id, dateDemission) {
+    const patch = { actif: false };
+    if (dateDemission) patch.dateDemission = dateDemission;
+    await db.ref(`ptg/animateurs/${id}`).update(patch);
   },
 
   async reactivateAnimateur(id) {
@@ -2739,16 +2741,17 @@ function ImportAnimateursModal({ animateurs, accounts, onClose, onImported }) {
   const downloadTemplate = () => {
     const sorted = [...animateurs].sort((a,b) => a.ville.localeCompare(b.ville) || a.teamLead.localeCompare(b.teamLead) || a.name.localeCompare(b.name));
     const data = [
-      ['TEAM LEAD','EMAIL','VILLE','NOM ANIMATEUR','SECTEUR','MATRICULE','TÉLÉPHONE','DÉMISSION','MOTO','CONTRACT OP','DATE INTEGRATION'],
+      ['TEAM LEAD','EMAIL','VILLE','NOM ANIMATEUR','SECTEUR','MATRICULE','TÉLÉPHONE','DÉMISSION','DATE DÉMISSION','MOTO','CONTRACT OP','DATE INTEGRATION'],
       ...sorted.map(a => {
         const acc = accounts.find(ac => ac.name === a.teamLead);
-        return [a.teamLead, acc?.email || '', a.ville, a.name, a.sector, a.matricule||'', a.phone||'', a.actif === false ? 'Oui' : 'Non', a.moto ? 'Oui' : 'Non', a.contractOp||'', a.dateIntegration||''];
+        const dateDem = a.dateDemission ? a.dateDemission.split('-').reverse().join('/') : '';
+        return [a.teamLead, acc?.email || '', a.ville, a.name, a.sector, a.matricule||'', a.phone||'', a.actif === false ? 'Oui' : 'Non', dateDem, a.moto ? 'Oui' : 'Non', a.contractOp||'', a.dateIntegration||''];
       }),
     ];
     const ws = XLSX.utils.aoa_to_sheet(data);
-    ws['!cols'] = [{wch:24},{wch:28},{wch:14},{wch:26},{wch:26},{wch:14},{wch:16},{wch:12},{wch:10},{wch:14},{wch:16}];
+    ws['!cols'] = [{wch:24},{wch:28},{wch:14},{wch:26},{wch:26},{wch:14},{wch:16},{wch:12},{wch:14},{wch:10},{wch:14},{wch:16}];
     const hStyle = { font:{bold:true,color:{rgb:'FFFFFF'},sz:11}, fill:{fgColor:{rgb:'0052CC'}}, alignment:{horizontal:'center'} };
-    ['A1','B1','C1','D1','E1','F1','G1','H1','I1','J1','K1'].forEach(c => { if (ws[c]) ws[c].s = hStyle; });
+    ['A1','B1','C1','D1','E1','F1','G1','H1','I1','J1','K1','L1'].forEach(c => { if (ws[c]) ws[c].s = hStyle; });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Animateurs');
     XLSX.writeFile(wb, 'template_animateurs.xlsx');
@@ -2968,9 +2971,18 @@ function AnimateursView({ animateurs, accounts }) {
     });
   }, [activeAnims, search, filterVille, filterTL]);
 
+  const filteredInactiveAnims = useMemo(() =>
+    inactiveAnims.filter(a => {
+      const matchV = filterVille === 'Toutes' || a.ville === filterVille;
+      const matchT = filterTL === 'Tous' || a.teamLead === filterTL;
+      return matchV && matchT;
+    }),
+  [inactiveAnims, filterVille, filterTL]);
+
   const handleDeactivate = async (anim) => {
     if (!window.confirm(`Désactiver ${anim.name} ? Il sera masqué des listes actives.`)) return;
-    await LS.deactivateAnimateur(anim.id);
+    const today = new Date().toISOString().split('T')[0];
+    await LS.deactivateAnimateur(anim.id, today);
     showToast(`${anim.name} désactivé`);
   };
 
@@ -3125,54 +3137,70 @@ function AnimateursView({ animateurs, accounts }) {
           <div className="section-hd" style={{marginTop:28}}>
             <div>
               <div className="section-title" style={{color:'#7C3AED'}}>Animateurs désactivés</div>
-              <div className="section-sub">{inactiveAnims.length} animateur{inactiveAnims.length!==1?'s':''} masqué{inactiveAnims.length!==1?'s':''} des listes actives</div>
+              <div className="section-sub">
+                {filteredInactiveAnims.length}/{inactiveAnims.length} animateur{inactiveAnims.length!==1?'s':''} masqué{inactiveAnims.length!==1?'s':''} des listes actives
+              </div>
             </div>
           </div>
           <div className="table-card">
-            <div className="tbl-scroll"><table className="tbl">
-              <thead>
-                <tr>
-                  <th>#</th><th>Animateur</th><th>Secteur</th><th>Ville</th><th>Team Lead</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {inactiveAnims.map(anim => {
-                  const color = CITY_COLORS[anim.ville] || '#64748B';
-                  return (
-                    <tr key={anim.id} style={{opacity:0.7}}>
-                      <td><span className="mono">{anim.id}</span></td>
-                      <td>
-                        <div style={{display:'flex',alignItems:'center',gap:8}}>
-                          <div className="av" style={{background:'#94A3B8',width:28,height:28,fontSize:11}}>{initials(anim.name)}</div>
-                          <div>
-                            <span style={{fontWeight:600,color:'var(--neutral-600)'}}>{anim.name}</span>
-                            <span style={{marginLeft:8,fontSize:10,padding:'1px 7px',borderRadius:99,background:'#F3E8FF',color:'#7C3AED',fontWeight:700}}>Désactivé</span>
+            {filteredInactiveAnims.length === 0 ? (
+              <div className="empty">
+                <i data-lucide="user-x" style={{width:40,height:40,opacity:0.2}}></i>
+                <div className="empty-text">Aucun animateur désactivé pour ce filtre</div>
+              </div>
+            ) : (
+              <div className="tbl-scroll"><table className="tbl">
+                <thead>
+                  <tr>
+                    <th>#</th><th>Animateur</th><th>Secteur</th><th>Ville</th><th>Team Lead</th><th>Date départ</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredInactiveAnims.map(anim => {
+                    const color = CITY_COLORS[anim.ville] || '#64748B';
+                    const dateDepart = anim.dateDemission ? anim.dateDemission.split('-').reverse().join('/') : null;
+                    return (
+                      <tr key={anim.id} style={{opacity:0.7}}>
+                        <td><span className="mono">{anim.id}</span></td>
+                        <td>
+                          <div style={{display:'flex',alignItems:'center',gap:8}}>
+                            <div className="av" style={{background:'#94A3B8',width:28,height:28,fontSize:11}}>{initials(anim.name)}</div>
+                            <div>
+                              <span style={{fontWeight:600,color:'var(--neutral-600)'}}>{anim.name}</span>
+                              <span style={{marginLeft:8,fontSize:10,padding:'1px 7px',borderRadius:99,background:'#F3E8FF',color:'#7C3AED',fontWeight:700}}>Désactivé</span>
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                      <td style={{fontSize:12,color:'var(--neutral-500)'}}>{anim.sector}</td>
-                      <td>
-                        <span style={{display:'inline-flex',padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:color+'20',color}}>
-                          {anim.ville}
-                        </span>
-                      </td>
-                      <td style={{fontSize:12,color:'var(--neutral-600)'}}>{anim.teamLead}</td>
-                      <td>
-                        <div style={{display:'flex',gap:6}}>
-                          <button className="btn btn-ghost btn-sm" onClick={() => handleReactivate(anim)} title="Réactiver" style={{color:'#16A34A',border:'1.5px solid #BBF7D0'}}>
-                            <i data-lucide="user-check" style={{width:13,height:13}}></i>
-                            Réactiver
-                          </button>
-                          <button className="btn btn-sm" onClick={() => handleDelete(anim)} title="Supprimer définitivement" style={{background:'#FEE2E2',color:'#991B1B',border:'1.5px solid #FECACA'}}>
-                            <i data-lucide="trash-2" style={{width:13,height:13}}></i>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table></div>
+                        </td>
+                        <td style={{fontSize:12,color:'var(--neutral-500)'}}>{anim.sector}</td>
+                        <td>
+                          <span style={{display:'inline-flex',padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:color+'20',color}}>
+                            {anim.ville}
+                          </span>
+                        </td>
+                        <td style={{fontSize:12,color:'var(--neutral-600)'}}>{anim.teamLead}</td>
+                        <td style={{fontSize:12,whiteSpace:'nowrap'}}>
+                          {dateDepart
+                            ? <span style={{background:'#FEE2E2',color:'#B91C1C',padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:700}}>{dateDepart}</span>
+                            : <span style={{color:'var(--neutral-300)'}}>—</span>
+                          }
+                        </td>
+                        <td>
+                          <div style={{display:'flex',gap:6}}>
+                            <button className="btn btn-ghost btn-sm" onClick={() => handleReactivate(anim)} title="Réactiver" style={{color:'#16A34A',border:'1.5px solid #BBF7D0'}}>
+                              <i data-lucide="user-check" style={{width:13,height:13}}></i>
+                              Réactiver
+                            </button>
+                            <button className="btn btn-sm" onClick={() => handleDelete(anim)} title="Supprimer définitivement" style={{background:'#FEE2E2',color:'#991B1B',border:'1.5px solid #FECACA'}}>
+                              <i data-lucide="trash-2" style={{width:13,height:13}}></i>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table></div>
+            )}
           </div>
         </>
       )}

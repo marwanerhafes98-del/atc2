@@ -1026,6 +1026,7 @@ function PointageForm({ animateur, onBack, onConfirm, onEdit, onDelete, secteurs
   const [coords, setCoords]     = useState(null);
   const [showEdit, setShowEdit]     = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [motifDel, setMotifDel]     = useState('');
 
   useEffect(() => {
     const c = getCoord(animateur.ville, animateur.id);
@@ -1074,10 +1075,10 @@ function PointageForm({ animateur, onBack, onConfirm, onEdit, onDelete, secteurs
         {needsNote && (
           <>
             <div className="section-title">
-              {selected === 'demission' ? 'Remarque (date effective...)' : selected === 'malade' ? 'Remarque (durée, certificat...)' : "Raison de l'absence"}
+              {selected === 'demission' ? 'Motif de démission' : selected === 'malade' ? 'Remarque (durée, certificat...)' : "Raison de l'absence"}
             </div>
             <textarea className="note-area" value={note} onChange={e => setNote(e.target.value)}
-              placeholder={selected === 'demission' ? 'Démission effective le...' : selected === 'malade' ? 'Arrêt maladie jusqu\'au...' : 'Raison...'} />
+              placeholder={selected === 'demission' ? 'Motif de la démission...' : selected === 'malade' ? 'Arrêt maladie jusqu\'au...' : 'Raison...'} />
           </>
         )}
 
@@ -1107,11 +1108,14 @@ function PointageForm({ animateur, onBack, onConfirm, onEdit, onDelete, secteurs
             <div style={{ textAlign:'center', fontSize:13, color:'#EF4444', fontWeight:700, marginTop:14 }}>
               Désactiver {animateur.name} ? Il sera masqué de la liste.
             </div>
-            <button className="btn-delete-solid" onClick={() => onDelete(animateur.id)}>
+            <div className="section-title" style={{ marginTop:10 }}>Motif de désactivation</div>
+            <textarea className="note-area" value={motifDel} onChange={e => setMotifDel(e.target.value)}
+              placeholder="Motif de désactivation..." />
+            <button className="btn-delete-solid" onClick={() => onDelete(animateur.id, motifDel)} disabled={!motifDel.trim()}>
               <i data-lucide="user-x" style={{ width:16, height:16 }}></i>
               Oui, désactiver
             </button>
-            <button className="btn-cancel-del" onClick={() => setConfirmDel(false)}>Annuler</button>
+            <button className="btn-cancel-del" onClick={() => { setConfirmDel(false); setMotifDel(''); }}>Annuler</button>
           </>
         )}
       </div>
@@ -1920,7 +1924,10 @@ function App() {
     LS.writePointage(user.email, entry);
     const toastType = { present:'success', absent:'error', malade:'warning', demission:'info', recupe:'info', conge:'info', renfort:'success' };
     if (status === 'demission') {
-      db.ref(`ptg/animateurs/${id}`).update({ actif: false });
+      const today = new Date().toISOString().split('T')[0];
+      const patch = { actif: false, dateDemission: today };
+      if (note && note.trim()) patch.motifDemission = note.trim();
+      db.ref(`ptg/animateurs/${id}`).update(patch);
       setAnimateurs(prev => prev.filter(x => x.id !== id));
       showToast(`${a.name} — Démission enregistrée, animateur désactivé`, 'info');
     } else {
@@ -1954,8 +1961,11 @@ function App() {
     showToast('Informations mises à jour', 'success');
   };
 
-  const handleDeleteAnimateur = (id) => {
-    db.ref(`ptg/animateurs/${id}`).update({ actif: false });
+  const handleDeleteAnimateur = (id, motif) => {
+    const today = new Date().toISOString().split('T')[0];
+    const patch = { actif: false, dateDemission: today };
+    if (motif && motif.trim()) patch.motifDemission = motif.trim();
+    db.ref(`ptg/animateurs/${id}`).update(patch);
     setAnimateurs(prev => prev.filter(a => a.id !== id));
     setSelectedAnimateur(null);
     showToast('Animateur désactivé', 'info');
