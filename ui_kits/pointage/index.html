@@ -1092,7 +1092,7 @@ function PointageForm({ animateur, onBack, onConfirm, onEdit, onDelete, secteurs
           <i data-lucide="navigation" style={{ width:16, height:16, color:'#3B82F6' }}></i>
         </div>
 
-        <button className="btn-confirm" disabled={!selected}
+        <button className="btn-confirm" disabled={!selected || (selected === 'demission' && !note.trim())}
           onClick={() => onConfirm(animateur.id, selected, note, coords)}>
           <i data-lucide="check" style={{ width:20, height:20 }}></i>
           {selected ? `Confirmer — ${STATUS_META[selected].label}` : 'Choisir un statut'}
