@@ -318,6 +318,8 @@ const TL_PAGES = [
   { key:'weekly',     label:'Présence hebdo',     icon:'calendar-days',    locked:false },
   { key:'analytics',  label:'Analyses',           icon:'bar-chart-2',      locked:false },
   { key:'scores',     label:'Scores',             icon:'award',            locked:false },
+  { key:'watchlist',  label:'À surveiller',       icon:'alert-triangle',   locked:false },
+  { key:'sectscores', label:'Scoring Secteurs',   icon:'pie-chart',        locked:false },
   { key:'secteurs',   label:'Gestion Secteurs',   icon:'grid-3x3',         locked:false },
   { key:'polygones',  label:'Cartographie',       icon:'layers',           locked:false },
   { key:'overlaps',   label:'Correction Overlaps',icon:'git-merge',        locked:false },
@@ -3928,6 +3930,445 @@ function exportScoresXLSX(animateurs, pointages, filterVille, filterTL) {
   XLSX.writeFile(wb, `scores_performance_${fileDate}.xlsx`);
 }
 
+/* ── WATCH LIST VIEW ── */
+function getAlerts(a) {
+  if (a.total === 0) return [{ label:'Aucun pointage', color:'#64748B', bg:'#F1F5F9' }];
+  const alerts = [];
+  if (a.score < 40) alerts.push({ label:'Score critique', color:'#B91C1C', bg:'#FEE2E2' });
+  else if (a.score < 60) alerts.push({ label:'Score faible', color:'#C2410C', bg:'#FFEDD5' });
+  const totPtr = a.present + a.absent + a.malade + (a.recupe||0) + (a.conge||0) + (a.renfort||0);
+  if (totPtr > 0 && a.absent / totPtr > 0.4) alerts.push({ label:'Absences élevées', color:'#7C3AED', bg:'#F3E8FF' });
+  if ((a.nonpointe||0) > 2) alerts.push({ label:'Non pointé fréquent', color:'#475569', bg:'#F1F5F9' });
+  return alerts;
+}
+
+function exportWatchListXLSX(rows, periodLabel, scope) {
+  const fileDate = new Date().toLocaleDateString('fr-FR').replace(/\//g,'-');
+  const hStyle = {font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:'DC2626'}},alignment:{horizontal:'center'}};
+  const headers = ['Rang','Animateur','Ville','Secteur','Team Lead','Présents','Absents','Malades','Récupe','Congé','Non pointé','Jours évalués','Score /100','Grade','Alertes'];
+  const data = [
+    [`Animateurs à surveiller — ${periodLabel} — ${scope} — ${new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}`, ...Array(headers.length-1).fill('')],
+    Array(headers.length).fill(''),
+    headers,
+    ...rows.map((a,i) => {
+      const g = getGrade(a.score, a.total);
+      const alerts = getAlerts(a).map(al=>al.label).join(', ');
+      return [i+1,a.name,a.ville,a.sector,a.teamLead,a.present+(a.renfort||0),a.absent,a.malade,a.recupe||0,a.conge||0,a.nonpointe||0,a.total,a.total>0?a.score:'—',g.label,alerts];
+    }),
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [{wch:5},{wch:26},{wch:14},{wch:26},{wch:22},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:12},{wch:14},{wch:12},{wch:14},{wch:30}];
+  ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:headers.length-1}}];
+  const tc = XLSX.utils.encode_cell({r:0,c:0});
+  if(ws[tc]) ws[tc].s={font:{bold:true,color:{rgb:'FFFFFF'},sz:12},fill:{fgColor:{rgb:'991B1B'}},alignment:{horizontal:'center'}};
+  headers.forEach((_,ci)=>{ const c=XLSX.utils.encode_cell({r:2,c:ci}); if(ws[c]) ws[c].s=hStyle; });
+  const GRADE_FILL={'Elite':{font:{bold:true,color:{rgb:'14532D'}},fill:{fgColor:{rgb:'DCFCE7'}},alignment:{horizontal:'center'}},'Excellent':{font:{bold:true,color:{rgb:'1E3A8A'}},fill:{fgColor:{rgb:'DBEAFE'}},alignment:{horizontal:'center'}},'Bien':{font:{bold:true,color:{rgb:'78350F'}},fill:{fgColor:{rgb:'FEF3C7'}},alignment:{horizontal:'center'}},'Passable':{font:{bold:true,color:{rgb:'7C2D12'}},fill:{fgColor:{rgb:'FFEDD5'}},alignment:{horizontal:'center'}},'Insuffisant':{font:{bold:true,color:{rgb:'7F1D1D'}},fill:{fgColor:{rgb:'FEE2E2'}},alignment:{horizontal:'center'}},'N/A':{font:{color:{rgb:'94A3B8'}},fill:{fgColor:{rgb:'F1F5F9'}},alignment:{horizontal:'center'}}};
+  rows.forEach((_,ri)=>{ const gc=XLSX.utils.encode_cell({r:ri+3,c:13}); const g=getGrade(rows[ri].score,rows[ri].total); if(ws[gc]) ws[gc].s=GRADE_FILL[g.label]||{}; });
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Surveiller'); XLSX.writeFile(wb,`watch_list_${fileDate}.xlsx`);
+}
+
+function WatchListView({ pointages, animateurs }) {
+  const [period,      setPeriod]      = useState(30);
+  const [threshold,   setThreshold]   = useState(60);
+  const [filterVille, setFilterVille] = useState('Toutes');
+  const [filterTL,    setFilterTL]    = useState('Tous');
+  const [sortBy,      setSortBy]      = useState('score');
+
+  const cutoff = useMemo(() => {
+    const d = new Date(); d.setDate(d.getDate()-period);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }, [period]);
+
+  const teamLeadsForVille = useMemo(() => {
+    const src = filterVille==='Toutes' ? animateurs : animateurs.filter(a=>a.ville===filterVille);
+    return [...new Set(src.filter(a=>a.actif!==false).map(a=>a.teamLead))].sort();
+  }, [animateurs, filterVille]);
+
+  const watchList = useMemo(() => {
+    const active = animateurs.filter(a => a.actif!==false && (filterVille==='Toutes'||a.ville===filterVille) && (filterTL==='Tous'||a.teamLead===filterTL));
+    const scores = active.map(a => computeAnimScore(a, pointages, cutoff));
+    return scores
+      .filter(a => a.score < threshold || a.total === 0)
+      .sort((a,b) => sortBy==='score' ? a.score-b.score||b.total-a.total : sortBy==='absent' ? b.absent-a.absent : a.name.localeCompare(b.name));
+  }, [animateurs, pointages, cutoff, filterVille, filterTL, threshold, sortBy]);
+
+  const critiques = watchList.filter(a=>a.score<40||a.total===0).length;
+  const PERIOD_OPTS = [{v:7,l:'7 jours'},{v:14,l:'14 jours'},{v:30,l:'30 jours'},{v:90,l:'90 jours'}];
+  const scope = [filterVille!=='Toutes'?filterVille:null,filterTL!=='Tous'?filterTL:null].filter(Boolean).join(' · ')||'Toutes villes';
+  const periodLabel = PERIOD_OPTS.find(o=>o.v===period)?.l||`${period} jours`;
+
+  return (
+    <>
+      <div className="section-hd" style={{marginBottom:20}}>
+        <div>
+          <div className="section-title" style={{color:'#DC2626'}}>
+            <i data-lucide="alert-triangle" style={{width:18,height:18,display:'inline',marginRight:6,verticalAlign:'middle'}}></i>
+            Animateurs à surveiller
+          </div>
+          <div className="section-sub">{watchList.length} animateur{watchList.length!==1?'s':''} · {critiques} critique{critiques!==1?'s':''}</div>
+        </div>
+        <button onClick={() => exportWatchListXLSX(watchList, periodLabel, scope)}
+          style={{display:'flex',alignItems:'center',gap:6,height:38,padding:'0 14px',border:'1.5px solid #FECACA',background:'#FEF2F2',color:'#DC2626',fontWeight:700,fontSize:13,borderRadius:9,cursor:'pointer',fontFamily:'var(--font-sans)'}}>
+          <i data-lucide="download" style={{width:15,height:15}}></i>Exporter Excel
+        </button>
+      </div>
+
+      {/* KPI chips */}
+      <div style={{display:'flex',gap:10,marginBottom:20,flexWrap:'wrap'}}>
+        {[
+          {label:'Score critique (< 40)', count:watchList.filter(a=>a.score<40).length, bg:'#FEE2E2', color:'#B91C1C'},
+          {label:'Score faible (< 60)',   count:watchList.filter(a=>a.score>=40&&a.score<60).length, bg:'#FFEDD5', color:'#C2410C'},
+          {label:'Absences élevées',       count:watchList.filter(a=>{ const t=a.present+a.absent+a.malade+(a.recupe||0)+(a.conge||0)+(a.renfort||0); return t>0&&a.absent/t>0.4; }).length, bg:'#F3E8FF', color:'#7C3AED'},
+          {label:'Aucun pointage',         count:watchList.filter(a=>a.total===0).length, bg:'#F1F5F9', color:'#475569'},
+        ].map(k => k.count > 0 && (
+          <div key={k.label} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:99,background:k.bg,color:k.color,fontWeight:700,fontSize:12}}>
+            <span style={{fontSize:17,fontWeight:800,fontFamily:'var(--font-mono)'}}>{k.count}</span>{k.label}
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="analytics-filters" style={{marginBottom:20}}>
+        <i data-lucide="sliders-horizontal" style={{width:16,height:16,color:'var(--neutral-400)',flexShrink:0}}></i>
+        <span className="af-label">Période</span>
+        {PERIOD_OPTS.map(o=>(
+          <button key={o.v} onClick={()=>setPeriod(o.v)}
+            style={{height:32,padding:'0 12px',borderRadius:8,border:`1.5px solid ${period===o.v?'#EF4444':'var(--neutral-200)'}`,background:period===o.v?'#FEF2F2':'white',color:period===o.v?'#DC2626':'var(--neutral-600)',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'var(--font-sans)'}}>
+            {o.l}
+          </button>
+        ))}
+        <div className="af-divider"></div>
+        <span className="af-label">Seuil</span>
+        {[{v:40,l:'< 40'},{v:60,l:'< 60'},{v:75,l:'< 75'}].map(o=>(
+          <button key={o.v} onClick={()=>setThreshold(o.v)}
+            style={{height:32,padding:'0 12px',borderRadius:8,border:`1.5px solid ${threshold===o.v?'#EF4444':'var(--neutral-200)'}`,background:threshold===o.v?'#FEF2F2':'white',color:threshold===o.v?'#DC2626':'var(--neutral-600)',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'var(--font-sans)'}}>
+            {o.l}
+          </button>
+        ))}
+        <div className="af-divider"></div>
+        <select className={`af-select ${filterVille!=='Toutes'?'active-filter':''}`} value={filterVille} onChange={e=>{setFilterVille(e.target.value);setFilterTL('Tous');}}>
+          <option value="Toutes">Toutes les villes</option>
+          {VILLES.map(v=><option key={v} value={v}>{v}</option>)}
+        </select>
+        <select className={`af-select ${filterTL!=='Tous'?'active-filter':''}`} value={filterTL} onChange={e=>setFilterTL(e.target.value)}>
+          <option value="Tous">Tous les TL</option>
+          {teamLeadsForVille.map(tl=><option key={tl} value={tl}>{tl}</option>)}
+        </select>
+      </div>
+
+      {watchList.length === 0 ? (
+        <div className="table-card">
+          <div className="empty" style={{padding:'40px'}}>
+            <i data-lucide="check-circle" style={{width:48,height:48,color:'#22C55E',opacity:0.5}}></i>
+            <div className="empty-text" style={{color:'#15803D'}}>Aucun animateur à surveiller pour ce filtre</div>
+          </div>
+        </div>
+      ) : (
+        <div className="table-card">
+          <div className="table-toolbar">
+            <div>
+              <div className="table-toolbar-title">{watchList.length} animateur{watchList.length!==1?'s':''} sous le seuil</div>
+              <div className="table-toolbar-sub">Période : {periodLabel} · Score &lt; {threshold}</div>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              {[{k:'score',l:'Score'},{k:'absent',l:'Absences'},{k:'name',l:'Nom'}].map(o=>(
+                <button key={o.k} onClick={()=>setSortBy(o.k)}
+                  style={{height:32,padding:'0 10px',borderRadius:8,border:`1.5px solid ${sortBy===o.k?'#EF4444':'var(--neutral-200)'}`,background:sortBy===o.k?'#FEF2F2':'white',color:sortBy===o.k?'#DC2626':'var(--neutral-600)',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'var(--font-sans)'}}>
+                  {o.l}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="tbl-scroll"><table className="tbl">
+            <thead>
+              <tr>
+                <th>#</th><th>Animateur</th><th>Ville</th><th>Secteur</th><th>Team Lead</th>
+                <th style={{color:'#15803D'}}>Présents</th><th style={{color:'#DC2626'}}>Absents</th><th style={{color:'#D97706'}}>Malades</th>
+                <th>Jours</th><th>Score</th><th>Grade</th><th>Alertes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {watchList.map((a,idx) => {
+                const g = getGrade(a.score, a.total);
+                const alerts = getAlerts(a);
+                return (
+                  <tr key={a.id} style={{background:idx%2===0?'#FFFBFB':'white'}}>
+                    <td><span className="mono" style={{color:'var(--neutral-400)',fontSize:11}}>#{idx+1}</span></td>
+                    <td>
+                      <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        <div className="av" style={{background:g.ring,width:28,height:28,fontSize:11}}>{initials(a.name)}</div>
+                        <span style={{fontWeight:600}}>{a.name}</span>
+                      </div>
+                    </td>
+                    <td><span style={{padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:(CITY_COLORS[a.ville]||'#64748B')+'20',color:CITY_COLORS[a.ville]||'#64748B'}}>{a.ville}</span></td>
+                    <td style={{fontSize:12,color:'var(--neutral-600)',maxWidth:160}}>{a.sector}</td>
+                    <td style={{fontSize:12,color:'var(--neutral-600)'}}>{a.teamLead}</td>
+                    <td><span style={{fontWeight:700,color:'#15803D'}}>{a.present+(a.renfort||0)}</span></td>
+                    <td><span style={{fontWeight:700,color:'#DC2626'}}>{a.absent}</span></td>
+                    <td><span style={{color:'#D97706'}}>{a.malade}</span></td>
+                    <td><span style={{color:'var(--neutral-500)'}}>{a.total}</span></td>
+                    <td>
+                      {a.total > 0
+                        ? <span style={{fontWeight:800,fontSize:14,color:g.color}}>{a.score}</span>
+                        : <span style={{color:'var(--neutral-300)',fontSize:12}}>—</span>
+                      }
+                    </td>
+                    <td>
+                      <span style={{display:'inline-flex',alignItems:'center',gap:4,padding:'3px 9px',borderRadius:99,fontSize:11,fontWeight:700,background:g.bg,color:g.color}}>
+                        <i data-lucide={g.icon} style={{width:11,height:11}}></i>{g.label}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                        {alerts.map((al,i) => (
+                          <span key={i} style={{padding:'2px 7px',borderRadius:99,fontSize:10,fontWeight:700,background:al.bg,color:al.color,whiteSpace:'nowrap'}}>{al.label}</span>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table></div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ── SECTOR SCORES VIEW ── */
+function computeGroupScore(anims, pointages, cutoff) {
+  const scores = anims.map(a => computeAnimScore(a, pointages, cutoff));
+  const withData = scores.filter(s => s.total > 0);
+  const avgScore = withData.length > 0 ? Math.round(withData.reduce((s,a) => s+a.score, 0) / withData.length) : 0;
+  const totPresent = scores.reduce((s,a)=>s+(a.present||0)+(a.renfort||0),0);
+  const totAbsent  = scores.reduce((s,a)=>s+(a.absent||0),0);
+  const totMalade  = scores.reduce((s,a)=>s+(a.malade||0),0);
+  const totJours   = scores.reduce((s,a)=>s+a.total,0);
+  const atRisk     = withData.filter(s=>s.score<60).length;
+  const tauxPres   = totJours>0 ? Math.round(totPresent/totJours*100) : 0;
+  return { total:anims.length, withData:withData.length, avgScore, totPresent, totAbsent, totMalade, totJours, atRisk, tauxPres };
+}
+
+function exportSectorScoresXLSX(villeRows, secteurRows, periodLabel) {
+  const fileDate = new Date().toLocaleDateString('fr-FR').replace(/\//g,'-');
+  const hStyle = {font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:'0052CC'}},alignment:{horizontal:'center'}};
+  const tStyle = {font:{bold:true,color:{rgb:'FFFFFF'},sz:12},fill:{fgColor:{rgb:'003380'}},alignment:{horizontal:'center'}};
+  const wb = XLSX.utils.book_new();
+
+  const makeSheet = (title, headers, rows, widths) => {
+    const data = [[title,...Array(headers.length-1).fill('')],Array(headers.length).fill(''),headers,...rows];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws['!cols'] = widths;
+    ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:headers.length-1}}];
+    const tc=XLSX.utils.encode_cell({r:0,c:0}); if(ws[tc]) ws[tc].s=tStyle;
+    headers.forEach((_,ci)=>{ const c=XLSX.utils.encode_cell({r:2,c:ci}); if(ws[c]) ws[c].s=hStyle; });
+    rows.forEach((row,ri)=>{
+      const scoreIdx = headers.indexOf('Score moyen /100');
+      if(scoreIdx>=0){ const g=getGrade(row[scoreIdx],1); const c=XLSX.utils.encode_cell({r:ri+3,c:scoreIdx}); if(ws[c]) ws[c].s={font:{bold:true,color:{rgb:g.color.replace('#','')}},alignment:{horizontal:'center'}}; }
+      const riskIdx = headers.indexOf('À risque (< 60)');
+      if(riskIdx>=0 && row[riskIdx]>0){ const c=XLSX.utils.encode_cell({r:ri+3,c:riskIdx}); if(ws[c]) ws[c].s={font:{bold:true,color:{rgb:'DC2626'}},alignment:{horizontal:'center'}}; }
+      [headers.indexOf('Taux présence %')].filter(i=>i>=0).forEach(ci=>{ const c=XLSX.utils.encode_cell({r:ri+3,c:ci}); const val=row[ci]; if(ws[c]) ws[c].s={font:{bold:true,color:{rgb:val>=70?'15803D':val>=50?'B45309':'DC2626'}},alignment:{horizontal:'center'}}; });
+    });
+    return ws;
+  };
+
+  const vHdr = ['Ville','Nb animateurs','Avec pointage','Score moyen /100','Taux présence %','Présents','Absents','Malades','Jours évalués','À risque (< 60)'];
+  const vRows = villeRows.map(r=>[r.key,r.total,r.withData,r.avgScore,r.tauxPres,r.totPresent,r.totAbsent,r.totMalade,r.totJours,r.atRisk]);
+  const wsV = makeSheet(`Scoring par Ville — ${periodLabel}`, vHdr, vRows, [{wch:16},{wch:16},{wch:16},{wch:16},{wch:16},{wch:12},{wch:12},{wch:12},{wch:14},{wch:14}]);
+  XLSX.utils.book_append_sheet(wb, wsV, 'Par Ville');
+
+  const sHdr = ['Secteur','Ville','Nb animateurs','Avec pointage','Score moyen /100','Taux présence %','Présents','Absents','Malades','Jours évalués','À risque (< 60)'];
+  const sRows = secteurRows.map(r=>[r.sector,r.ville,r.total,r.withData,r.avgScore,r.tauxPres,r.totPresent,r.totAbsent,r.totMalade,r.totJours,r.atRisk]);
+  const wsS = makeSheet(`Scoring par Secteur — ${periodLabel}`, sHdr, sRows, [{wch:26},{wch:14},{wch:14},{wch:16},{wch:16},{wch:16},{wch:12},{wch:12},{wch:12},{wch:14},{wch:14}]);
+  XLSX.utils.book_append_sheet(wb, wsS, 'Par Secteur');
+
+  XLSX.writeFile(wb, `scoring_secteurs_${fileDate}.xlsx`);
+}
+
+function SectorScoresView({ pointages, animateurs, secteurs }) {
+  const [period,      setPeriod]      = useState(30);
+  const [tab,         setTab]         = useState('ville');
+  const [filterVille, setFilterVille] = useState('Toutes');
+  const [sortBy,      setSortBy]      = useState('score');
+
+  const cutoff = useMemo(() => {
+    const d = new Date(); d.setDate(d.getDate()-period);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }, [period]);
+
+  const activeAnims = useMemo(() => animateurs.filter(a=>a.actif!==false), [animateurs]);
+
+  const villeRows = useMemo(() => {
+    const map = {};
+    activeAnims.forEach(a => { if(!map[a.ville]) map[a.ville]=[]; map[a.ville].push(a); });
+    return Object.entries(map).map(([key,anims]) => ({ key, ville:key, ...computeGroupScore(anims, pointages, cutoff) }))
+      .sort((a,b) => sortBy==='score'?b.avgScore-a.avgScore:sortBy==='risk'?b.atRisk-a.atRisk:a.key.localeCompare(b.key));
+  }, [activeAnims, pointages, cutoff, sortBy]);
+
+  const secteurRows = useMemo(() => {
+    const map = {};
+    activeAnims.forEach(a => {
+      if (filterVille!=='Toutes' && a.ville!==filterVille) return;
+      const key = `${a.sector}||${a.ville}`;
+      if(!map[key]) map[key]={sector:a.sector,ville:a.ville,anims:[]};
+      map[key].anims.push(a);
+    });
+    return Object.values(map).map(({sector,ville,anims}) => ({ key:sector, sector, ville, ...computeGroupScore(anims, pointages, cutoff) }))
+      .sort((a,b) => sortBy==='score'?b.avgScore-a.avgScore:sortBy==='risk'?b.atRisk-a.atRisk:a.sector.localeCompare(b.sector));
+  }, [activeAnims, pointages, cutoff, filterVille, sortBy]);
+
+  const rows = tab==='ville' ? villeRows : secteurRows;
+  const PERIOD_OPTS = [{v:7,l:'7 jours'},{v:30,l:'30 jours'},{v:60,l:'60 jours'},{v:90,l:'90 jours'}];
+  const periodLabel = PERIOD_OPTS.find(o=>o.v===period)?.l||`${period}j`;
+  const totalAtRisk = rows.reduce((s,r)=>s+r.atRisk,0);
+  const avgGlobal   = rows.filter(r=>r.withData>0).length>0 ? Math.round(rows.filter(r=>r.withData>0).reduce((s,r)=>s+r.avgScore,0)/rows.filter(r=>r.withData>0).length) : 0;
+
+  const ScoreGauge = ({ score, withData }) => {
+    if (!withData) return <span style={{color:'var(--neutral-300)',fontSize:12}}>—</span>;
+    const g = getGrade(score, 1);
+    return (
+      <div style={{display:'flex',alignItems:'center',gap:8,minWidth:130}}>
+        <div style={{flex:1,height:8,background:'#F1F5F9',borderRadius:99,overflow:'hidden'}}>
+          <div style={{height:'100%',width:`${score}%`,background:g.ring,borderRadius:99}}></div>
+        </div>
+        <span style={{fontWeight:800,fontSize:13,color:g.color,minWidth:28}}>{score}</span>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <div className="section-hd" style={{marginBottom:20}}>
+        <div>
+          <div className="section-title">Scoring par Ville & Secteur</div>
+          <div className="section-sub">Score global moyen : <strong>{avgGlobal}/100</strong> · {totalAtRisk} groupe{totalAtRisk!==1?'s':''} à risque</div>
+        </div>
+        <button onClick={() => exportSectorScoresXLSX(villeRows, secteurRows, periodLabel)}
+          style={{display:'flex',alignItems:'center',gap:6,height:38,padding:'0 14px',border:'1.5px solid #BBF7D0',background:'#F0FDF4',color:'#15803D',fontWeight:700,fontSize:13,borderRadius:9,cursor:'pointer',fontFamily:'var(--font-sans)'}}>
+          <i data-lucide="download" style={{width:15,height:15}}></i>Exporter Excel
+        </button>
+      </div>
+
+      {/* Filters */}
+      <div className="analytics-filters" style={{marginBottom:20}}>
+        <i data-lucide="sliders-horizontal" style={{width:16,height:16,color:'var(--neutral-400)',flexShrink:0}}></i>
+        <span className="af-label">Période</span>
+        {PERIOD_OPTS.map(o=>(
+          <button key={o.v} onClick={()=>setPeriod(o.v)}
+            style={{height:32,padding:'0 12px',borderRadius:8,border:`1.5px solid ${period===o.v?'var(--primary-500)':'var(--neutral-200)'}`,background:period===o.v?'var(--primary-50)':'white',color:period===o.v?'var(--primary-700)':'var(--neutral-600)',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'var(--font-sans)'}}>
+            {o.l}
+          </button>
+        ))}
+        <div className="af-divider"></div>
+        <div style={{display:'flex',gap:4}}>
+          {[{k:'ville',l:'Par ville',icon:'map-pin'},{k:'secteur',l:'Par secteur',icon:'grid-3x3'}].map(t=>(
+            <button key={t.k} onClick={()=>setTab(t.k)}
+              style={{height:32,padding:'0 12px',borderRadius:8,display:'flex',alignItems:'center',gap:5,border:`1.5px solid ${tab===t.k?'var(--primary-500)':'var(--neutral-200)'}`,background:tab===t.k?'var(--primary-50)':'white',color:tab===t.k?'var(--primary-700)':'var(--neutral-600)',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'var(--font-sans)'}}>
+              <i data-lucide={t.icon} style={{width:13,height:13}}></i>{t.l}
+            </button>
+          ))}
+        </div>
+        {tab==='secteur' && (
+          <>
+            <div className="af-divider"></div>
+            <select className={`af-select ${filterVille!=='Toutes'?'active-filter':''}`} value={filterVille} onChange={e=>setFilterVille(e.target.value)}>
+              <option value="Toutes">Toutes les villes</option>
+              {VILLES.map(v=><option key={v} value={v}>{v}</option>)}
+            </select>
+          </>
+        )}
+      </div>
+
+      {/* Summary KPI row */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12,marginBottom:20}}>
+        {[
+          {label:'Score global moyen',val:`${avgGlobal}/100`,icon:'bar-chart-2',bg:'#EFF6FF',ic:'#1D4ED8',color:'#1E3A8A'},
+          {label:`${tab==='ville'?'Villes':'Secteurs'} évalués`,val:rows.filter(r=>r.withData>0).length,icon:'check-circle',bg:'#DCFCE7',ic:'#16A34A',color:'#14532D'},
+          {label:'Groupes à risque',val:totalAtRisk,icon:'alert-triangle',bg:'#FEE2E2',ic:'#DC2626',color:'#7F1D1D'},
+          {label:'Animateurs total',val:rows.reduce((s,r)=>s+r.total,0),icon:'users',bg:'#F3E8FF',ic:'#7C3AED',color:'#4C1D95'},
+        ].map(k=>(
+          <div key={k.label} className="kpi-card" style={{borderLeft:`3px solid ${k.ic}`}}>
+            <div className="kpi-top"><span className="kpi-label">{k.label}</span><div className="kpi-icon" style={{background:k.bg}}><i data-lucide={k.icon} style={{width:16,height:16,color:k.ic}}></i></div></div>
+            <div className="kpi-val" style={{fontSize:24,color:k.color}}>{k.val}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="table-card">
+        <div className="table-toolbar">
+          <div>
+            <div className="table-toolbar-title">{tab==='ville'?'Classement par Ville':'Classement par Secteur'}</div>
+            <div className="table-toolbar-sub">{rows.length} {tab==='ville'?'ville':'secteur'}{rows.length!==1?'s':''} · {periodLabel}</div>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            {[{k:'score',l:'Score'},{k:'risk',l:'Risque'},{k:'name',l:'Nom'}].map(o=>(
+              <button key={o.k} onClick={()=>setSortBy(o.k)}
+                style={{height:32,padding:'0 10px',borderRadius:8,border:`1.5px solid ${sortBy===o.k?'var(--primary-500)':'var(--neutral-200)'}`,background:sortBy===o.k?'var(--primary-50)':'white',color:sortBy===o.k?'var(--primary-700)':'var(--neutral-600)',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'var(--font-sans)'}}>
+                {o.l}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="tbl-scroll"><table className="tbl">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>{tab==='ville'?'Ville':'Secteur'}</th>
+              {tab==='secteur' && <th>Ville</th>}
+              <th>Animateurs</th>
+              <th style={{color:'#15803D'}}>Présents</th>
+              <th style={{color:'#DC2626'}}>Absents</th>
+              <th style={{color:'#D97706'}}>Malades</th>
+              <th>Jours évalués</th>
+              <th>Taux présence</th>
+              <th>Score moyen</th>
+              <th>À risque</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r,idx) => {
+              const g = getGrade(r.avgScore, r.withData);
+              const color = CITY_COLORS[r.ville]||CITY_COLORS[r.key]||'#64748B';
+              return (
+                <tr key={r.key+(r.ville||'')} style={{background:r.atRisk>0&&r.atRisk===r.withData?'#FFF5F5':'white'}}>
+                  <td><span className="mono" style={{color:'var(--neutral-400)',fontSize:11}}>#{idx+1}</span></td>
+                  <td>
+                    <span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',borderRadius:99,fontSize:12,fontWeight:700,background:color+'20',color}}>
+                      {r.key}
+                    </span>
+                  </td>
+                  {tab==='secteur' && <td style={{fontSize:11,color:'var(--neutral-500)'}}>{r.ville}</td>}
+                  <td>
+                    <span style={{fontWeight:600}}>{r.total}</span>
+                    {r.withData < r.total && <span style={{fontSize:10,color:'var(--neutral-400)',marginLeft:4}}>({r.withData} pointés)</span>}
+                  </td>
+                  <td><span style={{fontWeight:700,color:'#15803D'}}>{r.totPresent}</span></td>
+                  <td><span style={{fontWeight:600,color:'#DC2626'}}>{r.totAbsent}</span></td>
+                  <td><span style={{color:'#D97706'}}>{r.totMalade}</span></td>
+                  <td><span style={{color:'var(--neutral-500)'}}>{r.totJours}</span></td>
+                  <td>
+                    <span style={{padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:r.tauxPres>=70?'#DCFCE7':r.tauxPres>=50?'#FEF3C7':'#FEE2E2',color:r.tauxPres>=70?'#15803D':r.tauxPres>=50?'#B45309':'#DC2626'}}>
+                      {r.withData>0?`${r.tauxPres}%`:'—'}
+                    </span>
+                  </td>
+                  <td><ScoreGauge score={r.avgScore} withData={r.withData} /></td>
+                  <td>
+                    {r.atRisk > 0
+                      ? <span style={{padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:'#FEE2E2',color:'#DC2626'}}>{r.atRisk} à risque</span>
+                      : r.withData > 0 ? <span style={{fontSize:11,color:'#15803D'}}>✓ OK</span> : <span style={{color:'var(--neutral-300)'}}>—</span>
+                    }
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table></div>
+      </div>
+    </>
+  );
+}
+
 /* ── SCORES VIEW ── */
 const SCORE_POINTS = { present:100, renfort:100, recupe:65, conge:75, malade:50, absent:0, demission:0, nonpointe:null };
 const SCORE_GRADES = [
@@ -6069,7 +6510,7 @@ function App() {
   const liveCount  = (isTL ? accounts.filter(a => a.email === session.email) : accounts).filter(a => LS.isLive(a.email)).length;
   const todayPtgN  = filteredPtgs.filter(p => p.date === new Date().toDateString()).length;
   const LIVE_LOC_THRESH = 120000;
-  const PAGE_TITLES = { dashboard:'Dashboard', accounts:'Comptes Team Leads', tlaccess:'Accès des pages TL', animateurs:'Gestion des animateurs', secteurs:'Gestion des Secteurs', villes:'Gestion des Villes', carte:'Localisation en temps réel', activity:'Journal des pointages', weekly:'Présence hebdomadaire', analytics:'Analyses de pointage', geozone:'Geo Zoning', scores:'Scores & Performance', polygones:'Cartographie des Polygones', overlaps:'Correction des Overlaps' };
+  const PAGE_TITLES = { dashboard:'Dashboard', accounts:'Comptes Team Leads', tlaccess:'Accès des pages TL', animateurs:'Gestion des animateurs', secteurs:'Gestion des Secteurs', villes:'Gestion des Villes', carte:'Localisation en temps réel', activity:'Journal des pointages', weekly:'Présence hebdomadaire', analytics:'Analyses de pointage', geozone:'Geo Zoning', scores:'Scores & Performance', polygones:'Cartographie des Polygones', overlaps:'Correction des Overlaps', watchlist:'Animateurs à surveiller', sectscores:'Scoring par Ville & Secteur' };
   const pageTitle  = PAGE_TITLES[view] || 'Dashboard';
 
   // Permissions TL lues en temps réel depuis Firebase
@@ -6101,6 +6542,8 @@ function App() {
     { key:'geozone',    icon:'map',              label:'Geo Zoning',           badge:0 },
     { key:'polygones',  icon:'layers',           label:'Cartographie',         badge:0 },
     { key:'scores',     icon:'award',            label:'Scores',               badge:0 },
+    { key:'watchlist',  icon:'alert-triangle',   label:'À surveiller',         badge:0 },
+    { key:'sectscores', icon:'pie-chart',        label:'Scoring Secteurs',     badge:0 },
   ];
 
   const handleLogout = () => { localStorage.removeItem('ptg_manager_session'); setSession(null); setSidebarOpen(false); };
@@ -6197,6 +6640,8 @@ function App() {
           {view === 'geozone'    && <GeoZoningView />}
           {view === 'polygones'  && <KmlMapView pointages={filteredPtgs} animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} isTL={isTL} />}
           {view === 'scores'     && <ScoresView pointages={filteredPtgs} animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
+          {view === 'watchlist'  && <WatchListView pointages={filteredPtgs} animateurs={allAnims} />}
+          {view === 'sectscores' && <SectorScoresView pointages={filteredPtgs} animateurs={allAnims} secteurs={secteurs} />}
         </div>
       </div>
     </div>
