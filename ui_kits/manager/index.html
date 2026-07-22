@@ -3927,6 +3927,102 @@ function exportScoresXLSX(animateurs, pointages, filterVille, filterTL) {
   });
   XLSX.utils.book_append_sheet(wb, wsR, 'Résumé Comparatif');
 
+  // ── À surveiller (30j) ──
+  {
+    const cutoff30 = getCutoff(30);
+    const wScores = activeAnims.map(a => computeAnimScore(a, pointages, cutoff30)).sort((a,b) => a.score - b.score || b.total - a.total);
+    const wHdrStyle = {font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:'DC2626'}},alignment:{horizontal:'center'}};
+    const wTitleStyle = {font:{bold:true,color:{rgb:'FFFFFF'},sz:12},fill:{fgColor:{rgb:'991B1B'}},alignment:{horizontal:'center'}};
+    const wCols = ['Rang','Animateur','Ville','Secteur','Team Lead','Présents','Absents','Malades','Récupe','Congé','Non pointé','Jours évalués','Score /100','Grade','Alertes'];
+    const wTitle = [`Animateurs à surveiller — 30 jours — ${scope} — ${dateLabel}`, ...Array(wCols.length-1).fill('')];
+    const wRows = wScores.map((a, i) => {
+      const g = getGrade(a.score, a.total);
+      const alerts = getAlerts(a).map(al => al.label).join(', ');
+      return [i+1, a.name, a.ville, a.sector, a.teamLead, a.present+(a.renfort||0), a.absent, a.malade, a.recupe||0, a.conge||0, a.nonpointe||0, a.total, a.total>0?a.score:'—', g.label, alerts];
+    });
+    const wsW = XLSX.utils.aoa_to_sheet([wTitle, Array(wCols.length).fill(''), wCols, ...wRows]);
+    wsW['!cols'] = [{wch:5},{wch:26},{wch:14},{wch:26},{wch:22},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:12},{wch:14},{wch:12},{wch:14},{wch:30}];
+    wsW['!merges'] = [{s:{r:0,c:0},e:{r:0,c:wCols.length-1}}];
+    const wt = XLSX.utils.encode_cell({r:0,c:0}); if(wsW[wt]) wsW[wt].s = wTitleStyle;
+    wCols.forEach((_,ci) => { const c=XLSX.utils.encode_cell({r:2,c:ci}); if(wsW[c]) wsW[c].s=wHdrStyle; });
+    wRows.forEach((row, ri) => {
+      const a = wScores[ri];
+      const g = getGrade(a.score, a.total);
+      const gc = XLSX.utils.encode_cell({r:ri+3,c:13}); if(wsW[gc]) wsW[gc].s=GRADE_FILL[g.label]||{};
+      const sc2 = XLSX.utils.encode_cell({r:ri+3,c:12});
+      if(wsW[sc2]) wsW[sc2].s = a.total>0 ? {font:{bold:true,color:{rgb:g.color.replace('#','')}},alignment:{horizontal:'center'}} : {alignment:{horizontal:'center'},font:{color:{rgb:'94A3B8'}}};
+    });
+    XLSX.utils.book_append_sheet(wb, wsW, 'À surveiller (30j)');
+  }
+
+  // ── Scoring par Ville (30j) ──
+  {
+    const cutoff30 = getCutoff(30);
+    const villes = [...new Set(activeAnims.map(a => a.ville).filter(Boolean))].sort();
+    const sHdrGreen  = {font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:'047857'}},alignment:{horizontal:'center'}};
+    const sTitleGreen = {font:{bold:true,color:{rgb:'FFFFFF'},sz:12},fill:{fgColor:{rgb:'064E3B'}},alignment:{horizontal:'center'}};
+    const vCols = ['Ville','Nb animateurs','Avec données','Score moyen /100','Grade','Présents','Absents','Malades','Jours total','Taux présence %','À risque (< 60)'];
+    const vTitle = [`Scoring par Ville — 30 jours — ${scope} — ${dateLabel}`, ...Array(vCols.length-1).fill('')];
+    const vRows = villes.map(v => {
+      const anims = activeAnims.filter(a => a.ville === v);
+      const grp = computeGroupScore(anims, pointages, cutoff30);
+      const grade = getGrade(grp.avgScore, grp.withData);
+      return [v, grp.total, grp.withData, grp.withData>0?grp.avgScore:'—', grade.label, grp.totPresent, grp.totAbsent, grp.totMalade, grp.totJours, grp.withData>0?`${grp.tauxPres}%`:'—', grp.atRisk];
+    }).sort((a,b) => (typeof b[3]==='number'?b[3]:0) - (typeof a[3]==='number'?a[3]:0));
+    const wsV = XLSX.utils.aoa_to_sheet([vTitle, Array(vCols.length).fill(''), vCols, ...vRows]);
+    wsV['!cols'] = [{wch:16},{wch:15},{wch:14},{wch:16},{wch:13},{wch:10},{wch:10},{wch:10},{wch:12},{wch:16},{wch:16}];
+    wsV['!merges'] = [{s:{r:0,c:0},e:{r:0,c:vCols.length-1}}];
+    const vt = XLSX.utils.encode_cell({r:0,c:0}); if(wsV[vt]) wsV[vt].s = sTitleGreen;
+    vCols.forEach((_,ci) => { const c=XLSX.utils.encode_cell({r:2,c:ci}); if(wsV[c]) wsV[c].s=sHdrGreen; });
+    vRows.forEach((row, ri) => {
+      const sv = row[3];
+      if (typeof sv === 'number') {
+        const g = getGrade(sv, 1);
+        const sc3 = XLSX.utils.encode_cell({r:ri+3,c:3}); if(wsV[sc3]) wsV[sc3].s={font:{bold:true,color:{rgb:g.color.replace('#','')}},alignment:{horizontal:'center'}};
+        const gc = XLSX.utils.encode_cell({r:ri+3,c:4}); if(wsV[gc]) wsV[gc].s=GRADE_FILL[g.label]||{};
+      }
+      const rc = XLSX.utils.encode_cell({r:ri+3,c:10});
+      if(wsV[rc]) wsV[rc].s={font:{bold:true,color:{rgb:row[10]>0?'DC2626':'15803D'}},alignment:{horizontal:'center'}};
+    });
+    XLSX.utils.book_append_sheet(wb, wsV, 'Scoring par Ville');
+  }
+
+  // ── Scoring par Secteur (30j) ──
+  {
+    const cutoff30 = getCutoff(30);
+    const sHdrGreen2  = {font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:'047857'}},alignment:{horizontal:'center'}};
+    const sTitleGreen2 = {font:{bold:true,color:{rgb:'FFFFFF'},sz:12},fill:{fgColor:{rgb:'064E3B'}},alignment:{horizontal:'center'}};
+    const sCols = ['Ville','Secteur','Nb animateurs','Avec données','Score moyen /100','Grade','Présents','Absents','Malades','Jours total','Taux présence %','À risque (< 60)'];
+    const sTitle = [`Scoring par Secteur — 30 jours — ${scope} — ${dateLabel}`, ...Array(sCols.length-1).fill('')];
+    const sectGroups = {};
+    activeAnims.forEach(a => {
+      const key = `${a.ville||''}||${a.sector||''}`;
+      if (!sectGroups[key]) sectGroups[key] = { ville: a.ville||'', secteur: a.sector||'', anims: [] };
+      sectGroups[key].anims.push(a);
+    });
+    const sRows = Object.values(sectGroups).map(({ville, secteur, anims}) => {
+      const grp = computeGroupScore(anims, pointages, cutoff30);
+      const grade = getGrade(grp.avgScore, grp.withData);
+      return [ville, secteur, grp.total, grp.withData, grp.withData>0?grp.avgScore:'—', grade.label, grp.totPresent, grp.totAbsent, grp.totMalade, grp.totJours, grp.withData>0?`${grp.tauxPres}%`:'—', grp.atRisk];
+    }).sort((a,b) => (typeof b[4]==='number'?b[4]:0) - (typeof a[4]==='number'?a[4]:0));
+    const wsS = XLSX.utils.aoa_to_sheet([sTitle, Array(sCols.length).fill(''), sCols, ...sRows]);
+    wsS['!cols'] = [{wch:16},{wch:26},{wch:15},{wch:14},{wch:16},{wch:13},{wch:10},{wch:10},{wch:10},{wch:12},{wch:16},{wch:16}];
+    wsS['!merges'] = [{s:{r:0,c:0},e:{r:0,c:sCols.length-1}}];
+    const st = XLSX.utils.encode_cell({r:0,c:0}); if(wsS[st]) wsS[st].s = sTitleGreen2;
+    sCols.forEach((_,ci) => { const c=XLSX.utils.encode_cell({r:2,c:ci}); if(wsS[c]) wsS[c].s=sHdrGreen2; });
+    sRows.forEach((row, ri) => {
+      const sv = row[4];
+      if (typeof sv === 'number') {
+        const g = getGrade(sv, 1);
+        const sc4 = XLSX.utils.encode_cell({r:ri+3,c:4}); if(wsS[sc4]) wsS[sc4].s={font:{bold:true,color:{rgb:g.color.replace('#','')}},alignment:{horizontal:'center'}};
+        const gc = XLSX.utils.encode_cell({r:ri+3,c:5}); if(wsS[gc]) wsS[gc].s=GRADE_FILL[g.label]||{};
+      }
+      const rc = XLSX.utils.encode_cell({r:ri+3,c:11});
+      if(wsS[rc]) wsS[rc].s={font:{bold:true,color:{rgb:row[11]>0?'DC2626':'15803D'}},alignment:{horizontal:'center'}};
+    });
+    XLSX.utils.book_append_sheet(wb, wsS, 'Scoring par Secteur');
+  }
+
   XLSX.writeFile(wb, `scores_performance_${fileDate}.xlsx`);
 }
 
