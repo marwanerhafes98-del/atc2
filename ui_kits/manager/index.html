@@ -3790,6 +3790,144 @@ function GeoZoningView() {
   );
 }
 
+/* ── SCORES EXPORT ── */
+function exportScoresXLSX(animateurs, pointages, filterVille, filterTL) {
+  const now      = new Date();
+  const fileDate = now.toLocaleDateString('fr-FR').replace(/\//g,'-');
+  const dateLabel= now.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  const scope    = [filterVille!=='Toutes'?filterVille:null, filterTL!=='Tous'?filterTL:null].filter(Boolean).join(' · ') || 'Toutes villes — Tous TL';
+
+  const activeAnims = animateurs.filter(a => a.actif !== false && (filterVille==='Toutes'||a.ville===filterVille) && (filterTL==='Tous'||a.teamLead===filterTL));
+
+  const getCutoff = days => {
+    if (days === 0) return '2000-01-01';
+    const d = new Date(); d.setDate(d.getDate()-days);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  };
+
+  const PERIODS = [{label:'7 jours',sheet:'Semaine (7j)',days:7},{label:'30 jours',sheet:'Mois (30j)',days:30},{label:'90 jours',sheet:'3 Mois (90j)',days:90}];
+
+  const GRADE_FILL = {
+    'Elite':       {font:{bold:true,sz:11,color:{rgb:'14532D'}},fill:{fgColor:{rgb:'DCFCE7'}},alignment:{horizontal:'center'}},
+    'Excellent':   {font:{bold:true,sz:11,color:{rgb:'1E3A8A'}},fill:{fgColor:{rgb:'DBEAFE'}},alignment:{horizontal:'center'}},
+    'Bien':        {font:{bold:true,sz:11,color:{rgb:'78350F'}},fill:{fgColor:{rgb:'FEF3C7'}},alignment:{horizontal:'center'}},
+    'Passable':    {font:{bold:true,sz:11,color:{rgb:'7C2D12'}},fill:{fgColor:{rgb:'FFEDD5'}},alignment:{horizontal:'center'}},
+    'Insuffisant': {font:{bold:true,sz:11,color:{rgb:'7F1D1D'}},fill:{fgColor:{rgb:'FEE2E2'}},alignment:{horizontal:'center'}},
+    'N/A':         {font:{sz:11,color:{rgb:'94A3B8'}},          fill:{fgColor:{rgb:'F1F5F9'}},alignment:{horizontal:'center'}},
+  };
+  const hStyle  = {font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:'0052CC'}},alignment:{horizontal:'center',vertical:'center'}};
+  const tStyle  = {font:{bold:true,color:{rgb:'FFFFFF'},sz:12},fill:{fgColor:{rgb:'003380'}},alignment:{horizontal:'center'}};
+  const avgStyle = {font:{bold:true,sz:11,color:{rgb:'1E3A8A'}},fill:{fgColor:{rgb:'EFF6FF'}},alignment:{horizontal:'center'}};
+  const ctr     = {alignment:{horizontal:'center'}};
+
+  const wb = XLSX.utils.book_new();
+  const COLS = ['Rang','Animateur','Ville','Secteur','Team Lead','Présents','Absents','Malades','Récupe','Congé','Renfort','Non pointé','Jours évalués','Score /100','Grade'];
+  const WIDTHS = [{wch:6},{wch:26},{wch:14},{wch:26},{wch:22},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:12},{wch:14},{wch:12},{wch:14}];
+
+  // ── Sheets per period ──
+  PERIODS.forEach(({label, sheet, days}) => {
+    const cutoff = getCutoff(days);
+    const scores = activeAnims.map(a => computeAnimScore(a, pointages, cutoff)).sort((a,b)=>b.score-a.score||b.total-a.total);
+    const withData = scores.filter(a=>a.total>0);
+    const avg = withData.length>0 ? Math.round(withData.reduce((s,a)=>s+a.score,0)/withData.length) : 0;
+
+    const titleRow  = [`Scores & Performance — ${label} — ${scope} — ${dateLabel}`,...Array(COLS.length-1).fill('')];
+    const blankRow  = Array(COLS.length).fill('');
+    const dataRows  = scores.map((a,i) => {
+      const g = getGrade(a.score, a.total);
+      return [i+1, a.name, a.ville, a.sector, a.teamLead, a.present+a.renfort, a.absent, a.malade, a.recupe||0, a.conge||0, a.renfort||0, a.nonpointe||0, a.total, a.total>0?a.score:'—', g.label];
+    });
+    const avgRow = ['','SCORE MOYEN','','','','','','','','','','','',avg,''];
+
+    const wsData = [titleRow, blankRow, COLS, ...dataRows, blankRow, avgRow];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws['!cols'] = WIDTHS;
+    ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:COLS.length-1}}];
+
+    // Title row style
+    const titleCell = XLSX.utils.encode_cell({r:0,c:0});
+    if (ws[titleCell]) ws[titleCell].s = tStyle;
+
+    // Header row style (row index 2)
+    COLS.forEach((_,ci) => { const c=XLSX.utils.encode_cell({r:2,c:ci}); if(ws[c]) ws[c].s=hStyle; });
+
+    // Data rows
+    dataRows.forEach((row,ri) => {
+      const g = getGrade(scores[ri].score, scores[ri].total);
+      // Grade cell
+      const gc = XLSX.utils.encode_cell({r:ri+3,c:14});
+      if (ws[gc]) ws[gc].s = GRADE_FILL[g.label]||{};
+      // Score cell
+      const sc = XLSX.utils.encode_cell({r:ri+3,c:13});
+      if (ws[sc]) ws[sc].s = scores[ri].total>0 ? {font:{bold:true,sz:11,color:{rgb:g.color.replace('#','')}},alignment:{horizontal:'center'}} : {alignment:{horizontal:'center'},font:{color:{rgb:'94A3B8'}}};
+      // Rang cell center
+      const rc = XLSX.utils.encode_cell({r:ri+3,c:0});
+      if (ws[rc]) ws[rc].s = {font:{color:{rgb:'94A3B8'}},alignment:{horizontal:'center'}};
+      // Présents green
+      const pc = XLSX.utils.encode_cell({r:ri+3,c:5});
+      if (ws[pc]) ws[pc].s = {font:{bold:true,color:{rgb:'15803D'}},alignment:{horizontal:'center'}};
+      // Absents red
+      const ac = XLSX.utils.encode_cell({r:ri+3,c:6});
+      if (ws[ac]) ws[ac].s = {font:{color:{rgb:'DC2626'}},alignment:{horizontal:'center'}};
+      // Other stat cols center
+      [7,8,9,10,11,12].forEach(ci => {
+        const cc = XLSX.utils.encode_cell({r:ri+3,c:ci});
+        if (ws[cc]) ws[cc].s = ctr;
+      });
+    });
+
+    // Avg row style
+    const avgRowIdx = 3 + dataRows.length + 1;
+    COLS.forEach((_,ci) => { const c=XLSX.utils.encode_cell({r:avgRowIdx,c:ci}); if(ws[c]) ws[c].s=avgStyle; });
+
+    XLSX.utils.book_append_sheet(wb, ws, sheet);
+  });
+
+  // ── Résumé (comparaison 3 périodes) ──
+  const scores7  = activeAnims.map(a=>computeAnimScore(a,pointages,getCutoff(7)));
+  const scores30 = activeAnims.map(a=>computeAnimScore(a,pointages,getCutoff(30)));
+  const scores90 = activeAnims.map(a=>computeAnimScore(a,pointages,getCutoff(0)));
+
+  const resumeTitle = [`Résumé Comparatif — ${scope} — ${dateLabel}`,...Array(11).fill('')];
+  const resumeHdr   = ['Animateur','Ville','Secteur','Team Lead','Score 7j','Grade 7j','Score 30j','Grade 30j','Score 90j','Grade 90j','Évolution (7j vs 30j)','Jours total (30j)'];
+  const resumeRows  = activeAnims.map((a,i) => {
+    const s7  = scores7.find(x=>x.id===a.id)  || {score:0,total:0};
+    const s30 = scores30.find(x=>x.id===a.id) || {score:0,total:0};
+    const s90 = scores90.find(x=>x.id===a.id) || {score:0,total:0};
+    const evol = s7.total>0&&s30.total>0 ? (s7.score-s30.score>0?`+${s7.score-s30.score}`:String(s7.score-s30.score)) : '—';
+    return [a.name,a.ville,a.sector,a.teamLead,s7.total>0?s7.score:'—',getGrade(s7.score,s7.total).label,s30.total>0?s30.score:'—',getGrade(s30.score,s30.total).label,s90.total>0?s90.score:'—',getGrade(s90.score,s90.total).label,evol,s30.total];
+  }).sort((a,b)=>(typeof b[6]==='number'?b[6]:0)-(typeof a[6]==='number'?a[6]:0));
+
+  const wsR = XLSX.utils.aoa_to_sheet([resumeTitle,[],resumeHdr,...resumeRows]);
+  wsR['!cols']   = [{wch:26},{wch:14},{wch:26},{wch:22},{wch:10},{wch:13},{wch:10},{wch:13},{wch:10},{wch:13},{wch:20},{wch:14}];
+  wsR['!merges'] = [{s:{r:0,c:0},e:{r:0,c:11}}];
+  const rTitle = XLSX.utils.encode_cell({r:0,c:0});
+  if (wsR[rTitle]) wsR[rTitle].s = tStyle;
+  resumeHdr.forEach((_,ci) => { const c=XLSX.utils.encode_cell({r:2,c:ci}); if(wsR[c]) wsR[c].s=hStyle; });
+  resumeRows.forEach((row,ri) => {
+    [4,6,8].forEach((ci,pi) => {
+      const periods=[scores7,scores30,scores90];
+      const anim = activeAnims.find(a=>a.name===row[0]);
+      if (!anim) return;
+      const s = periods[pi].find(x=>x.id===anim.id)||{score:0,total:0};
+      const g = getGrade(s.score,s.total);
+      const sc = XLSX.utils.encode_cell({r:ri+3,c:ci});
+      if (wsR[sc]) wsR[sc].s={font:{bold:true,color:{rgb:g.color.replace('#','')}},alignment:{horizontal:'center'}};
+      const gc = XLSX.utils.encode_cell({r:ri+3,c:ci+1});
+      if (wsR[gc]) wsR[gc].s=GRADE_FILL[g.label]||{};
+    });
+    // Évolution coloring
+    const evolVal = row[10];
+    const ec = XLSX.utils.encode_cell({r:ri+3,c:10});
+    if (wsR[ec] && typeof evolVal==='string' && evolVal!=='—') {
+      wsR[ec].s = {font:{bold:true,color:{rgb:evolVal.startsWith('+')?'15803D':'DC2626'}},alignment:{horizontal:'center'}};
+    }
+  });
+  XLSX.utils.book_append_sheet(wb, wsR, 'Résumé Comparatif');
+
+  XLSX.writeFile(wb, `scores_performance_${fileDate}.xlsx`);
+}
+
 /* ── SCORES VIEW ── */
 const SCORE_POINTS = { present:100, renfort:100, recupe:65, conge:75, malade:50, absent:0, demission:0, nonpointe:null };
 const SCORE_GRADES = [
@@ -3881,6 +4019,11 @@ function ScoresView({ pointages, animateurs, accounts }) {
           <div className="section-title">Scores & Performance</div>
           <div className="section-sub">{withData.length} animateurs évalués · Score moyen : <strong>{avgScore}/100</strong></div>
         </div>
+        <button className="btn btn-ghost" onClick={() => exportScoresXLSX(animateurs, pointages, filterVille, filterTL)}
+          style={{display:'flex',alignItems:'center',gap:6,height:38,padding:'0 14px',border:'1.5px solid #BBF7D0',background:'#F0FDF4',color:'#15803D',fontWeight:700,fontSize:13,borderRadius:9,cursor:'pointer',fontFamily:'var(--font-sans)'}}>
+          <i data-lucide="download" style={{width:15,height:15}}></i>
+          Exporter Excel
+        </button>
       </div>
 
       {/* Filters */}
