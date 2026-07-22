@@ -2732,7 +2732,7 @@ function AddAnimateurMgrModal({ animateurs, accounts, onClose, onCreated }) {
 }
 
 /* ── IMPORT ANIMATEURS MODAL ── */
-function ImportAnimateursModal({ animateurs, accounts, onClose, onImported }) {
+function ImportAnimateursModal({ animateurs, accounts, demissionDateMap = {}, onClose, onImported }) {
   const [file,      setFile]      = useState(null);
   const [preview,   setPreview]   = useState(null);
   const [importing, setImporting] = useState(false);
@@ -3028,7 +3028,7 @@ function AnimateursView({ animateurs, accounts, pointages = [] }) {
       )}
       {showImport && (
         <ImportAnimateursModal
-          animateurs={animateurs} accounts={accounts}
+          animateurs={animateurs} accounts={accounts} demissionDateMap={demissionDateMap}
           onClose={() => setShowImport(false)}
           onImported={(upd, cre) => showToast(`Import réussi : ${upd} mis à jour · ${cre} créé${cre!==1?'s':''}`)} />
       )}
