@@ -2744,7 +2744,8 @@ function ImportAnimateursModal({ animateurs, accounts, onClose, onImported }) {
       ['TEAM LEAD','EMAIL','VILLE','NOM ANIMATEUR','SECTEUR','MATRICULE','TÉLÉPHONE','DÉMISSION','DATE DÉMISSION','MOTO','CONTRACT OP','DATE INTEGRATION'],
       ...sorted.map(a => {
         const acc = accounts.find(ac => ac.name === a.teamLead);
-        const dateDem = a.dateDemission ? a.dateDemission.split('-').reverse().join('/') : '';
+        const rawDem = a.dateDemission || demissionDateMap[a.id] || '';
+        const dateDem = rawDem ? rawDem.split('-').reverse().join('/') : '';
         return [a.teamLead, acc?.email || '', a.ville, a.name, a.sector, a.matricule||'', a.phone||'', a.actif === false ? 'Oui' : 'Non', dateDem, a.moto ? 'Oui' : 'Non', a.contractOp||'', a.dateIntegration||''];
       }),
     ];
@@ -2942,7 +2943,7 @@ function ImportAnimateursModal({ animateurs, accounts, onClose, onImported }) {
 }
 
 /* ── ANIMATEURS VIEW ── */
-function AnimateursView({ animateurs, accounts }) {
+function AnimateursView({ animateurs, accounts, pointages = [] }) {
   const [search,      setSearch]      = useState('');
   const [filterVille, setFilterVille] = useState('Toutes');
   const [filterTL,    setFilterTL]    = useState('Tous');
@@ -2952,6 +2953,18 @@ function AnimateursView({ animateurs, accounts }) {
   const [toast,       setToast]       = useState('');
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
+
+  // Retrouve la date de démission depuis l'historique des pointages (fallback pour anciens animateurs)
+  const demissionDateMap = useMemo(() => {
+    const map = {};
+    pointages.forEach(p => {
+      if (p.status !== 'demission' || !p.animateurId) return;
+      const iso = p.ts ? p.ts.split('T')[0] : (p.date ? dateToISO(p.date) : null);
+      if (!iso) return;
+      if (!map[p.animateurId] || iso > map[p.animateurId]) map[p.animateurId] = iso;
+    });
+    return map;
+  }, [pointages]);
 
   const teamLeadsForVille = useMemo(() => {
     const src = filterVille === 'Toutes' ? animateurs : animateurs.filter(a => a.ville === filterVille);
@@ -3158,7 +3171,8 @@ function AnimateursView({ animateurs, accounts }) {
                 <tbody>
                   {filteredInactiveAnims.map(anim => {
                     const color = CITY_COLORS[anim.ville] || '#64748B';
-                    const dateDepart = anim.dateDemission ? anim.dateDemission.split('-').reverse().join('/') : null;
+                    const rawDate = anim.dateDemission || demissionDateMap[anim.id] || null;
+                    const dateDepart = rawDate ? rawDate.split('-').reverse().join('/') : null;
                     return (
                       <tr key={anim.id} style={{opacity:0.7}}>
                         <td><span className="mono">{anim.id}</span></td>
@@ -6031,7 +6045,7 @@ function App() {
           {view === 'secteurs'   && (!isTL || tlHas('secteurs')) && <SectorsView secteurs={secteurs} villes={villes} readOnly={isTL} animateurs={allAnims} />}
           {view === 'accounts'   && !isTL && <AccountsView accounts={accounts} sessions={sessions} onRefresh={refresh} />}
           {view === 'tlaccess'   && !isTL && <TLAccessView accounts={accounts} />}
-          {view === 'animateurs' && <AnimateursView animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
+          {view === 'animateurs' && <AnimateursView animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} pointages={filteredPtgs} />}
           {view === 'carte'      && <MapView accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
           {view === 'activity'   && <ActivityView pointages={filteredPtgs} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
           {view === 'weekly'     && <WeeklyPresenceView pointages={filteredPtgs} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} animateurs={activeAnims} />}
