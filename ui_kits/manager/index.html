@@ -481,8 +481,11 @@ const ANIMATEURS_DB = [
 
 /* ── HELPERS ── */
 function avatarColor(str) { let h=0; for(let c of str) h=(h*31+c.charCodeAt(0))&0xFFFFFF; return AVATAR_PALETTE[Math.abs(h)%AVATAR_PALETTE.length]; }
-function initials(name) { const p=name.trim().split(/\s+/); return p.length>=2?(p[0][0]+p[1][0]).toUpperCase():name.substring(0,2).toUpperCase(); }
-
+function initials(name) {
+  if (!name || typeof name !== 'string') return '??';
+  const p = name.trim().split(/\s+/);
+  return p.length >= 2 ? (p[0][0] + p[1][0]).toUpperCase() : name.substring(0, 2).toUpperCase();
+}
 function parseKML(kmlText) {
   try {
     const doc = new DOMParser().parseFromString(kmlText, 'text/xml');
@@ -2987,7 +2990,7 @@ function AnimateursView({ animateurs, accounts, pointages = [] }) {
 
   const teamLeadsForVille = useMemo(() => {
     const src = filterVille === 'Toutes' ? animateurs : animateurs.filter(a => a.ville === filterVille);
-    return [...new Set(src.map(a => a.teamLead))].sort();
+    return [...new Set(src.map(a => a.teamLead).filter(Boolean))].sort();
   }, [animateurs, filterVille]);
 
   const activeAnims = useMemo(() => animateurs.filter(a => a.actif !== false), [animateurs]);
@@ -2996,7 +2999,7 @@ function AnimateursView({ animateurs, accounts, pointages = [] }) {
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return activeAnims.filter(a => {
-      const matchQ = !q || a.name.toLowerCase().includes(q) || a.sector.toLowerCase().includes(q);
+      const matchQ = !q ||(a.name||'').toLowerCase().includes(q) || (a.sector||'').toLowerCase().includes(q);
       const matchV = filterVille === 'Toutes' || a.ville === filterVille;
       const matchT = filterTL === 'Tous' || a.teamLead === filterTL;
       return matchQ && matchV && matchT;
@@ -3082,7 +3085,7 @@ function AnimateursView({ animateurs, accounts, pointages = [] }) {
             <select style={{height:36,padding:'0 10px',border:'1.5px solid var(--neutral-200)',borderRadius:8,fontSize:13,background:'white',fontFamily:'var(--font-sans)',cursor:'pointer'}}
               value={filterVille} onChange={e => { setFilterVille(e.target.value); setFilterTL('Tous'); }}>
               <option value="Toutes">Toutes les villes</option>
-              {[...new Set(animateurs.map(a=>a.ville))].sort().map(v => (
+              {[...new Set(animateurs.map(a=>a.ville))].filter(Boolean).sort().map(v => (
                 <option key={v} value={v}>{v} ({animateurs.filter(a=>a.ville===v).length})</option>
               ))}
             </select>
@@ -6603,7 +6606,11 @@ function App() {
     refAcc.on('value',   snap => { _accounts   = snap.exists() ? Object.values(snap.val()) : [];                                      setAccounts([..._accounts]); });
     refSes.on('value',   snap => { _sessions   = snap.exists() ? snap.val() : {};                                                     setSessions({..._sessions}); });
     refPtg.on('value',   snap => { _pointages  = snap.exists() ? Object.entries(snap.val()).map(([k,v]) => ({...(v||{}), _key:k})) : []; setPointages([..._pointages]); });
-    refAnim.on('value',  snap => { _animateurs = snap.exists() ? Object.values(snap.val()).sort((a,b) => a.id - b.id) : [...ANIMATEURS_DB]; setAnimateurs([..._animateurs]); });
+    refAnim.on('value',  snap => { _animateurs = snap.exists()
+  ? Object.values(snap.val())
+      .filter(a => a && a.id != null && a.name)  // ← filtre les null/invalides
+      .sort((a, b) => a.id - b.id)
+  : [...ANIMATEURS_DB]; setAnimateurs([..._animateurs]); });
     refSect.on('value',  snap => { setSecteurs(snap.exists() ? Object.values(snap.val()).sort((a,b) => (a.ville||'').localeCompare(b.ville||'') || (a.sector||'').localeCompare(b.sector||'')) : []); });
     refVille.on('value', snap => {
       const data = snap.exists() ? Object.values(snap.val()).filter(Boolean) : [];
