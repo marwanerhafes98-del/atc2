@@ -906,6 +906,7 @@ function EditAnimateurModal({ animateur, onClose, onSave, secteurs = [], villesD
     moto: animateur.moto || false,
     contractOp: animateur.contractOp || '',
     dateIntegration: animateur.dateIntegration || '',
+    anapec: animateur.anapec || false,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const villeSectors = secteurs.filter(s => s.ville === form.ville).map(s => s.sector).sort((a,b) => a.localeCompare(b));
@@ -1004,6 +1005,17 @@ function EditAnimateurModal({ animateur, onClose, onSave, secteurs = [], villesD
               <label className="form-label">Date d'intégration</label>
               <input className="form-input" type="date" value={form.dateIntegration}
                 onChange={e => set('dateIntegration', e.target.value)} />
+            </div>
+            <div className="form-group" style={{display:'flex',alignItems:'center',gap:12}}>
+              <label className="form-label" style={{margin:0}}>Éligible à l'ANAPEC</label>
+              <div style={{display:'flex',gap:8}}>
+                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:form.anapec?'#16A34A':'var(--neutral-500)'}}>
+                  <input type="radio" name="anapec_edit" checked={form.anapec===true} onChange={()=>set('anapec',true)} style={{accentColor:'#16A34A'}} /> Oui
+                </label>
+                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:!form.anapec?'#EF4444':'var(--neutral-500)'}}>
+                  <input type="radio" name="anapec_edit" checked={form.anapec===false} onChange={()=>set('anapec',false)} style={{accentColor:'#EF4444'}} /> Non
+                </label>
+              </div>
             </div>
           </div>
           <div className="modal-footer">
