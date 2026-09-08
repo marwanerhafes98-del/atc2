@@ -1138,7 +1138,7 @@ function AddAnimateurModal({ onClose, onAdd, defaultVille, secteurs = [], villes
   const cities = villesDB.length > 0 ? villesDB.map(v => v.name) : ['Agadir','Beni Mellal','Casablanca','Fes','Kenitra','Marrakech','Meknes','Nador','Oqba','oujda','Rabat','Tanger'];
   const [form, setForm] = useState({
     name: '', sector: '', ville: defaultVille || 'Casablanca',
-    phone: '', teamLead: '', matricule: '', moto: false, contractOp: '', dateIntegration: '',
+    phone: '', teamLead: '', matricule: '', moto: false, contractOp: '', dateIntegration: '', anapec: false,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const villeSectors = secteurs.filter(s => s.ville === form.ville).map(s => s.sector).sort((a,b) => a.localeCompare(b));
@@ -1237,6 +1237,17 @@ function AddAnimateurModal({ onClose, onAdd, defaultVille, secteurs = [], villes
               <label className="form-label">Date d'intégration</label>
               <input className="form-input" type="date" value={form.dateIntegration}
                 onChange={e => set('dateIntegration', e.target.value)} />
+            </div>
+            <div className="form-group" style={{display:'flex',alignItems:'center',gap:12}}>
+              <label className="form-label" style={{margin:0}}>Éligible à l'ANAPEC</label>
+              <div style={{display:'flex',gap:8}}>
+                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:form.anapec?'#16A34A':'var(--neutral-500)'}}>
+                  <input type="radio" name="anapec_add" checked={form.anapec===true} onChange={()=>set('anapec',true)} style={{accentColor:'#16A34A'}} /> Oui
+                </label>
+                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:!form.anapec?'#EF4444':'var(--neutral-500)'}}>
+                  <input type="radio" name="anapec_add" checked={form.anapec===false} onChange={()=>set('anapec',false)} style={{accentColor:'#EF4444'}} /> Non
+                </label>
+              </div>
             </div>
           </div>
           <div className="modal-footer">
@@ -1810,7 +1821,8 @@ function App() {
           note:      statusMap[a.id]?.note      || undefined,
         }));
       });
-      nextId.current = Math.max(...newBase.map(a => a.id), 124) + 1;
+      const numIds = newBase.map(a => Number(a.id)).filter(n => Number.isFinite(n) && n > 0);
+      nextId.current = (numIds.length > 0 ? Math.max(...numIds, 124) : 124) + 1;
     });
 
     // Écoute Firebase en temps réel pour restaurer/sync les pointages du jour
@@ -1947,6 +1959,8 @@ function App() {
       moto: form.moto || false,
       contractOp: form.contractOp || '',
       dateIntegration: form.dateIntegration || '',
+      anapec: form.anapec || false,
+      actif: true,
     };
     db.ref(`ptg/animateurs/${id}`).set(newAnim);
     setAnimateurs(prev => [...prev, { ...newAnim, status:'nonpointe', pointedAt:null, note:undefined }]);

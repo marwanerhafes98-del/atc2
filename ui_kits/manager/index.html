@@ -2562,6 +2562,7 @@ function EditAnimateurMgrModal({ animateur, animateurs, accounts, villes = [], o
     moto: animateur.moto || false,
     contractOp: animateur.contractOp || '',
     dateIntegration: animateur.dateIntegration || '',
+    anapec: animateur.anapec || false,
   });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -2586,6 +2587,7 @@ function EditAnimateurMgrModal({ animateur, animateurs, accounts, villes = [], o
       moto: form.moto || false,
       contractOp: form.contractOp || '',
       dateIntegration: form.dateIntegration || '',
+      anapec: form.anapec || false,
     });
     onSaved(); onClose();
   };
@@ -2639,6 +2641,17 @@ function EditAnimateurMgrModal({ animateur, animateurs, accounts, villes = [], o
             <div className="mg"><label>Date d'intégration</label>
               <input type="date" value={form.dateIntegration} onChange={e=>set('dateIntegration',e.target.value)} />
             </div>
+            <div className="mg" style={{display:'flex',alignItems:'center',gap:12}}>
+              <label style={{margin:0,fontWeight:700,fontSize:12,color:'var(--neutral-600)',textTransform:'uppercase',letterSpacing:'0.5px'}}>Éligible à l'ANAPEC</label>
+              <div style={{display:'flex',gap:10}}>
+                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:form.anapec?'#16A34A':'var(--neutral-500)'}}>
+                  <input type="radio" name="anapec_edit" checked={form.anapec===true} onChange={()=>set('anapec',true)} style={{accentColor:'#16A34A'}} /> Oui
+                </label>
+                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:!form.anapec?'#EF4444':'var(--neutral-500)'}}>
+                  <input type="radio" name="anapec_edit" checked={form.anapec===false} onChange={()=>set('anapec',false)} style={{accentColor:'#EF4444'}} /> Non
+                </label>
+              </div>
+            </div>
           </div>
           <div className="modal-ft">
             <button type="button" className="btn btn-ghost" onClick={onClose}>Annuler</button>
@@ -2655,7 +2668,7 @@ function EditAnimateurMgrModal({ animateur, animateurs, accounts, villes = [], o
 
 /* ── ADD ANIMATEUR MODAL (MANAGER) ── */
 function AddAnimateurMgrModal({ animateurs, accounts, onClose, onCreated }) {
-  const [form, setForm] = useState({ name:'', sector:'', ville:'Casablanca', teamLead:'', phone:'', moto:false, contractOp:'', dateIntegration:'' });
+  const [form, setForm] = useState({ name:'', sector:'', ville:'Casablanca', teamLead:'', phone:'', moto:false, contractOp:'', dateIntegration:'', anapec:false });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
   const set = (k,v) => setForm(f => ({...f,[k]:v}));
@@ -2676,13 +2689,16 @@ function AddAnimateurMgrModal({ animateurs, accounts, onClose, onCreated }) {
       setError('Nom, secteur et team lead sont obligatoires.'); return;
     }
     setSaving(true);
-    const maxId = animateurs.length > 0 ? Math.max(...animateurs.map(a => a.id)) : 124;
+    const numIds = animateurs.map(a => Number(a.id)).filter(n => Number.isFinite(n) && n > 0);
+    const maxId = numIds.length > 0 ? Math.max(...numIds) : 124;
     const newAnim = {
       id: maxId + 1, name: form.name.trim(), sector: form.sector.trim(),
       ville: form.ville, teamLead: form.teamLead, phone: form.phone || '',
       moto: form.moto || false,
       contractOp: form.contractOp || '',
       dateIntegration: form.dateIntegration || '',
+      anapec: form.anapec || false,
+      actif: true,
     };
     await LS.addAnimateur(newAnim);
     onCreated(); onClose();
@@ -2737,6 +2753,17 @@ function AddAnimateurMgrModal({ animateurs, accounts, onClose, onCreated }) {
             </div>
             <div className="mg"><label>Date d'intégration</label>
               <input type="date" value={form.dateIntegration} onChange={e=>set('dateIntegration',e.target.value)} />
+            </div>
+            <div className="mg" style={{display:'flex',alignItems:'center',gap:12}}>
+              <label style={{margin:0,fontWeight:700,fontSize:12,color:'var(--neutral-600)',textTransform:'uppercase',letterSpacing:'0.5px'}}>Éligible à l'ANAPEC</label>
+              <div style={{display:'flex',gap:10}}>
+                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:form.anapec?'#16A34A':'var(--neutral-500)'}}>
+                  <input type="radio" name="anapec_mgr_add" checked={form.anapec===true} onChange={()=>set('anapec',true)} style={{accentColor:'#16A34A'}} /> Oui
+                </label>
+                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:!form.anapec?'#EF4444':'var(--neutral-500)'}}>
+                  <input type="radio" name="anapec_mgr_add" checked={form.anapec===false} onChange={()=>set('anapec',false)} style={{accentColor:'#EF4444'}} /> Non
+                </label>
+              </div>
             </div>
           </div>
           <div className="modal-ft">
@@ -3106,7 +3133,7 @@ function AnimateursView({ animateurs, accounts, pointages = [] }) {
           <div className="tbl-scroll"><table className="tbl">
             <thead>
               <tr>
-                <th>#</th><th>Animateur</th><th>Secteur</th><th>Ville</th><th>Team Lead</th><th>Moto</th><th>Type de contrat</th><th>Date intégration</th><th>Ancienneté</th><th>Actions</th>
+                <th>#</th><th>Animateur</th><th>Secteur</th><th>Ville</th><th>Team Lead</th><th>Moto</th><th>Type de contrat</th><th>Date intégration</th><th>Ancienneté</th><th>ANAPEC</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -3152,6 +3179,12 @@ function AnimateursView({ animateurs, accounts, pointages = [] }) {
                           ? <span style={{display:'inline-flex',padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:'#EFF6FF',color:'#1D4ED8'}}>{anc}</span>
                           : <span style={{color:'var(--neutral-300)',fontSize:12}}>—</span>;
                       })()}
+                    </td>
+                    <td>
+                      {anim.anapec === true
+                        ? <span style={{display:'inline-flex',padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:'#DCFCE7',color:'#15803D'}}>✓ Éligible</span>
+                        : <span style={{fontSize:11,color:'var(--neutral-300)'}}>—</span>
+                      }
                     </td>
                     <td>
                       <div style={{display:'flex',gap:6}}>
