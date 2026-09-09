@@ -6931,8 +6931,8 @@ function ReservationsView() {
           const libelle = String(row['LIBELLE ATC+ Français'] || row['Libellé'] || row['LIBELLE'] || '').trim();
           const rayon   = String(row['RAYON'] || row['Rayon'] || '').trim();
           const famille = String(row['FAMILLE'] || row['Famille'] || '').trim();
-          const photo   = String(row['URL Photo'] || row['Photo'] || row['PHOTO'] || '').trim();
-          const logo    = String(row['URL Logo'] || row['Logo'] || row['LOGO'] || '').trim();
+          const photo   = String(row['Photos produits'] || row['Photo produits'] || row['photos produits'] || row['Photo produit'] || row['URL Photo'] || row['Photo'] || row['PHOTO'] || row['photo'] || row['image'] || row['IMAGE'] || '').trim();
+          const logo    = String(row['logos'] || row['Logo'] || row['logo'] || row['LOGO'] || row['Logo marque'] || row['URL Logo'] || row['LOGO URL'] || '').trim();
           if (!code) continue;
           batch[code] = { id: code, codeInterne: code, libelle, rayon, famille, photoUrl: photo, logoUrl: logo };
           count++;
@@ -7204,7 +7204,9 @@ function ReservationsView() {
                         <tr key={c.id} style={{borderBottom:'1px solid var(--neutral-100)'}}>
                           <td style={{padding:'8px 12px',width:40,fontSize:12,color:'var(--neutral-400)',fontWeight:700}}>{i+1}</td>
                           <td style={{padding:'8px 0',width:48}}>
-                            {c.photoUrl ? <img src={c.photoUrl} alt="" style={{width:40,height:40,objectFit:'contain',borderRadius:6,border:'1px solid var(--neutral-200)'}} /> : <div style={{width:40,height:40,background:'var(--neutral-100)',borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>📦</div>}
+                            <div style={{width:40,height:40,background:'var(--neutral-100)',borderRadius:6,border:'1px solid var(--neutral-200)',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',fontSize:18,flexShrink:0}}>
+                              {c.photoUrl ? <img src={c.photoUrl} alt="" style={{width:40,height:40,objectFit:'contain'}} onError={e=>{e.target.outerHTML='<span>📦</span>'}} /> : '📦'}
+                            </div>
                           </td>
                           <td style={{padding:'8px 12px'}}>
                             <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -7244,7 +7246,7 @@ function ReservationsView() {
           <div style={{background:'#fff',border:'1px solid var(--neutral-200)',borderRadius:10,padding:'20px',marginBottom:16}}>
             <div style={{fontWeight:800,fontSize:15,color:'var(--neutral-800)',marginBottom:6}}>Import Assortiment (Excel)</div>
             <div style={{fontSize:13,color:'var(--neutral-500)',marginBottom:14}}>
-              Colonnes : <strong>CODE INTERNE | LIBELLE ATC+ Français | RAYON | FAMILLE | URL Photo | URL Logo</strong>
+              Colonnes : <strong>CODE INTERNE | LIBELLE ATC+ Français | RAYON | FAMILLE | Photos produits | logos</strong>
             </div>
             <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
               <label style={{padding:'9px 18px',background:'#7C3AED',color:'#fff',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:8}}>
@@ -7291,7 +7293,7 @@ function ReservationsView() {
                   <div key={a.id} style={{background:'#fff',border:'1px solid var(--neutral-200)',borderRadius:10,overflow:'hidden',display:'flex',flexDirection:'column'}}>
                     <div style={{height:120,background:'var(--neutral-50)',display:'flex',alignItems:'center',justifyContent:'center',padding:12,position:'relative'}}>
                       {a.photoUrl
-                        ? <img src={a.photoUrl} alt={a.libelle} style={{maxHeight:'100%',maxWidth:'100%',objectFit:'contain'}} />
+                        ? <img src={a.photoUrl} alt={a.libelle} style={{maxHeight:'100%',maxWidth:'100%',objectFit:'contain'}} onError={e=>{e.target.outerHTML='<span style="font-size:40px">📦</span>'}} />
                         : <span style={{fontSize:40}}>📦</span>
                       }
                       {a.logoUrl && <img src={a.logoUrl} alt="" style={{position:'absolute',top:6,right:6,height:20,maxWidth:56,objectFit:'contain'}} />}
