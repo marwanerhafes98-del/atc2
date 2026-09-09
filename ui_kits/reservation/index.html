@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Outil Réservation ATC2</title>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --primary:#0052CC;--primary-dark:#003D99;--primary-light:#EFF6FF;
+  --green:#16A34A;--green-light:#DCFCE7;
+  --red:#DC2626;--red-light:#FEE2E2;
+  --orange:#D97706;--orange-light:#FEF3C7;
+  --neutral-50:#F8FAFC;--neutral-100:#F1F5F9;--neutral-200:#E2E8F0;
+  --neutral-300:#CBD5E1;--neutral-400:#94A3B8;--neutral-500:#64748B;
+  --neutral-600:#475569;--neutral-700:#334155;--neutral-800:#1E293B;
+  --radius:10px;--shadow:0 2px 12px rgba(0,0,0,.08);
+}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--neutral-50);color:var(--neutral-800);min-height:100vh}
+button{cursor:pointer;border:none;font-family:inherit}
+input,select{font-family:inherit}
+/* ── LOGIN ── */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#003380 0%,#0052CC 60%,#1D74E5 100%)}
+.login-card{background:#fff;border-radius:16px;padding:40px 36px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.login-logo{text-align:center;margin-bottom:28px}
+.login-logo-icon{width:56px;height:56px;background:var(--primary);border-radius:14px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px}
+.login-logo-icon svg{width:28px;height:28px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.login-title{font-size:20px;font-weight:800;color:var(--neutral-800)}
+.login-sub{font-size:13px;color:var(--neutral-500);margin-top:4px}
+.form-group{margin-bottom:16px}
+.form-label{display:block;font-size:12px;font-weight:700;color:var(--neutral-600);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.form-input{width:100%;border:1.5px solid var(--neutral-200);border-radius:8px;padding:10px 12px;font-size:14px;color:var(--neutral-800);transition:border-color .15s;outline:none;background:#fff}
+.form-input:focus{border-color:var(--primary)}
+.btn-login{width:100%;padding:12px;background:var(--primary);color:#fff;border-radius:8px;font-size:14px;font-weight:700;transition:background .15s;margin-top:8px}
+.btn-login:hover{background:var(--primary-dark)}
+.login-err{background:#FEE2E2;color:#991B1B;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;margin-top:12px;display:flex;align-items:center;gap:8px}
+/* ── LAYOUT ── */
+.app{min-height:100vh;display:flex;flex-direction:column}
+.topbar{background:#fff;border-bottom:1px solid var(--neutral-200);padding:0 20px;height:60px;display:flex;align-items:center;gap:12;position:sticky;top:0;z-index:100;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.topbar-brand{display:flex;align-items:center;gap:10px;flex:1}
+.topbar-icon{width:34px;height:34px;background:var(--primary);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.topbar-icon svg{width:18px;height:18px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.topbar-name{font-size:15px;font-weight:800;color:var(--neutral-800)}
+.topbar-zone{font-size:11px;font-weight:700;color:var(--primary);background:var(--primary-light);padding:3px 10px;border-radius:99px;border:1px solid #BFDBFE}
+.topbar-date{font-size:12px;color:var(--neutral-500);font-weight:500}
+.topbar-right{display:flex;align-items:center;gap:10px;margin-left:auto}
+.btn-logout{padding:7px 14px;background:var(--neutral-100);border:1px solid var(--neutral-200);border-radius:8px;font-size:12px;font-weight:700;color:var(--neutral-600);display:flex;align-items:center;gap:6px;transition:all .15s}
+.btn-logout:hover{background:var(--red-light);color:var(--red);border-color:#FECACA}
+.content{flex:1;padding:24px 20px;max-width:1100px;width:100%;margin:0 auto}
+/* ── CARDS ── */
+.card{background:#fff;border-radius:var(--radius);border:1px solid var(--neutral-200);box-shadow:var(--shadow);margin-bottom:20px;overflow:hidden}
+.card-header{padding:16px 20px;border-bottom:1px solid var(--neutral-100);display:flex;align-items:center;gap:10px}
+.card-title{font-size:15px;font-weight:800;color:var(--neutral-800)}
+.card-sub{font-size:12px;color:var(--neutral-500);margin-top:2px}
+.card-body{padding:20px}
+/* ── MAGASIN TABS ── */
+.mag-tabs{display:flex;gap:8px;flex-wrap:wrap;padding:16px 20px;border-bottom:1px solid var(--neutral-100)}
+.mag-tab{padding:6px 14px;border-radius:99px;font-size:12px;font-weight:700;border:1.5px solid var(--neutral-200);color:var(--neutral-600);background:#fff;transition:all .15s}
+.mag-tab:hover{border-color:var(--primary);color:var(--primary)}
+.mag-tab.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+.mag-tab-done{border-color:var(--green)!important;color:var(--green)!important}
+.mag-tab-done.active{background:var(--green)!important;border-color:var(--green)!important;color:#fff!important}
+/* ── ARTICLE TABLE ── */
+.art-table{width:100%;border-collapse:collapse}
+.art-table th{padding:10px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--neutral-500);background:var(--neutral-50);border-bottom:1px solid var(--neutral-200);text-align:left}
+.art-table td{padding:10px 14px;font-size:13px;border-bottom:1px solid var(--neutral-100);vertical-align:middle}
+.art-table tr:last-child td{border-bottom:none}
+.art-table tr:hover td{background:var(--neutral-50)}
+.art-name{font-weight:700;color:var(--neutral-800)}
+.cible-badge{display:inline-flex;align-items:center;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;background:var(--primary-light);color:var(--primary)}
+.input-pal{width:90px;border:1.5px solid var(--neutral-200);border-radius:8px;padding:7px 10px;font-size:14px;font-weight:700;color:var(--neutral-800);outline:none;text-align:center;transition:border-color .15s}
+.input-pal:focus{border-color:var(--primary)}
+.saved-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 12px;border-radius:99px;font-size:11px;font-weight:700;background:var(--green-light);color:var(--green)}
+.over-badge{background:#FEF3C7;color:#92400E}
+/* ── SAVE BAR ── */
+.save-bar{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--neutral-200);padding:14px 20px;display:flex;align-items:center;gap:12px;box-shadow:0 -4px 16px rgba(0,0,0,.08)}
+.btn-save{padding:10px 24px;background:var(--primary);color:#fff;border-radius:8px;font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;transition:background .15s}
+.btn-save:hover{background:var(--primary-dark)}
+.btn-save:disabled{background:var(--neutral-300);cursor:not-allowed}
+.save-msg{font-size:13px;color:var(--green);font-weight:700;display:flex;align-items:center;gap:6px}
+/* ── EMPTY ── */
+.empty-state{text-align:center;padding:60px 20px;color:var(--neutral-400)}
+.empty-icon{font-size:48px;margin-bottom:12px}
+.empty-text{font-size:15px;font-weight:600}
+.empty-sub{font-size:13px;margin-top:6px}
+/* ── HISTORY ── */
+.hist-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--neutral-100)}
+.hist-row:last-child{border-bottom:none}
+/* ── LOADER ── */
+.loader-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--neutral-50)}
+.spinner{width:44px;height:44px;border:4px solid var(--neutral-200);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* ── PROGRESS BAR ── */
+.progress-wrap{height:6px;background:var(--neutral-200);border-radius:99px;overflow:hidden;flex:1}
+.progress-bar{height:100%;background:var(--green);border-radius:99px;transition:width .3s}
+.progress-over{background:var(--orange)}
+@media(max-width:600px){
+  .content{padding:16px 12px}
+  .topbar{padding:0 12px}
+  .art-table th:nth-child(3),.art-table td:nth-child(3){display:none}
+}
+</style>
+</head>
+<body>
+<div id="root">
+  <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#F8FAFC">
+    <div style="text-align:center">
+      <div style="width:44px;height:44px;border:4px solid #E2E8F0;border-top-color:#0052CC;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px"></div>
+      <div style="color:#64748B;font-size:14px;font-weight:500">Chargement…</div>
+    </div>
+  </div>
+  <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+</div>
+<script>
+  firebase.initializeApp({
+    apiKey: "AIzaSyCfkKFashCIi045vY4M3m0SdlLRkbYkGfo",
+    authDomain: "pointage-801ec.firebaseapp.com",
+    databaseURL: "https://pointage-801ec-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "pointage-801ec",
+    storageBucket: "pointage-801ec.firebasestorage.app",
+    messagingSenderId: "999051005104",
+    appId: "1:999051005104:web:be4c97a86e1bacb7d4ff75"
+  });
+  const db = firebase.database();
+</script>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+/* ── helpers ── */
+const _dn = new Date();
+const TODAY_ISO = _dn.getFullYear() + '-' + String(_dn.getMonth()+1).padStart(2,'0') + '-' + String(_dn.getDate()).padStart(2,'0');
+const TODAY_FR  = _dn.toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+}
+
+/* ── SVG icons ── */
+const IconPkg  = () => <svg viewBox="0 0 24 24"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>;
+const IconLogout = () => <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
+const IconCheck = () => <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>;
+const IconSave  = () => <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>;
+
+/* ══════════════ LOGIN ══════════════ */
+function LoginView({ onLogin }) {
+  const [login, setLogin]   = useState('');
+  const [pass, setPass]     = useState('');
+  const [err, setErr]       = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!login.trim() || !pass.trim()) { setErr('Identifiant et mot de passe requis.'); return; }
+    setLoading(true); setErr('');
+    try {
+      const snap = await db.ref('ptg/reservUsers').once('value');
+      const users = snap.val() ? Object.values(snap.val()) : [];
+      const user = users.find(u => u.login === login.trim() && u.password === pass.trim() && u.actif !== false);
+      if (!user) { setErr('Identifiant ou mot de passe incorrect.'); setLoading(false); return; }
+      const session = { id: user.id, name: user.name, login: user.login, zone: user.zone };
+      localStorage.setItem('ptg_resv_session', JSON.stringify(session));
+      onLogin(session);
+    } catch(ex) {
+      setErr('Erreur de connexion. Vérifiez votre connexion internet.');
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="login-wrap">
+      <div className="login-card">
+        <div className="login-logo">
+          <div className="login-logo-icon">
+            <IconPkg />
+          </div>
+          <div className="login-title">Outil Réservation</div>
+          <div className="login-sub">ATC2 — Accès chef d'équipe ops</div>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label className="form-label">Identifiant</label>
+            <input className="form-input" value={login} onChange={e=>setLogin(e.target.value)} placeholder="ex: chef.ainsebaa" autoComplete="username" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Mot de passe</label>
+            <input className="form-input" type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••••" autoComplete="current-password" />
+          </div>
+          {err && <div className="login-err">⚠ {err}</div>}
+          <button className="btn-login" type="submit" disabled={loading}>{loading ? 'Connexion…' : 'Se connecter'}</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════ ARTICLE TABLE ══════════════ */
+function ArticleTable({ magasin, cibles, todayRevs, onSave, saving, savedAt }) {
+  const [inputs, setInputs] = useState({});
+  const [dirty, setDirty]   = useState(false);
+
+  useEffect(() => {
+    const init = {};
+    cibles.forEach(c => {
+      const rev = todayRevs.find(r => r.article === c.article && r.magasin === magasin);
+      init[c.article] = rev ? String(rev.palettes) : '';
+    });
+    setInputs(init);
+    setDirty(false);
+  }, [magasin, cibles, todayRevs]);
+
+  const setVal = (art, val) => {
+    if (val !== '' && (isNaN(val) || Number(val) < 0)) return;
+    setInputs(prev => ({ ...prev, [art]: val }));
+    setDirty(true);
+  };
+
+  const handleSave = () => {
+    const entries = cibles
+      .filter(c => inputs[c.article] !== '' && inputs[c.article] !== undefined)
+      .map(c => ({ article: c.article, magasin, palettes: Number(inputs[c.article]), cible: c.ciblePalettes }));
+    onSave(entries);
+    setDirty(false);
+  };
+
+  if (cibles.length === 0) return (
+    <div className="empty-state">
+      <div className="empty-icon">📦</div>
+      <div className="empty-text">Aucun article configuré</div>
+      <div className="empty-sub">pour {magasin}</div>
+    </div>
+  );
+
+  const totalSaved = cibles.filter(c => {
+    const rev = todayRevs.find(r => r.article === c.article && r.magasin === magasin);
+    return rev;
+  }).length;
+
+  return (
+    <div>
+      <div style={{padding:'10px 20px',background:'var(--neutral-50)',borderBottom:'1px solid var(--neutral-100)',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+        <span style={{fontSize:13,fontWeight:700,color:'var(--neutral-700)'}}>{magasin}</span>
+        <span style={{fontSize:12,color:'var(--neutral-500)'}}>{totalSaved}/{cibles.length} articles remplis</span>
+        <div className="progress-wrap" style={{maxWidth:160}}>
+          <div className="progress-bar" style={{width: cibles.length ? (totalSaved/cibles.length*100)+'%' : '0%'}}></div>
+        </div>
+        {savedAt && <span style={{fontSize:11,color:'var(--green)',fontWeight:700,marginLeft:'auto'}}>✓ Enregistré à {savedAt}</span>}
+      </div>
+      <div style={{overflowX:'auto'}}>
+        <table className="art-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Article</th>
+              <th>Cible (palettes)</th>
+              <th>Réservé aujourd'hui</th>
+              <th>Saisir palettes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cibles.map((c, i) => {
+              const rev = todayRevs.find(r => r.article === c.article && r.magasin === magasin);
+              const val = inputs[c.article] ?? '';
+              const num = val !== '' ? Number(val) : null;
+              const isOver = num !== null && num > c.ciblePalettes;
+              return (
+                <tr key={c.article}>
+                  <td style={{color:'var(--neutral-400)',fontWeight:700,width:40}}>{i+1}</td>
+                  <td><span className="art-name">{c.article}</span></td>
+                  <td><span className="cible-badge">{c.ciblePalettes} pal.</span></td>
+                  <td>
+                    {rev
+                      ? <span className={'saved-badge' + (rev.palettes > c.ciblePalettes ? ' over-badge' : '')}>
+                          {rev.palettes > c.ciblePalettes ? '⚠ ' : '✓ '}{rev.palettes} pal.
+                          {rev.palettes > c.ciblePalettes && <span style={{fontWeight:400,marginLeft:4}}>/ cible {c.ciblePalettes}</span>}
+                        </span>
+                      : <span style={{fontSize:12,color:'var(--neutral-300)'}}>—</span>
+                    }
+                  </td>
+                  <td>
+                    <input
+                      className="input-pal"
+                      type="number"
+                      min="0"
+                      value={val}
+                      onChange={e => setVal(c.article, e.target.value)}
+                      placeholder="0"
+                      style={isOver ? {borderColor:'var(--orange)',color:'var(--orange)'} : {}}
+                    />
+                    {isOver && <span style={{fontSize:10,color:'var(--orange)',fontWeight:700,marginLeft:6}}>↑ au-delà de la cible</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="save-bar">
+        <button className="btn-save" onClick={handleSave} disabled={saving || !dirty}>
+          <IconSave />
+          {saving ? 'Enregistrement…' : 'Enregistrer'}
+        </button>
+        {!dirty && totalSaved > 0 && (
+          <span className="save-msg"><IconCheck />{totalSaved} article{totalSaved>1?'s':''} enregistré{totalSaved>1?'s':''}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════ MAIN APP ══════════════ */
+function App() {
+  const [session, setSession]     = useState(() => {
+    try { return JSON.parse(localStorage.getItem('ptg_resv_session') || 'null'); } catch { return null; }
+  });
+  const [cibles, setCibles]       = useState([]);
+  const [reservations, setResvs]  = useState([]);
+  const [selMag, setSelMag]       = useState(null);
+  const [saving, setSaving]       = useState(false);
+  const [savedAt, setSavedAt]     = useState({});
+  const [loading, setLoading]     = useState(true);
+
+  /* load data */
+  useEffect(() => {
+    if (!session) { setLoading(false); return; }
+    let unsub1, unsub2;
+    const ref1 = db.ref('ptg/reservCibles');
+    unsub1 = ref1.on('value', snap => {
+      const data = snap.val() ? Object.values(snap.val()) : [];
+      setCibles(data.filter(c => c.zone === session.zone));
+    });
+    const ref2 = db.ref('ptg/reservations');
+    unsub2 = ref2.on('value', snap => {
+      const data = snap.val() ? Object.values(snap.val()) : [];
+      setResvs(data.filter(r => r.zone === session.zone && r.date === TODAY_ISO));
+      setLoading(false);
+    });
+    return () => { ref1.off('value', unsub1); ref2.off('value', unsub2); };
+  }, [session]);
+
+  /* magasins for this zone */
+  const magasins = useMemo(() => [...new Set(cibles.map(c => c.magasin))].sort(), [cibles]);
+
+  useEffect(() => {
+    if (magasins.length > 0 && !selMag) setSelMag(magasins[0]);
+  }, [magasins]);
+
+  const ciblesForMag = useMemo(() => cibles.filter(c => c.magasin === selMag), [cibles, selMag]);
+
+  const isMagDone = (mag) => {
+    const arts = cibles.filter(c => c.magasin === mag);
+    return arts.length > 0 && arts.every(c => reservations.some(r => r.article === c.article && r.magasin === mag));
+  };
+
+  const handleSave = async (entries) => {
+    if (!session || entries.length === 0) return;
+    setSaving(true);
+    const batch = {};
+    const now = new Date().toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+    for (const e of entries) {
+      /* check if existing reservation for this article+magasin+date */
+      const existing = reservations.find(r => r.article === e.article && r.magasin === e.magasin);
+      const key = existing ? existing.id : uid();
+      batch[key] = {
+        id: key,
+        userId: session.id,
+        userName: session.name,
+        zone: session.zone,
+        magasin: e.magasin,
+        article: e.article,
+        palettes: e.palettes,
+        cible: e.cible,
+        date: TODAY_ISO,
+        updatedAt: now,
+        createdAt: existing ? (existing.createdAt || now) : now,
+      };
+    }
+    await db.ref('ptg/reservations').update(batch);
+    setSavedAt(prev => ({ ...prev, [selMag]: new Date().toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' }) }));
+    setSaving(false);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('ptg_resv_session');
+    setSession(null);
+  };
+
+  if (!session) return <LoginView onLogin={setSession} />;
+
+  if (loading) return (
+    <div className="loader-wrap">
+      <div style={{textAlign:'center'}}>
+        <div className="spinner"></div>
+        <div style={{color:'var(--neutral-500)',fontSize:14,fontWeight:500,marginTop:16}}>Chargement…</div>
+      </div>
+    </div>
+  );
+
+  const totalArts  = cibles.length;
+  const doneArts   = reservations.length;
+  const pct        = totalArts > 0 ? Math.round(doneArts / totalArts * 100) : 0;
+
+  return (
+    <div className="app">
+      {/* ── TOP BAR ── */}
+      <div className="topbar">
+        <div className="topbar-brand">
+          <div className="topbar-icon"><IconPkg /></div>
+          <div>
+            <div className="topbar-name">Outil Réservation</div>
+            <div style={{fontSize:11,color:'var(--neutral-400)',marginTop:1}}>ATC2</div>
+          </div>
+          <span className="topbar-zone">{session.zone}</span>
+        </div>
+        <div className="topbar-right">
+          <span className="topbar-date">{TODAY_FR}</span>
+          <button className="btn-logout" onClick={handleLogout}><IconLogout />Déconnexion</button>
+        </div>
+      </div>
+
+      <div className="content">
+        {/* ── STATS BAR ── */}
+        <div style={{display:'flex',gap:12,marginBottom:20,flexWrap:'wrap'}}>
+          <div className="card" style={{flex:'1 1 160px',margin:0}}>
+            <div style={{padding:'14px 18px'}}>
+              <div style={{fontSize:11,fontWeight:700,color:'var(--neutral-500)',textTransform:'uppercase',letterSpacing:.5,marginBottom:6}}>Articles configurés</div>
+              <div style={{fontSize:28,fontWeight:800,color:'var(--neutral-800)'}}>{totalArts}</div>
+              <div style={{fontSize:11,color:'var(--neutral-400)',marginTop:2}}>pour {magasins.length} magasin{magasins.length>1?'s':''}</div>
+            </div>
+          </div>
+          <div className="card" style={{flex:'1 1 160px',margin:0}}>
+            <div style={{padding:'14px 18px'}}>
+              <div style={{fontSize:11,fontWeight:700,color:'var(--neutral-500)',textTransform:'uppercase',letterSpacing:.5,marginBottom:6}}>Réservations aujourd'hui</div>
+              <div style={{fontSize:28,fontWeight:800,color:doneArts===totalArts&&totalArts>0?'var(--green)':'var(--primary)'}}>{doneArts}</div>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginTop:6}}>
+                <div className="progress-wrap">
+                  <div className="progress-bar" style={{width:pct+'%',background:pct===100?'var(--green)':'var(--primary)'}}></div>
+                </div>
+                <span style={{fontSize:11,fontWeight:700,color:'var(--neutral-500)',whiteSpace:'nowrap'}}>{pct}%</span>
+              </div>
+            </div>
+          </div>
+          <div className="card" style={{flex:'1 1 160px',margin:0}}>
+            <div style={{padding:'14px 18px'}}>
+              <div style={{fontSize:11,fontWeight:700,color:'var(--neutral-500)',textTransform:'uppercase',letterSpacing:.5,marginBottom:6}}>Connecté en tant que</div>
+              <div style={{fontSize:16,fontWeight:800,color:'var(--neutral-800)'}}>{session.name}</div>
+              <div style={{fontSize:12,color:'var(--neutral-400)',marginTop:2}}>Zone : {session.zone}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── RESERVATIONS CARD ── */}
+        {magasins.length === 0 ? (
+          <div className="card">
+            <div className="empty-state">
+              <div className="empty-icon">📭</div>
+              <div className="empty-text">Aucun article configuré pour votre zone</div>
+              <div className="empty-sub">Contactez le manager pour importer la liste des cibles</div>
+            </div>
+          </div>
+        ) : (
+          <div className="card" style={{marginBottom:80}}>
+            <div className="card-header">
+              <span style={{fontSize:18}}>📦</span>
+              <div>
+                <div className="card-title">Réservations — {TODAY_FR}</div>
+                <div className="card-sub">Zone : {session.zone} — Saisir les palettes réservées par article</div>
+              </div>
+            </div>
+            {/* magasin tabs */}
+            <div className="mag-tabs">
+              {magasins.map(mag => (
+                <button
+                  key={mag}
+                  className={'mag-tab' + (selMag===mag?' active':'') + (isMagDone(mag)?' mag-tab-done':'')}
+                  onClick={() => setSelMag(mag)}
+                >
+                  {isMagDone(mag) && selMag!==mag && <span style={{marginRight:4}}>✓</span>}
+                  {mag}
+                </button>
+              ))}
+            </div>
+            {selMag && (
+              <ArticleTable
+                key={selMag}
+                magasin={selMag}
+                cibles={ciblesForMag}
+                todayRevs={reservations}
+                onSave={handleSave}
+                saving={saving}
+                savedAt={savedAt[selMag]}
+              />
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.render(<App />, document.getElementById('root'));
+</script>
+</body>
+</html>

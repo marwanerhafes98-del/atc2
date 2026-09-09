@@ -6744,9 +6744,10 @@ function App() {
     { key:'overlaps',   icon:'git-merge',        label:'Correction Overlaps',  badge:0 },
     { key:'geozone',    icon:'map',              label:'Geo Zoning',           badge:0 },
     { key:'polygones',  icon:'layers',           label:'Cartographie',         badge:0 },
-    { key:'scores',     icon:'award',            label:'Scores',               badge:0 },
-    { key:'watchlist',  icon:'alert-triangle',   label:'À surveiller',         badge:0 },
-    { key:'sectscores', icon:'pie-chart',        label:'Scoring Secteurs',     badge:0 },
+    { key:'scores',       icon:'award',            label:'Scores',               badge:0 },
+    { key:'watchlist',   icon:'alert-triangle',   label:'À surveiller',         badge:0 },
+    { key:'sectscores',  icon:'pie-chart',        label:'Scoring Secteurs',     badge:0 },
+    { key:'reservations',icon:'package',          label:'Réservations',         badge:0 },
   ];
 
   const handleLogout = () => { localStorage.removeItem('ptg_manager_session'); setSession(null); setSidebarOpen(false); };
@@ -6843,10 +6844,410 @@ function App() {
           {view === 'geozone'    && <GeoZoningView />}
           {view === 'polygones'  && <KmlMapView pointages={filteredPtgs} animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} isTL={isTL} />}
           {view === 'scores'     && <ScoresView pointages={filteredPtgs} animateurs={allAnims} accounts={isTL ? accounts.filter(a=>a.email===session.email) : accounts} />}
-          {view === 'watchlist'  && <WatchListView pointages={filteredPtgs} animateurs={allAnims} />}
-          {view === 'sectscores' && <SectorScoresView pointages={filteredPtgs} animateurs={allAnims} secteurs={secteurs} />}
+          {view === 'watchlist'    && <WatchListView pointages={filteredPtgs} animateurs={allAnims} />}
+          {view === 'sectscores'   && <SectorScoresView pointages={filteredPtgs} animateurs={allAnims} secteurs={secteurs} />}
+          {view === 'reservations' && !isTL && <ReservationsView />}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════
+   RESERVATIONS VIEW
+   ════════════════════════════════════════════ */
+function ReservationsView() {
+  const [tab, setTab]           = useState('suivi');
+  const [users, setUsers]       = useState([]);
+  const [cibles, setCibles]     = useState([]);
+  const [reservations, setResvs] = useState([]);
+
+  /* filters */
+  const [fZone, setFZone]       = useState('Toutes');
+  const [fMag, setFMag]         = useState('Tous');
+  const [fDate, setFDate]       = useState(DASH_TODAY_ISO);
+
+  /* user form */
+  const [showUserForm, setShowUserForm] = useState(false);
+  const [editUser, setEditUser]         = useState(null);
+  const [userForm, setUserForm]         = useState({ name:'', login:'', password:'', zone:'', actif:true });
+  const [userMsg, setUserMsg]           = useState('');
+
+  /* import */
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState('');
+  const fileRef = useRef(null);
+
+  /* load */
+  useEffect(() => {
+    const r1 = db.ref('ptg/reservUsers');
+    const h1 = r1.on('value', s => setUsers(s.val() ? Object.values(s.val()) : []));
+    const r2 = db.ref('ptg/reservCibles');
+    const h2 = r2.on('value', s => setCibles(s.val() ? Object.values(s.val()) : []));
+    const r3 = db.ref('ptg/reservations');
+    const h3 = r3.on('value', s => setResvs(s.val() ? Object.values(s.val()) : []));
+    return () => { r1.off('value',h1); r2.off('value',h2); r3.off('value',h3); };
+  }, []);
+
+  /* derived */
+  const zones   = useMemo(() => [...new Set(cibles.map(c=>c.zone).filter(Boolean))].sort(), [cibles]);
+  const magasins = useMemo(() => {
+    const src = fZone !== 'Toutes' ? cibles.filter(c=>c.zone===fZone) : cibles;
+    return [...new Set(src.map(c=>c.magasin).filter(Boolean))].sort();
+  }, [cibles, fZone]);
+
+  const filteredRevs = useMemo(() => reservations.filter(r =>
+    (fZone === 'Toutes' || r.zone === fZone) &&
+    (fMag  === 'Tous'   || r.magasin === fMag) &&
+    r.date === fDate
+  ), [reservations, fZone, fMag, fDate]);
+
+  /* ── IMPORT EXCEL ── */
+  const handleImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setImporting(true); setImportMsg('');
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type:'binary' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval:'' });
+        if (rows.length === 0) { setImportMsg('❌ Fichier vide ou format invalide.'); setImporting(false); return; }
+        const batch = {};
+        let count = 0;
+        for (const row of rows) {
+          const zone    = String(row['Zone'] || row['ZONE'] || '').trim();
+          const magasin = String(row['Magasin'] || row['MAGASIN'] || '').trim();
+          const article = String(row['Article'] || row['ARTICLE'] || '').trim();
+          const cible   = Number(row['Cible'] || row['CIBLE'] || row['Cible (palettes)'] || 0);
+          if (!zone || !magasin || !article) continue;
+          const key = zone + '_' + magasin + '_' + article;
+          batch[key] = { id: key, zone, magasin, article, ciblePalettes: cible, uploadedAt: DASH_TODAY_ISO };
+          count++;
+        }
+        if (count === 0) { setImportMsg('❌ Aucune ligne valide. Vérifiez les colonnes Zone, Magasin, Article, Cible.'); setImporting(false); return; }
+        await db.ref('ptg/reservCibles').set(batch);
+        setImportMsg('✅ ' + count + ' articles importés avec succès.');
+      } catch(ex) {
+        setImportMsg('❌ Erreur lors de la lecture du fichier : ' + ex.message);
+      }
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = '';
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  /* ── USER CRUD ── */
+  const openAddUser = () => {
+    setEditUser(null);
+    setUserForm({ name:'', login:'', password:'', zone:'', actif:true });
+    setShowUserForm(true); setUserMsg('');
+  };
+  const openEditUser = (u) => {
+    setEditUser(u);
+    setUserForm({ name:u.name, login:u.login, password:u.password, zone:u.zone, actif:u.actif !== false });
+    setShowUserForm(true); setUserMsg('');
+  };
+  const saveUser = async () => {
+    if (!userForm.name.trim() || !userForm.login.trim() || !userForm.password.trim() || !userForm.zone.trim()) {
+      setUserMsg('❌ Tous les champs sont requis.'); return;
+    }
+    const existing = users.find(u => u.login === userForm.login.trim() && (!editUser || u.id !== editUser.id));
+    if (existing) { setUserMsg('❌ Cet identifiant est déjà utilisé.'); return; }
+    const id = editUser ? editUser.id : 'u_' + Date.now().toString(36);
+    await db.ref('ptg/reservUsers/' + id).set({ id, name:userForm.name.trim(), login:userForm.login.trim(), password:userForm.password.trim(), zone:userForm.zone.trim(), actif:userForm.actif });
+    setShowUserForm(false); setUserMsg('');
+  };
+  const toggleUser = (u) => db.ref('ptg/reservUsers/' + u.id).update({ actif: u.actif === false ? true : false });
+  const deleteUser = (u) => { if (confirm('Supprimer ' + u.name + ' ?')) db.ref('ptg/reservUsers/' + u.id).remove(); };
+
+  /* ── EXPORT EXCEL SUIVI ── */
+  const handleExportSuivi = () => {
+    const dateLabel = new Date(fDate + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+    const HEADERS = ['Date','Zone','Magasin','Article','Palettes réservées','Cible','Statut','Chef d\'équipe','Heure'];
+    const rows = filteredRevs.map(r => [
+      r.date, r.zone, r.magasin, r.article, r.palettes, r.cible || '',
+      r.palettes >= (r.cible || 0) ? 'Atteinte' : 'En cours',
+      r.userName || '', r.updatedAt || ''
+    ]);
+    const aoa = [
+      ['RAPPORT RÉSERVATIONS — ATC2', ...Array(HEADERS.length-1).fill('')],
+      [dateLabel, ...Array(HEADERS.length-1).fill('')],
+      [(fZone!=='Toutes'?'Zone: '+fZone:'Toutes zones') + (fMag!=='Tous'?' | Magasin: '+fMag:''), ...Array(HEADERS.length-1).fill('')],
+      Array(HEADERS.length).fill(''),
+      HEADERS,
+      ...rows,
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const hS = { font:{bold:true,sz:11,color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'0052CC'}}, alignment:{horizontal:'center',vertical:'center',wrapText:true} };
+    const tS = { font:{bold:true,sz:14,color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'003580'}}, alignment:{horizontal:'center',vertical:'center'} };
+    ['A1','B1','C1','D1','E1','F1','G1','H1','I1'].slice(0,HEADERS.length).forEach(c => { const cell = ws[c.replace('1','5')]; if(cell) cell.s = hS; });
+    ws['A1'] && (ws['A1'].s = tS);
+    ws['!merges'] = [
+      {s:{r:0,c:0},e:{r:0,c:HEADERS.length-1}},
+      {s:{r:1,c:0},e:{r:1,c:HEADERS.length-1}},
+      {s:{r:2,c:0},e:{r:2,c:HEADERS.length-1}},
+    ];
+    ws['!cols'] = [10,14,18,22,14,10,12,18,10].map(w=>({wch:w}));
+    HEADERS.forEach((_,i) => {
+      const cell = ws[XLSX.utils.encode_cell({r:4,c:i})];
+      if (cell) cell.s = hS;
+    });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Réservations');
+    XLSX.writeFile(wb, 'reservations_' + fDate + '.xlsx');
+  };
+
+  /* ── UI helpers ── */
+  const setUF = (k,v) => setUserForm(p => ({...p,[k]:v}));
+
+  const tabStyle = (t) => ({
+    padding:'8px 18px', border:'none', borderRadius:8, fontWeight:700, fontSize:13, cursor:'pointer',
+    background: tab===t ? 'var(--primary)' : 'var(--neutral-100)',
+    color: tab===t ? '#fff' : 'var(--neutral-600)',
+    transition:'all .15s',
+  });
+
+  return (
+    <div>
+      <div style={{marginBottom:20,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+        <div style={{flex:1}}>
+          <h2 style={{fontSize:22,fontWeight:800,color:'var(--neutral-800)'}}>Réservations</h2>
+          <p style={{fontSize:13,color:'var(--neutral-500)',marginTop:4}}>Gestion des cibles, des comptes chefs d'équipe ops et suivi des réservations</p>
+        </div>
+      </div>
+
+      {/* ── TAB NAV ── */}
+      <div style={{display:'flex',gap:8,marginBottom:20,flexWrap:'wrap'}}>
+        <button style={tabStyle('suivi')}    onClick={()=>setTab('suivi')}>📊 Suivi global</button>
+        <button style={tabStyle('cibles')}   onClick={()=>setTab('cibles')}>📦 Cibles & Import</button>
+        <button style={tabStyle('comptes')}  onClick={()=>setTab('comptes')}>👤 Comptes chefs</button>
+      </div>
+
+      {/* ══ SUIVI TAB ══ */}
+      {tab === 'suivi' && (
+        <div>
+          {/* stat cards */}
+          <div style={{display:'flex',gap:12,marginBottom:20,flexWrap:'wrap'}}>
+            {['Toutes',...zones].map(z => {
+              const zRevs = z==='Toutes' ? reservations.filter(r=>r.date===fDate) : reservations.filter(r=>r.zone===z&&r.date===fDate);
+              const zArts = z==='Toutes' ? cibles.length : cibles.filter(c=>c.zone===z).length;
+              const pct = zArts>0 ? Math.round(zRevs.length/zArts*100) : 0;
+              return (
+                <div key={z} style={{background:'#fff',border:'1px solid var(--neutral-200)',borderRadius:10,padding:'14px 18px',minWidth:140,flex:'1 1 140px',cursor:'pointer',boxShadow:fZone===z?'0 0 0 2px var(--primary)':undefined}} onClick={()=>{setFZone(z);setFMag('Tous');}}>
+                  <div style={{fontSize:11,fontWeight:700,color:'var(--neutral-500)',textTransform:'uppercase',letterSpacing:.5,marginBottom:6}}>{z==='Toutes'?'Toutes zones':z}</div>
+                  <div style={{fontSize:24,fontWeight:800,color:pct===100?'var(--green)':'var(--primary)'}}>{pct}%</div>
+                  <div style={{fontSize:11,color:'var(--neutral-400)',marginTop:2}}>{zRevs.length}/{zArts} articles</div>
+                  <div style={{height:4,background:'var(--neutral-200)',borderRadius:99,marginTop:6}}>
+                    <div style={{height:'100%',width:pct+'%',background:pct===100?'var(--green)':'var(--primary)',borderRadius:99}}></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* filters */}
+          <div style={{background:'#fff',border:'1px solid var(--neutral-200)',borderRadius:10,padding:'12px 16px',display:'flex',gap:10,flexWrap:'wrap',alignItems:'center',marginBottom:16}}>
+            <input type="date" value={fDate} max={DASH_TODAY_ISO} onChange={e=>{ if(e.target.value) setFDate(e.target.value); }} style={{border:'1.5px solid var(--neutral-200)',borderRadius:7,padding:'7px 10px',fontSize:13,fontWeight:600,outline:'none'}} />
+            <select value={fZone} onChange={e=>{setFZone(e.target.value);setFMag('Tous');}} style={{border:'1.5px solid var(--neutral-200)',borderRadius:7,padding:'7px 12px',fontSize:13,fontWeight:600,outline:'none'}}>
+              <option value="Toutes">Toutes les zones</option>
+              {zones.map(z=><option key={z} value={z}>{z}</option>)}
+            </select>
+            <select value={fMag} onChange={e=>setFMag(e.target.value)} style={{border:'1.5px solid var(--neutral-200)',borderRadius:7,padding:'7px 12px',fontSize:13,fontWeight:600,outline:'none'}}>
+              <option value="Tous">Tous les magasins</option>
+              {magasins.map(m=><option key={m} value={m}>{m}</option>)}
+            </select>
+            <div style={{marginLeft:'auto'}}>
+              <button onClick={handleExportSuivi} style={{padding:'8px 16px',background:'#16A34A',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:6}}>
+                ⬇ Export Excel
+              </button>
+            </div>
+          </div>
+
+          {/* table */}
+          <div style={{background:'#fff',border:'1px solid var(--neutral-200)',borderRadius:10,overflow:'hidden'}}>
+            <div style={{overflowX:'auto'}}>
+              <table style={{width:'100%',borderCollapse:'collapse'}}>
+                <thead>
+                  <tr style={{background:'var(--neutral-50)'}}>
+                    {['Zone','Magasin','Article','Cible','Réservé','Statut','Chef d\'équipe','Heure'].map(h=>(
+                      <th key={h} style={{padding:'10px 14px',fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:.5,color:'var(--neutral-500)',borderBottom:'1px solid var(--neutral-200)',textAlign:'left',whiteSpace:'nowrap'}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRevs.length === 0 ? (
+                    <tr><td colSpan={8} style={{padding:'40px',textAlign:'center',color:'var(--neutral-400)',fontSize:14}}>Aucune réservation pour ce filtre</td></tr>
+                  ) : filteredRevs.map(r => {
+                    const ok = r.palettes >= (r.cible || 0);
+                    return (
+                      <tr key={r.id} style={{borderBottom:'1px solid var(--neutral-100)'}}>
+                        <td style={{padding:'10px 14px',fontSize:13}}><span style={{fontWeight:700,color:'var(--primary)'}}>{r.zone}</span></td>
+                        <td style={{padding:'10px 14px',fontSize:13,fontWeight:600}}>{r.magasin}</td>
+                        <td style={{padding:'10px 14px',fontSize:13}}>{r.article}</td>
+                        <td style={{padding:'10px 14px',fontSize:13}}><span style={{background:'var(--primary-light)',color:'var(--primary)',fontWeight:700,padding:'2px 8px',borderRadius:99,fontSize:11}}>{r.cible||'—'} pal.</span></td>
+                        <td style={{padding:'10px 14px',fontSize:14,fontWeight:800,color:ok?'var(--green)':'var(--neutral-700)'}}>{r.palettes}</td>
+                        <td style={{padding:'10px 14px'}}>
+                          <span style={{fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:99,background:ok?'#DCFCE7':'#FEF3C7',color:ok?'#15803D':'#92400E'}}>
+                            {ok ? '✓ Atteinte' : '⏳ En cours'}
+                          </span>
+                        </td>
+                        <td style={{padding:'10px 14px',fontSize:13,color:'var(--neutral-600)'}}>{r.userName}</td>
+                        <td style={{padding:'10px 14px',fontSize:12,color:'var(--neutral-400)'}}>{r.updatedAt||''}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ CIBLES TAB ══ */}
+      {tab === 'cibles' && (
+        <div>
+          <div style={{background:'#fff',border:'1px solid var(--neutral-200)',borderRadius:10,padding:'20px',marginBottom:16}}>
+            <div style={{fontWeight:800,fontSize:15,color:'var(--neutral-800)',marginBottom:6}}>Import des cibles (Excel)</div>
+            <div style={{fontSize:13,color:'var(--neutral-500)',marginBottom:14}}>
+              Le fichier doit contenir les colonnes : <strong>Zone | Magasin | Article | Cible</strong> (ou Cible (palettes))
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+              <label style={{padding:'9px 18px',background:'var(--primary)',color:'#fff',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:8}}>
+                📂 {importing ? 'Importation…' : 'Sélectionner fichier Excel'}
+                <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{display:'none'}} onChange={handleImport} disabled={importing} />
+              </label>
+              {importMsg && <span style={{fontSize:13,fontWeight:700,color:importMsg.startsWith('✅')?'var(--green)':'var(--red)'}}>{importMsg}</span>}
+            </div>
+            <div style={{marginTop:12,padding:'10px 14px',background:'var(--neutral-50)',borderRadius:8,fontSize:12,color:'var(--neutral-500)'}}>
+              <strong>Note :</strong> L'import remplace toutes les cibles existantes. À faire tous les 15 jours.
+              Dernière mise à jour : {cibles.length>0 ? (cibles[0].uploadedAt || '—') : '—'}
+            </div>
+          </div>
+
+          {/* cibles table */}
+          {zones.map(z => (
+            <div key={z} style={{background:'#fff',border:'1px solid var(--neutral-200)',borderRadius:10,marginBottom:12,overflow:'hidden'}}>
+              <div style={{padding:'12px 16px',background:'var(--neutral-50)',borderBottom:'1px solid var(--neutral-200)',fontWeight:700,fontSize:14,color:'var(--primary)',display:'flex',alignItems:'center',gap:8}}>
+                📍 {z}
+                <span style={{fontSize:12,fontWeight:600,color:'var(--neutral-500)',marginLeft:4}}>{cibles.filter(c=>c.zone===z).length} articles</span>
+              </div>
+              {[...new Set(cibles.filter(c=>c.zone===z).map(c=>c.magasin))].sort().map(mag => (
+                <div key={mag}>
+                  <div style={{padding:'8px 16px',fontSize:12,fontWeight:700,color:'var(--neutral-600)',background:'var(--neutral-50)',borderBottom:'1px solid var(--neutral-100)',borderTop:'1px solid var(--neutral-100)'}}>{mag}</div>
+                  <div style={{overflowX:'auto'}}>
+                    <table style={{width:'100%',borderCollapse:'collapse'}}>
+                      <tbody>
+                        {cibles.filter(c=>c.zone===z&&c.magasin===mag).map((c,i) => (
+                          <tr key={c.id} style={{borderBottom:'1px solid var(--neutral-100)'}}>
+                            <td style={{padding:'8px 16px',fontSize:12,color:'var(--neutral-400)',width:40,fontWeight:700}}>{i+1}</td>
+                            <td style={{padding:'8px 16px',fontSize:13,fontWeight:600,color:'var(--neutral-800)'}}>{c.article}</td>
+                            <td style={{padding:'8px 16px'}}><span style={{background:'var(--primary-light)',color:'var(--primary)',fontWeight:700,padding:'2px 8px',borderRadius:99,fontSize:11}}>{c.ciblePalettes} pal.</span></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+          {cibles.length === 0 && (
+            <div style={{textAlign:'center',padding:'60px 20px',color:'var(--neutral-400)'}}>
+              <div style={{fontSize:48,marginBottom:12}}>📭</div>
+              <div style={{fontSize:15,fontWeight:600}}>Aucune cible configurée</div>
+              <div style={{fontSize:13,marginTop:6}}>Importez un fichier Excel pour commencer</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══ COMPTES TAB ══ */}
+      {tab === 'comptes' && (
+        <div>
+          <div style={{display:'flex',justifyContent:'flex-end',marginBottom:16}}>
+            <button onClick={openAddUser} style={{padding:'9px 18px',background:'var(--primary)',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:8}}>
+              + Ajouter un chef
+            </button>
+          </div>
+
+          {/* modal */}
+          {showUserForm && (
+            <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+              <div style={{background:'#fff',borderRadius:14,padding:28,width:'100%',maxWidth:420,boxShadow:'0 20px 60px rgba(0,0,0,.25)'}}>
+                <div style={{fontWeight:800,fontSize:17,color:'var(--neutral-800)',marginBottom:20}}>
+                  {editUser ? 'Modifier le compte' : 'Nouveau compte chef'}
+                </div>
+                {[
+                  {label:'Nom complet',key:'name',placeholder:'ex: Ahmed Bennani'},
+                  {label:'Identifiant',key:'login',placeholder:'ex: chef.ainsebaa'},
+                  {label:'Mot de passe',key:'password',placeholder:'••••••••'},
+                  {label:'Zone affectée',key:'zone',placeholder:'ex: Ain Sebaa'},
+                ].map(f => (
+                  <div key={f.key} style={{marginBottom:14}}>
+                    <label style={{display:'block',fontSize:11,fontWeight:700,color:'var(--neutral-600)',textTransform:'uppercase',letterSpacing:.5,marginBottom:5}}>{f.label}</label>
+                    <input value={userForm[f.key]} onChange={e=>setUF(f.key,e.target.value)} placeholder={f.placeholder}
+                      style={{width:'100%',border:'1.5px solid var(--neutral-200)',borderRadius:8,padding:'9px 12px',fontSize:14,outline:'none'}} />
+                  </div>
+                ))}
+                <div style={{marginBottom:14,display:'flex',alignItems:'center',gap:10}}>
+                  <label style={{fontSize:12,fontWeight:700,color:'var(--neutral-600)',textTransform:'uppercase',letterSpacing:.5}}>Statut</label>
+                  <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:userForm.actif?'var(--green)':'var(--neutral-500)'}}>
+                    <input type="radio" checked={userForm.actif===true} onChange={()=>setUF('actif',true)} style={{accentColor:'var(--green)'}} /> Actif
+                  </label>
+                  <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:!userForm.actif?'var(--red)':'var(--neutral-500)'}}>
+                    <input type="radio" checked={userForm.actif===false} onChange={()=>setUF('actif',false)} style={{accentColor:'var(--red)'}} /> Inactif
+                  </label>
+                </div>
+                {userMsg && <div style={{marginBottom:12,fontSize:13,fontWeight:700,color:userMsg.startsWith('❌')?'var(--red)':'var(--green)'}}>{userMsg}</div>}
+                <div style={{display:'flex',gap:10,marginTop:20}}>
+                  <button onClick={saveUser} style={{flex:1,padding:'10px',background:'var(--primary)',color:'#fff',border:'none',borderRadius:8,fontSize:14,fontWeight:700,cursor:'pointer'}}>Enregistrer</button>
+                  <button onClick={()=>setShowUserForm(false)} style={{flex:1,padding:'10px',background:'var(--neutral-100)',color:'var(--neutral-700)',border:'1px solid var(--neutral-200)',borderRadius:8,fontSize:14,fontWeight:700,cursor:'pointer'}}>Annuler</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* users table */}
+          <div style={{background:'#fff',border:'1px solid var(--neutral-200)',borderRadius:10,overflow:'hidden'}}>
+            <table style={{width:'100%',borderCollapse:'collapse'}}>
+              <thead>
+                <tr style={{background:'var(--neutral-50)'}}>
+                  {['Nom','Identifiant','Zone','Statut','Actions'].map(h=>(
+                    <th key={h} style={{padding:'10px 16px',fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:.5,color:'var(--neutral-500)',borderBottom:'1px solid var(--neutral-200)',textAlign:'left'}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {users.length === 0 ? (
+                  <tr><td colSpan={5} style={{padding:'40px',textAlign:'center',color:'var(--neutral-400)',fontSize:14}}>Aucun compte configuré</td></tr>
+                ) : users.map(u => (
+                  <tr key={u.id} style={{borderBottom:'1px solid var(--neutral-100)'}}>
+                    <td style={{padding:'12px 16px',fontWeight:700,fontSize:14,color:'var(--neutral-800)'}}>{u.name}</td>
+                    <td style={{padding:'12px 16px',fontSize:13,color:'var(--neutral-600)',fontFamily:'monospace'}}>{u.login}</td>
+                    <td style={{padding:'12px 16px'}}><span style={{background:'var(--primary-light)',color:'var(--primary)',fontWeight:700,padding:'2px 10px',borderRadius:99,fontSize:12}}>{u.zone}</span></td>
+                    <td style={{padding:'12px 16px'}}>
+                      <span style={{fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:99,background:u.actif!==false?'#DCFCE7':'#FEE2E2',color:u.actif!==false?'#15803D':'#991B1B'}}>
+                        {u.actif !== false ? '● Actif' : '○ Inactif'}
+                      </span>
+                    </td>
+                    <td style={{padding:'12px 16px'}}>
+                      <div style={{display:'flex',gap:8}}>
+                        <button onClick={()=>openEditUser(u)} style={{padding:'5px 12px',background:'var(--neutral-100)',border:'1px solid var(--neutral-200)',borderRadius:6,fontSize:12,fontWeight:700,cursor:'pointer'}}>Modifier</button>
+                        <button onClick={()=>toggleUser(u)} style={{padding:'5px 12px',background:u.actif!==false?'#FEE2E2':'#DCFCE7',border:'none',borderRadius:6,fontSize:12,fontWeight:700,cursor:'pointer',color:u.actif!==false?'#991B1B':'#15803D'}}>
+                          {u.actif !== false ? 'Désactiver' : 'Activer'}
+                        </button>
+                        <button onClick={()=>deleteUser(u)} style={{padding:'5px 10px',background:'#FEE2E2',border:'none',borderRadius:6,fontSize:12,fontWeight:700,cursor:'pointer',color:'#991B1B'}}>✕</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
