@@ -301,7 +301,12 @@ function App() {
     const r4 = db.ref('ptg/stockGold');
     const h4 = r4.on('value', s => {
       const m = {};
-      if (s.val()) Object.values(s.val()).forEach(x => { m[x.magasin + '_' + x.codeInterne] = x.stock; });
+      if (s.val()) Object.values(s.val()).forEach(x => {
+        if (!x || x.magasin == null || x.codeInterne == null) return;
+        const k = String(x.magasin).trim() + '_' + String(x.codeInterne).trim();
+        m[k] = Number(x.stock) || 0;
+      });
+      console.log('[StockGold] chargé:', Object.keys(m).length, 'entrées', Object.keys(m).slice(0,5));
       setStockMap(m);
     });
     return () => { r1.off('value', h1); r2.off('value', h2); r3.off('value', h3); r4.off('value', h4); };
@@ -524,7 +529,16 @@ function App() {
           )}
           {/* count + reset */}
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 12px 6px'}}>
-            <span style={{fontSize:11,color:'var(--neutral-400)',fontWeight:600}}>{visibleCibles.length}/{curCibles.length} articles</span>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <span style={{fontSize:11,color:'var(--neutral-400)',fontWeight:600}}>{visibleCibles.length}/{curCibles.length} articles</span>
+              {(() => {
+                const prefix = String(selMag||'').trim() + '_';
+                const cnt = Object.keys(stockMap).filter(k => k.startsWith(prefix)).length;
+                return cnt > 0
+                  ? <span style={{fontSize:11,color:'#7C3AED',fontWeight:700}}>📦 {cnt} stocks</span>
+                  : <span style={{fontSize:11,color:'#94A3B8',fontWeight:600}}>📦 pas de stock</span>;
+              })()}
+            </div>
             {(fRayon!=='Tous'||fFamille!=='Toutes'||fStatus!=='tous') && (
               <button className="filter-clear" onClick={()=>{setFRayon('Tous');setFFamille('Toutes');setFStatus('tous');}}>✕ Effacer filtres</button>
             )}
@@ -569,7 +583,7 @@ function App() {
                 cible={enriched}
                 rev={revs.find(r => r.codeInterne === c.codeInterne && r.magasin === selMag)}
                 value={inputs[c.codeInterne] ?? 0}
-                stock={stockMap[selMag + '_' + c.codeInterne]}
+                stock={stockMap[String(selMag||'').trim() + '_' + String(c.codeInterne).trim()]}
                 onChange={val => handleChange(c.codeInterne, val)}
               />
             );
