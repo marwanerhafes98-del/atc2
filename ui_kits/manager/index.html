@@ -7276,6 +7276,39 @@ function ReservationsView() {
     XLSX.writeFile(wb, scope + ' Reservation ' + dateFmt + '.xlsx');
   };
 
+  /* ── EXPORT CIBLES ACTUELLES (pivot, prêt à ré-importer) ── */
+  const handleExportCiblesActuelles = () => {
+    if (cibles.length === 0) { alert('Aucune cible à exporter.'); return; }
+    const allMags = [...new Set(cibles.map(c => c.magasin).filter(Boolean))].sort();
+    const HEADERS = ['CODE INTERNE', 'LIBELLE ATC+ Français', ...allMags];
+    /* pivot : une ligne par article unique */
+    const byCode = {};
+    cibles.forEach(c => {
+      if (!byCode[c.codeInterne]) {
+        const prod = assortiment.find(a => a.id === c.codeInterne) || {};
+        byCode[c.codeInterne] = { code: c.codeInterne, libelle: c.libelle || prod.libelle || c.codeInterne, mags: {} };
+      }
+      byCode[c.codeInterne].mags[c.magasin] = Math.ceil(c.ciblePalettes || 0);
+    });
+    const dataRows = Object.values(byCode).sort((a,b) => String(a.code).localeCompare(String(b.code))).map(row => [
+      row.code, row.libelle, ...allMags.map(m => row.mags[m] !== undefined ? row.mags[m] : '')
+    ]);
+    const N = HEADERS.length;
+    const aoa = [
+      ['CIBLES ATC2 — EXPORT ACTUEL — ' + DASH_TODAY_ISO, ...Array(N-1).fill('')],
+      ['Modifiez ce fichier et réimportez-le. Un article absent du fichier disparaîtra de l\'outil réservation.', ...Array(N-1).fill('')],
+      Array(N).fill(''),
+      HEADERS,
+      ...dataRows,
+    ];
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch:16 }, { wch:40 }, ...allMags.map(() => ({ wch:14 }))];
+    ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:N-1} }, { s:{r:1,c:0}, e:{r:1,c:N-1} }];
+    XLSX.utils.book_append_sheet(wb, ws, 'Cibles');
+    XLSX.writeFile(wb, 'Cibles_ATC2_Export_' + DASH_TODAY_ISO + '.xlsx');
+  };
+
   /* ── TEMPLATE CIBLES DOWNLOAD ── */
   const handleDownloadTemplateCibles = () => {
     const MAGS = magasinsList.length > 0 ? magasinsList : ['AGADIR','AIN SEBAA','BENI MELLAL','FES','MARRAKECH','MEKNES','NADOR','OUJDA','RABAT','TANGER'];
@@ -7573,25 +7606,31 @@ function ReservationsView() {
       {/* ══ CIBLES TAB ══ */}
       {tab === 'cibles' && (
         <div>
-          <div style={{background:'#fff',border:'1px solid var(--neutral-200)',borderRadius:10,padding:'20px',marginBottom:16}}>
-            <div style={{fontWeight:800,fontSize:15,color:'var(--neutral-800)',marginBottom:6}}>Import des cibles (Excel)</div>
-            <div style={{fontSize:13,color:'var(--neutral-500)',marginBottom:14}}>
-              Colonnes requises : <strong>Zone | Magasin | Code Interne | Cible</strong> — les infos produit sont récupérées depuis l'assortiment
+          <div style={{background:'#fff',border:'1px solid #E2E8F0',borderRadius:12,padding:20,marginBottom:16,boxShadow:'0 1px 4px rgba(0,0,0,.05)'}}>
+            <div style={{fontWeight:800,fontSize:15,color:'#1E293B',marginBottom:4}}>Import &amp; Export des cibles</div>
+            <div style={{fontSize:13,color:'#64748B',marginBottom:16}}>
+              Format pivot : <strong>CODE INTERNE | LIBELLE ATC+ Français | [Magasin1] | [Magasin2] …</strong>
             </div>
-            <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+              {cibles.length > 0 && (
+                <button onClick={handleExportCiblesActuelles}
+                  style={{padding:'9px 18px',background:'#16A34A',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:8,boxShadow:'0 2px 6px rgba(22,163,74,.25)'}}>
+                  ⬇ Exporter les cibles actuelles
+                </button>
+              )}
               <button onClick={handleDownloadTemplateCibles}
-                style={{padding:'9px 18px',background:'#fff',color:'var(--primary)',border:'2px solid var(--primary)',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:8}}>
-                ⬇ Télécharger le template
+                style={{padding:'9px 18px',background:'#fff',color:'#0052CC',border:'2px solid #0052CC',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:8}}>
+                📄 Template vierge
               </button>
-              <label style={{padding:'9px 18px',background:'var(--primary)',color:'#fff',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:8}}>
-                📂 {importing ? 'Importation…' : 'Importer Excel rempli'}
+              <label style={{padding:'9px 18px',background:'#0052CC',color:'#fff',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:8,boxShadow:'0 2px 6px rgba(0,82,204,.25)'}}>
+                📂 {importing ? 'Importation…' : 'Importer un fichier Excel'}
                 <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{display:'none'}} onChange={handleImport} disabled={importing} />
               </label>
-              {importMsg && <span style={{fontSize:13,fontWeight:600,color:importMsg.startsWith('✅')?'var(--green)':'var(--red)'}}>{importMsg}</span>}
+              {importMsg && <span style={{fontSize:13,fontWeight:600,color:importMsg.startsWith('✅')?'#16A34A':'#DC2626'}}>{importMsg}</span>}
             </div>
-            <div style={{marginTop:12,padding:'10px 14px',background:'var(--neutral-50)',borderRadius:8,fontSize:12,color:'var(--neutral-500)'}}>
-              <strong>Note :</strong> L'import remplace toutes les cibles existantes. À faire tous les 15 jours.
-              Dernière mise à jour : {cibles.length>0 ? (cibles[0].uploadedAt || '—') : '—'} — {assortiment.length} produits dans l'assortiment
+            <div style={{marginTop:14,padding:'10px 14px',background:'#FFF7ED',border:'1px solid #FED7AA',borderRadius:8,fontSize:12,color:'#92400E',lineHeight:1.5}}>
+              ⚠️ <strong>Remplacement complet :</strong> chaque import remplace toute la liste active. Un article absent du fichier disparaît de l'outil de réservation (son historique est conservé).
+              {cibles.length > 0 && <span style={{marginLeft:8,color:'#64748B'}}>Dernière mise à jour : {cibles[0].uploadedAt || '—'} · {cibles.length} entrées · {assortiment.length} produits</span>}
             </div>
           </div>
 
