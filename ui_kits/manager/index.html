@@ -6861,11 +6861,15 @@ function ReservationsView() {
   const [users, setUsers]       = useState([]);
   const [cibles, setCibles]     = useState([]);
   const [reservations, setResvs] = useState([]);
+  const [assortiment, setAssort] = useState([]);
 
   /* filters */
   const [fZone, setFZone]       = useState('Toutes');
   const [fMag, setFMag]         = useState('Tous');
   const [fDate, setFDate]       = useState(DASH_TODAY_ISO);
+  const [fRayon, setFRayon]     = useState('Tous');
+  const [fFamille, setFFamille] = useState('Tous');
+  const [assortSearch, setAssortSearch] = useState('');
 
   /* user form */
   const [showUserForm, setShowUserForm] = useState(false);
@@ -6873,10 +6877,14 @@ function ReservationsView() {
   const [userForm, setUserForm]         = useState({ name:'', login:'', password:'', zone:'', actif:true });
   const [userMsg, setUserMsg]           = useState('');
 
-  /* import */
-  const [importing, setImporting] = useState(false);
-  const [importMsg, setImportMsg] = useState('');
+  /* import cibles */
+  const [importing, setImporting]   = useState(false);
+  const [importMsg, setImportMsg]   = useState('');
   const fileRef = useRef(null);
+  /* import assortiment */
+  const [importingA, setImportingA] = useState(false);
+  const [importMsgA, setImportMsgA] = useState('');
+  const fileRefA = useRef(null);
 
   /* load */
   useEffect(() => {
@@ -6886,7 +6894,9 @@ function ReservationsView() {
     const h2 = r2.on('value', s => setCibles(s.val() ? Object.values(s.val()) : []));
     const r3 = db.ref('ptg/reservations');
     const h3 = r3.on('value', s => setResvs(s.val() ? Object.values(s.val()) : []));
-    return () => { r1.off('value',h1); r2.off('value',h2); r3.off('value',h3); };
+    const r4 = db.ref('ptg/assortiment');
+    const h4 = r4.on('value', s => setAssort(s.val() ? Object.values(s.val()) : []));
+    return () => { r1.off('value',h1); r2.off('value',h2); r3.off('value',h3); r4.off('value',h4); };
   }, []);
 
   /* derived */
@@ -6902,7 +6912,44 @@ function ReservationsView() {
     r.date === fDate
   ), [reservations, fZone, fMag, fDate]);
 
-  /* ── IMPORT EXCEL ── */
+  /* ── IMPORT ASSORTIMENT ── */
+  const handleImportAssortiment = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setImportingA(true); setImportMsgA('');
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type:'binary' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval:'' });
+        if (rows.length === 0) { setImportMsgA('❌ Fichier vide.'); setImportingA(false); return; }
+        const batch = {};
+        let count = 0;
+        for (const row of rows) {
+          const code    = String(row['CODE INTERNE'] || row['Code Interne'] || row['CODE'] || '').trim();
+          const libelle = String(row['LIBELLE ATC+ Français'] || row['Libellé'] || row['LIBELLE'] || '').trim();
+          const rayon   = String(row['RAYON'] || row['Rayon'] || '').trim();
+          const famille = String(row['FAMILLE'] || row['Famille'] || '').trim();
+          const photo   = String(row['URL Photo'] || row['Photo'] || row['PHOTO'] || '').trim();
+          const logo    = String(row['URL Logo'] || row['Logo'] || row['LOGO'] || '').trim();
+          if (!code) continue;
+          batch[code] = { id: code, codeInterne: code, libelle, rayon, famille, photoUrl: photo, logoUrl: logo };
+          count++;
+        }
+        if (count === 0) { setImportMsgA('❌ Aucune ligne valide.'); setImportingA(false); return; }
+        await db.ref('ptg/assortiment').update(batch);
+        setImportMsgA('✅ ' + count + ' produits importés.');
+      } catch(ex) {
+        setImportMsgA('❌ Erreur : ' + ex.message);
+      }
+      setImportingA(false);
+      if (fileRefA.current) fileRefA.current.value = '';
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  /* ── IMPORT CIBLES (Code Interne → croise assortiment) ── */
   const handleImport = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -6914,23 +6961,38 @@ function ReservationsView() {
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(ws, { defval:'' });
         if (rows.length === 0) { setImportMsg('❌ Fichier vide ou format invalide.'); setImporting(false); return; }
+        const assortSnap = await db.ref('ptg/assortiment').once('value');
+        const assortMap  = assortSnap.val() || {};
         const batch = {};
         let count = 0;
+        const missingCodes = [];
         for (const row of rows) {
           const zone    = String(row['Zone'] || row['ZONE'] || '').trim();
           const magasin = String(row['Magasin'] || row['MAGASIN'] || '').trim();
-          const article = String(row['Article'] || row['ARTICLE'] || '').trim();
+          const code    = String(row['Code Interne'] || row['CODE INTERNE'] || row['Code'] || row['CODE'] || '').trim();
           const cible   = Number(row['Cible'] || row['CIBLE'] || row['Cible (palettes)'] || 0);
-          if (!zone || !magasin || !article) continue;
-          const key = zone + '_' + magasin + '_' + article;
-          batch[key] = { id: key, zone, magasin, article, ciblePalettes: cible, uploadedAt: DASH_TODAY_ISO };
+          if (!zone || !magasin || !code) continue;
+          const prod = assortMap[code] || {};
+          if (!prod.libelle) missingCodes.push(code);
+          const key = zone + '_' + magasin + '_' + code;
+          batch[key] = {
+            id: key, zone, magasin, codeInterne: code,
+            libelle:  prod.libelle  || code,
+            rayon:    prod.rayon    || '',
+            famille:  prod.famille  || '',
+            photoUrl: prod.photoUrl || '',
+            logoUrl:  prod.logoUrl  || '',
+            ciblePalettes: cible, uploadedAt: DASH_TODAY_ISO,
+          };
           count++;
         }
-        if (count === 0) { setImportMsg('❌ Aucune ligne valide. Vérifiez les colonnes Zone, Magasin, Article, Cible.'); setImporting(false); return; }
+        if (count === 0) { setImportMsg('❌ Aucune ligne valide. Colonnes : Zone | Magasin | Code Interne | Cible'); setImporting(false); return; }
         await db.ref('ptg/reservCibles').set(batch);
-        setImportMsg('✅ ' + count + ' articles importés avec succès.');
+        let msg = '✅ ' + count + ' articles importés.';
+        if (missingCodes.length > 0) msg += ' ⚠ ' + missingCodes.length + ' code(s) non trouvé(s) dans l\'assortiment.';
+        setImportMsg(msg);
       } catch(ex) {
-        setImportMsg('❌ Erreur lors de la lecture du fichier : ' + ex.message);
+        setImportMsg('❌ Erreur : ' + ex.message);
       }
       setImporting(false);
       if (fileRef.current) fileRef.current.value = '';
@@ -7020,9 +7082,10 @@ function ReservationsView() {
 
       {/* ── TAB NAV ── */}
       <div style={{display:'flex',gap:8,marginBottom:20,flexWrap:'wrap'}}>
-        <button style={tabStyle('suivi')}    onClick={()=>setTab('suivi')}>📊 Suivi global</button>
-        <button style={tabStyle('cibles')}   onClick={()=>setTab('cibles')}>📦 Cibles & Import</button>
-        <button style={tabStyle('comptes')}  onClick={()=>setTab('comptes')}>👤 Comptes chefs</button>
+        <button style={tabStyle('suivi')}       onClick={()=>setTab('suivi')}>📊 Suivi global</button>
+        <button style={tabStyle('cibles')}      onClick={()=>setTab('cibles')}>📋 Cibles & Import</button>
+        <button style={tabStyle('assortiment')} onClick={()=>setTab('assortiment')}>🗂 Assortiment ({assortiment.length})</button>
+        <button style={tabStyle('comptes')}     onClick={()=>setTab('comptes')}>👤 Comptes chefs</button>
       </div>
 
       {/* ══ SUIVI TAB ══ */}
@@ -7111,22 +7174,21 @@ function ReservationsView() {
           <div style={{background:'#fff',border:'1px solid var(--neutral-200)',borderRadius:10,padding:'20px',marginBottom:16}}>
             <div style={{fontWeight:800,fontSize:15,color:'var(--neutral-800)',marginBottom:6}}>Import des cibles (Excel)</div>
             <div style={{fontSize:13,color:'var(--neutral-500)',marginBottom:14}}>
-              Le fichier doit contenir les colonnes : <strong>Zone | Magasin | Article | Cible</strong> (ou Cible (palettes))
+              Colonnes requises : <strong>Zone | Magasin | Code Interne | Cible</strong> — les infos produit sont récupérées depuis l'assortiment
             </div>
             <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
               <label style={{padding:'9px 18px',background:'var(--primary)',color:'#fff',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:8}}>
                 📂 {importing ? 'Importation…' : 'Sélectionner fichier Excel'}
                 <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{display:'none'}} onChange={handleImport} disabled={importing} />
               </label>
-              {importMsg && <span style={{fontSize:13,fontWeight:700,color:importMsg.startsWith('✅')?'var(--green)':'var(--red)'}}>{importMsg}</span>}
+              {importMsg && <span style={{fontSize:13,fontWeight:600,color:importMsg.startsWith('✅')?'var(--green)':'var(--red)'}}>{importMsg}</span>}
             </div>
             <div style={{marginTop:12,padding:'10px 14px',background:'var(--neutral-50)',borderRadius:8,fontSize:12,color:'var(--neutral-500)'}}>
               <strong>Note :</strong> L'import remplace toutes les cibles existantes. À faire tous les 15 jours.
-              Dernière mise à jour : {cibles.length>0 ? (cibles[0].uploadedAt || '—') : '—'}
+              Dernière mise à jour : {cibles.length>0 ? (cibles[0].uploadedAt || '—') : '—'} — {assortiment.length} produits dans l'assortiment
             </div>
           </div>
 
-          {/* cibles table */}
           {zones.map(z => (
             <div key={z} style={{background:'#fff',border:'1px solid var(--neutral-200)',borderRadius:10,marginBottom:12,overflow:'hidden'}}>
               <div style={{padding:'12px 16px',background:'var(--neutral-50)',borderBottom:'1px solid var(--neutral-200)',fontWeight:700,fontSize:14,color:'var(--primary)',display:'flex',alignItems:'center',gap:8}}>
@@ -7136,19 +7198,32 @@ function ReservationsView() {
               {[...new Set(cibles.filter(c=>c.zone===z).map(c=>c.magasin))].sort().map(mag => (
                 <div key={mag}>
                   <div style={{padding:'8px 16px',fontSize:12,fontWeight:700,color:'var(--neutral-600)',background:'var(--neutral-50)',borderBottom:'1px solid var(--neutral-100)',borderTop:'1px solid var(--neutral-100)'}}>{mag}</div>
-                  <div style={{overflowX:'auto'}}>
-                    <table style={{width:'100%',borderCollapse:'collapse'}}>
-                      <tbody>
-                        {cibles.filter(c=>c.zone===z&&c.magasin===mag).map((c,i) => (
-                          <tr key={c.id} style={{borderBottom:'1px solid var(--neutral-100)'}}>
-                            <td style={{padding:'8px 16px',fontSize:12,color:'var(--neutral-400)',width:40,fontWeight:700}}>{i+1}</td>
-                            <td style={{padding:'8px 16px',fontSize:13,fontWeight:600,color:'var(--neutral-800)'}}>{c.article}</td>
-                            <td style={{padding:'8px 16px'}}><span style={{background:'var(--primary-light)',color:'var(--primary)',fontWeight:700,padding:'2px 8px',borderRadius:99,fontSize:11}}>{c.ciblePalettes} pal.</span></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <table style={{width:'100%',borderCollapse:'collapse'}}>
+                    <tbody>
+                      {cibles.filter(c=>c.zone===z&&c.magasin===mag).map((c,i) => (
+                        <tr key={c.id} style={{borderBottom:'1px solid var(--neutral-100)'}}>
+                          <td style={{padding:'8px 12px',width:40,fontSize:12,color:'var(--neutral-400)',fontWeight:700}}>{i+1}</td>
+                          <td style={{padding:'8px 0',width:48}}>
+                            {c.photoUrl ? <img src={c.photoUrl} alt="" style={{width:40,height:40,objectFit:'contain',borderRadius:6,border:'1px solid var(--neutral-200)'}} /> : <div style={{width:40,height:40,background:'var(--neutral-100)',borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>📦</div>}
+                          </td>
+                          <td style={{padding:'8px 12px'}}>
+                            <div style={{display:'flex',alignItems:'center',gap:8}}>
+                              {c.logoUrl && <img src={c.logoUrl} alt="" style={{height:20,maxWidth:60,objectFit:'contain'}} />}
+                              <div>
+                                <div style={{fontSize:13,fontWeight:700,color:'var(--neutral-800)'}}>{c.libelle || c.codeInterne}</div>
+                                <div style={{fontSize:11,color:'var(--neutral-400)',marginTop:1}}>
+                                  {c.codeInterne && <span style={{marginRight:8,fontFamily:'monospace'}}>#{c.codeInterne}</span>}
+                                  {c.rayon && <span style={{marginRight:8}}>{c.rayon}</span>}
+                                  {c.famille && <span>{c.famille}</span>}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{padding:'8px 12px',textAlign:'right',paddingRight:16}}><span style={{background:'var(--primary-light)',color:'var(--primary)',fontWeight:700,padding:'2px 10px',borderRadius:99,fontSize:11}}>{c.ciblePalettes} pal.</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               ))}
             </div>
@@ -7160,6 +7235,80 @@ function ReservationsView() {
               <div style={{fontSize:13,marginTop:6}}>Importez un fichier Excel pour commencer</div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ══ ASSORTIMENT TAB ══ */}
+      {tab === 'assortiment' && (
+        <div>
+          <div style={{background:'#fff',border:'1px solid var(--neutral-200)',borderRadius:10,padding:'20px',marginBottom:16}}>
+            <div style={{fontWeight:800,fontSize:15,color:'var(--neutral-800)',marginBottom:6}}>Import Assortiment (Excel)</div>
+            <div style={{fontSize:13,color:'var(--neutral-500)',marginBottom:14}}>
+              Colonnes : <strong>CODE INTERNE | LIBELLE ATC+ Français | RAYON | FAMILLE | URL Photo | URL Logo</strong>
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+              <label style={{padding:'9px 18px',background:'#7C3AED',color:'#fff',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:8}}>
+                📂 {importingA ? 'Importation…' : 'Importer assortiment Excel'}
+                <input ref={fileRefA} type="file" accept=".xlsx,.xls,.csv" style={{display:'none'}} onChange={handleImportAssortiment} disabled={importingA} />
+              </label>
+              {importMsgA && <span style={{fontSize:13,fontWeight:600,color:importMsgA.startsWith('✅')?'var(--green)':'var(--red)'}}>{importMsgA}</span>}
+            </div>
+          </div>
+
+          {/* search & filters */}
+          <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap'}}>
+            <input value={assortSearch} onChange={e=>setAssortSearch(e.target.value)} placeholder="Rechercher code, libellé…"
+              style={{flex:'1 1 200px',border:'1.5px solid var(--neutral-200)',borderRadius:8,padding:'8px 12px',fontSize:13,outline:'none'}} />
+            <select value={fRayon} onChange={e=>setFRayon(e.target.value)} style={{border:'1.5px solid var(--neutral-200)',borderRadius:8,padding:'8px 12px',fontSize:13,outline:'none'}}>
+              <option value="Tous">Tous les rayons</option>
+              {[...new Set(assortiment.map(a=>a.rayon).filter(Boolean))].sort().map(r=><option key={r} value={r}>{r}</option>)}
+            </select>
+            <select value={fFamille} onChange={e=>setFFamille(e.target.value)} style={{border:'1.5px solid var(--neutral-200)',borderRadius:8,padding:'8px 12px',fontSize:13,outline:'none'}}>
+              <option value="Tous">Toutes les familles</option>
+              {[...new Set(assortiment.filter(a=>fRayon==='Tous'||a.rayon===fRayon).map(a=>a.famille).filter(Boolean))].sort().map(f=><option key={f} value={f}>{f}</option>)}
+            </select>
+          </div>
+
+          {/* product grid */}
+          {(() => {
+            const filtered = assortiment.filter(a => {
+              const q = assortSearch.toLowerCase();
+              const matchQ = !q || (a.codeInterne||'').toLowerCase().includes(q) || (a.libelle||'').toLowerCase().includes(q);
+              const matchR = fRayon === 'Tous' || a.rayon === fRayon;
+              const matchF = fFamille === 'Tous' || a.famille === fFamille;
+              return matchQ && matchR && matchF;
+            });
+            if (filtered.length === 0) return (
+              <div style={{textAlign:'center',padding:'60px 20px',color:'var(--neutral-400)'}}>
+                <div style={{fontSize:48,marginBottom:12}}>🔍</div>
+                <div style={{fontSize:15,fontWeight:600}}>{assortiment.length === 0 ? 'Aucun produit' : 'Aucun résultat'}</div>
+                <div style={{fontSize:13,marginTop:6}}>{assortiment.length === 0 ? 'Importez l\'assortiment via Excel' : 'Modifiez votre recherche'}</div>
+              </div>
+            );
+            return (
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))',gap:12}}>
+                {filtered.map(a => (
+                  <div key={a.id} style={{background:'#fff',border:'1px solid var(--neutral-200)',borderRadius:10,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+                    <div style={{height:120,background:'var(--neutral-50)',display:'flex',alignItems:'center',justifyContent:'center',padding:12,position:'relative'}}>
+                      {a.photoUrl
+                        ? <img src={a.photoUrl} alt={a.libelle} style={{maxHeight:'100%',maxWidth:'100%',objectFit:'contain'}} />
+                        : <span style={{fontSize:40}}>📦</span>
+                      }
+                      {a.logoUrl && <img src={a.logoUrl} alt="" style={{position:'absolute',top:6,right:6,height:20,maxWidth:56,objectFit:'contain'}} />}
+                    </div>
+                    <div style={{padding:'10px 12px',flex:1}}>
+                      <div style={{fontSize:10,fontWeight:700,color:'var(--neutral-400)',fontFamily:'monospace',marginBottom:3}}>#{a.codeInterne}</div>
+                      <div style={{fontSize:12,fontWeight:700,color:'var(--neutral-800)',lineHeight:1.3,marginBottom:6}}>{a.libelle}</div>
+                      <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                        {a.rayon && <span style={{fontSize:10,fontWeight:700,padding:'2px 6px',borderRadius:99,background:'#EDE9FE',color:'#7C3AED'}}>{a.rayon}</span>}
+                        {a.famille && <span style={{fontSize:10,fontWeight:700,padding:'2px 6px',borderRadius:99,background:'var(--neutral-100)',color:'var(--neutral-600)'}}>{a.famille}</span>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
       )}
 
