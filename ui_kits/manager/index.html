@@ -6906,7 +6906,16 @@ function ReservationsView() {
     const r4 = db.ref('ptg/assortiment');
     const h4 = r4.on('value', s => setAssort(s.val() ? Object.values(s.val()) : []));
     const r5 = db.ref('ptg/stockGold');
-    const h5 = r5.on('value', s => setStockGold(s.val() ? Object.values(s.val()) : []));
+    const h5 = r5.on('value', s => {
+      if (!s.val()) { setStockGold([]); return; }
+      /* structure imbriquée ptg/stockGold/{magKey}/{codeInt} → aplatir */
+      const entries = [];
+      Object.values(s.val()).forEach(magObj => {
+        if (magObj && typeof magObj === 'object' && !('stock' in magObj))
+          Object.values(magObj).forEach(e => { if (e && e.codeInterne) entries.push(e); });
+      });
+      setStockGold(entries);
+    });
     return () => { r1.off('value',h1); r2.off('value',h2); r3.off('value',h3); r4.off('value',h4); r5.off('value',h5); };
   }, []);
 
@@ -7279,8 +7288,10 @@ function ReservationsView() {
     if (!files.length) return;
     setImportingStock(true); setImportMsgStock('');
     const processAll = async () => {
-      const batch = {};
+      /* perMag[magKey][codeInt] = entry  — stocké par magasin pour écriture ciblée */
+      const perMag = {};
       let total = 0; const errs = [];
+      const now = Date.now();
       for (const file of files) {
         await new Promise(resolve => {
           const reader = new FileReader();
@@ -7289,13 +7300,11 @@ function ReservationsView() {
               const wb   = XLSX.read(ev.target.result, { type:'binary' });
               const ws   = wb.Sheets[wb.SheetNames[0]];
               const rawAll = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
-              /* trouver la ligne d'en-têtes */
               const headerIdx = rawAll.findIndex(row => row.some(c => ['code_magasin','CODE_MAGASIN','code_interne','CODE_INTERNE'].includes(String(c).trim().toLowerCase().replace(' ','_'))));
               const hdr = headerIdx >= 0 ? rawAll[headerIdx].map(h => String(h).trim()) : [];
               const rows = headerIdx >= 0
                 ? rawAll.slice(headerIdx+1).map(row => { const o={}; hdr.forEach((h,i)=>o[h]=row[i]??''); return o; })
                 : XLSX.utils.sheet_to_json(ws, { defval:'' });
-              /* colonnes dynamiques */
               const getCol = (row, ...keys) => { for(const k of keys){ const v=row[k]; if(v!==undefined&&v!=='') return v; } return ''; };
               for (const row of rows) {
                 const codeuv = String(getCol(row,'CODEUV','codeuv','CodeUV','code_uv')).trim();
@@ -7306,8 +7315,9 @@ function ReservationsView() {
                 if (!codeMag || !codeInt) continue;
                 const magasin = CODE_MAGASIN[codeMag];
                 if (!magasin) continue;
-                const key = magasin + '_' + codeInt;
-                batch[key] = { key, codeInterne:codeInt, magasin, codeMagasin:codeMag, stock, updatedAt:DASH_TODAY_ISO, importedAt: Date.now() };
+                const magKey = magasin.replace(/ /g, '_');
+                if (!perMag[magKey]) perMag[magKey] = {};
+                perMag[magKey][codeInt] = { codeInterne:codeInt, magasin, codeMagasin:codeMag, stock, updatedAt:DASH_TODAY_ISO, importedAt: now };
                 total++;
               }
             } catch(ex) { errs.push(file.name + ' : ' + ex.message); }
@@ -7316,14 +7326,9 @@ function ReservationsView() {
           reader.readAsBinaryString(file);
         });
       }
-      if (total > 0) {
-        const keys = Object.keys(batch);
-        const CHUNK = 300;
-        for (let i = 0; i < keys.length; i += CHUNK) {
-          const chunk = {};
-          keys.slice(i, i + CHUNK).forEach(k => { chunk[k] = batch[k]; });
-          await db.ref('ptg/stockGold').update(chunk);
-        }
+      /* écriture par magasin — remplace l'ancien stock du magasin */
+      for (const [magKey, entries] of Object.entries(perMag)) {
+        await db.ref('ptg/stockGold/' + magKey).set(entries);
       }
       setImportingStock(false);
       let msg = '✅ ' + total + ' stocks importés (' + files.length + ' fichier' + (files.length>1?'s':'') + ').';
