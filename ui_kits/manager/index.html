@@ -6934,6 +6934,7 @@ function ReservationsView() {
           const photo   = String(row['Photos produits'] || row['Photo produits'] || row['photos produits'] || row['Photo produit'] || row['URL Photo'] || row['Photo'] || row['PHOTO'] || row['photo'] || row['image'] || row['IMAGE'] || '').trim();
           const logo    = String(row['logos'] || row['Logo'] || row['logo'] || row['LOGO'] || row['Logo marque'] || row['URL Logo'] || row['LOGO URL'] || '').trim();
           if (!code) continue;
+          if (count === 0) console.log('[Assortiment debug] 1ère ligne lue :', { code, libelle, rayon, famille, photo, logo, rawKeys: Object.keys(row) });
           batch[code] = { id: code, codeInterne: code, libelle, rayon, famille, photoUrl: photo, logoUrl: logo };
           count++;
         }

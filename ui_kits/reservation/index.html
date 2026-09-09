@@ -249,14 +249,15 @@ function App() {
   const [session, setSession] = useState(() => {
     try { return JSON.parse(localStorage.getItem('ptg_resv_sess') || 'null'); } catch { return null; }
   });
-  const [cibles, setCibles]   = useState([]);
-  const [revs, setRevs]       = useState([]);
-  const [selMag, setSelMag]   = useState(null);
-  const [inputs, setInputs]   = useState({});
-  const [dirty, setDirty]     = useState(false);
-  const [saving, setSaving]   = useState(false);
+  const [cibles, setCibles]     = useState([]);
+  const [assortMap, setAssortMap] = useState({});
+  const [revs, setRevs]         = useState([]);
+  const [selMag, setSelMag]     = useState(null);
+  const [inputs, setInputs]     = useState({});
+  const [dirty, setDirty]       = useState(false);
+  const [saving, setSaving]     = useState(false);
   const [savedTime, setSavedTime] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]   = useState(true);
 
   /* load */
   useEffect(() => {
@@ -268,7 +269,10 @@ function App() {
       setRevs(s.val() ? Object.values(s.val()).filter(r => r.zone === session.zone && r.date === TODAY_ISO) : []);
       setLoading(false);
     });
-    return () => { r1.off('value', h1); r2.off('value', h2); };
+    /* load assortiment for photo/logo fallback */
+    const r3 = db.ref('ptg/assortiment');
+    const h3 = r3.on('value', s => setAssortMap(s.val() || {}));
+    return () => { r1.off('value', h1); r2.off('value', h2); r3.off('value', h3); };
   }, [session]);
 
   const magasins = useMemo(() => [...new Set(cibles.map(c => c.magasin))].sort(), [cibles]);
@@ -405,15 +409,26 @@ function App() {
               ✓ Enregistré à {savedTime[selMag]}
             </div>
           )}
-          {curCibles.map(c => (
-            <ArticleCard
-              key={c.codeInterne}
-              cible={c}
-              rev={revs.find(r => r.codeInterne === c.codeInterne && r.magasin === selMag)}
-              value={inputs[c.codeInterne] ?? 0}
-              onChange={val => handleChange(c.codeInterne, val)}
-            />
-          ))}
+          {curCibles.map(c => {
+            const prod = assortMap[c.codeInterne] || {};
+            const enriched = {
+              ...c,
+              photoUrl: c.photoUrl || prod.photoUrl || '',
+              logoUrl:  c.logoUrl  || prod.logoUrl  || '',
+              libelle:  c.libelle  || prod.libelle  || c.codeInterne,
+              rayon:    c.rayon    || prod.rayon    || '',
+              famille:  c.famille  || prod.famille  || '',
+            };
+            return (
+              <ArticleCard
+                key={c.codeInterne}
+                cible={enriched}
+                rev={revs.find(r => r.codeInterne === c.codeInterne && r.magasin === selMag)}
+                value={inputs[c.codeInterne] ?? 0}
+                onChange={val => handleChange(c.codeInterne, val)}
+              />
+            );
+          })}
         </div>
       )}
 
