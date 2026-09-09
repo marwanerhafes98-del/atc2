@@ -565,10 +565,10 @@ function computeStats(animList, todayPtgs) {
 }
 
 /* ── DASHBOARD XLSX EXPORT ── */
-function exportDashboardXLSX(animList, todayPtgs, filterVille, filterTLName) {
-  const now     = new Date();
-  const dateStr = now.toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
-  const fileDate = now.toLocaleDateString('fr-FR').replace(/\//g, '-');
+function exportDashboardXLSX(animList, todayPtgs, filterVille, filterTLName, filterDateISO) {
+  const dateObj  = filterDateISO ? (() => { const [y,m,d]=filterDateISO.split('-').map(Number); return new Date(y,m-1,d); })() : new Date();
+  const dateStr  = dateObj.toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+  const fileDate = dateObj.toLocaleDateString('fr-FR').replace(/\//g, '-');
   const scope   = [
     filterVille   !== 'Toutes' ? `Ville : ${filterVille}`     : null,
     filterTLName  !== 'Tous'   ? `Team Lead : ${filterTLName}` : null,
@@ -1367,10 +1367,20 @@ function SectorGapPanel({ animateurs, todayPtgs, secteurs = [] }) {
 function DashboardView({ accounts, sessions, pointages, onRefresh, animateurs, secteurs = [] }) {
   const [filterVille, setFilterVille]   = useState('Toutes');
   const [filterTL,    setFilterTL]      = useState('Tous');
+  const todayISO = new Date().toISOString().split('T')[0];
+  const [filterDate,  setFilterDate]    = useState(todayISO);
 
-  const todayPtgs = useMemo(() =>
-    pointages.filter(p => p.date === new Date().toDateString()),
-    [pointages]
+  // Convert ISO date to toDateString() format (matches p.date storage)
+  const filterDateStr = useMemo(() => {
+    const [y, m, d] = filterDate.split('-').map(Number);
+    return new Date(y, m - 1, d).toDateString();
+  }, [filterDate]);
+
+  const isToday = filterDate === todayISO;
+
+  const selectedPtgs = useMemo(() =>
+    pointages.filter(p => p.date === filterDateStr),
+    [pointages, filterDateStr]
   );
 
   // Unique TL names for the current ville filter
@@ -1389,16 +1399,16 @@ function DashboardView({ accounts, sessions, pointages, onRefresh, animateurs, s
     return list;
   }, [filterVille, filterTL, animateurs]);
 
-  // Filtered pointages
+  // Filtered pointages for selected date
   const filteredPtgs = useMemo(() => {
-    let list = todayPtgs;
+    let list = selectedPtgs;
     if (filterVille !== 'Toutes') list = list.filter(p => p.ville === filterVille);
     if (filterTL !== 'Tous') {
       const tlEmail = accounts.find(a => a.name === filterTL)?.email;
       if (tlEmail) list = list.filter(p => p.teamLeadEmail === tlEmail);
     }
     return list;
-  }, [todayPtgs, filterVille, filterTL, accounts]);
+  }, [selectedPtgs, filterVille, filterTL, accounts]);
 
   const stats = useMemo(() => {
     const base = computeStats(filteredAnims, filteredPtgs);
@@ -1416,16 +1426,22 @@ function DashboardView({ accounts, sessions, pointages, onRefresh, animateurs, s
     return base;
   }, [filteredAnims, filteredPtgs, secteurs, filterVille]);
 
-  const yesterdayStr = useMemo(() => { const d = new Date(); d.setDate(d.getDate()-1); return d.toDateString(); }, []);
+  // Previous day relative to selected date (for comparison KPIs)
+  const prevDateStr = useMemo(() => {
+    const [y, m, d] = filterDate.split('-').map(Number);
+    const prev = new Date(y, m - 1, d);
+    prev.setDate(prev.getDate() - 1);
+    return prev.toDateString();
+  }, [filterDate]);
   const yesterdayPtgs = useMemo(() => {
-    let list = pointages.filter(p => p.date === yesterdayStr);
+    let list = pointages.filter(p => p.date === prevDateStr);
     if (filterVille !== 'Toutes') list = list.filter(p => p.ville === filterVille);
     if (filterTL !== 'Tous') { const tlEmail = accounts.find(a => a.name === filterTL)?.email; if (tlEmail) list = list.filter(p => p.teamLeadEmail === tlEmail); }
     return list;
-  }, [pointages, yesterdayStr, filterVille, filterTL, accounts]);
+  }, [pointages, prevDateStr, filterVille, filterTL, accounts]);
   const yesterdayStats = useMemo(() => computeStats(filteredAnims, yesterdayPtgs), [filteredAnims, yesterdayPtgs]);
 
-  const handleExport = () => exportDashboardXLSX(filteredAnims, filteredPtgs, filterVille, filterTL !== 'Tous' ? filterTL : 'Tous');
+  const handleExport = () => exportDashboardXLSX(filteredAnims, filteredPtgs, filterVille, filterTL !== 'Tous' ? filterTL : 'Tous', filterDate);
 
   return (
     <>
@@ -1433,6 +1449,26 @@ function DashboardView({ accounts, sessions, pointages, onRefresh, animateurs, s
       <div className="analytics-filters">
         <i data-lucide="sliders-horizontal" style={{width:16,height:16,color:'var(--neutral-400)',flexShrink:0}}></i>
         <span className="af-label">Filtrer par</span>
+        <div className="af-divider"></div>
+
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <i data-lucide="calendar" style={{width:14,height:14,color:'var(--neutral-400)',flexShrink:0}}></i>
+          <input
+            type="date"
+            value={filterDate}
+            max={todayISO}
+            onChange={e => setFilterDate(e.target.value)}
+            className={`af-select ${!isToday ? 'active-filter' : ''}`}
+            style={{cursor:'pointer',paddingRight:6}}
+          />
+          {!isToday && (
+            <button
+              onClick={() => setFilterDate(todayISO)}
+              style={{fontSize:11,fontWeight:700,color:'#0052CC',background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:6,padding:'2px 8px',cursor:'pointer',whiteSpace:'nowrap'}}
+            >Aujourd'hui</button>
+          )}
+        </div>
+
         <div className="af-divider"></div>
 
         <select className={`af-select ${filterVille !== 'Toutes' ? 'active-filter' : ''}`}
