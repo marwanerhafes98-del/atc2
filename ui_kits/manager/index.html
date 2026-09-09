@@ -6920,10 +6920,14 @@ function ReservationsView() {
   /* code magasin → nom magasin */
   const CODE_MAGASIN = {'500':'AIN SEBAA','501':'FES','502':'TANGER','503':'OUJDA','504':'RABAT','505':'AGADIR','506':'MARRAKECH','511':'MEKNES','517':'NADOR','802':'BENI MELLAL'};
 
-  /* lookup stock : stockMap['TANGER_1608'] → nb unités */
+  /* lookup stock : stockMap['TANGER_1608'] → nb unités — expire après 24h */
   const stockMap = useMemo(() => {
     const m = {};
-    stockGold.forEach(s => { m[s.magasin + '_' + s.codeInterne] = s.stock; });
+    const MAX_AGE = 24 * 3600 * 1000;
+    stockGold.forEach(s => {
+      if (!s.importedAt || (Date.now() - s.importedAt) > MAX_AGE) return;
+      m[s.magasin + '_' + s.codeInterne] = s.stock;
+    });
     return m;
   }, [stockGold]);
 
@@ -7303,7 +7307,7 @@ function ReservationsView() {
                 const magasin = CODE_MAGASIN[codeMag];
                 if (!magasin) continue;
                 const key = magasin + '_' + codeInt;
-                batch[key] = { key, codeInterne:codeInt, magasin, codeMagasin:codeMag, stock, updatedAt:DASH_TODAY_ISO };
+                batch[key] = { key, codeInterne:codeInt, magasin, codeMagasin:codeMag, stock, updatedAt:DASH_TODAY_ISO, importedAt: Date.now() };
                 total++;
               }
             } catch(ex) { errs.push(file.name + ' : ' + ex.message); }

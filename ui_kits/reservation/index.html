@@ -297,16 +297,17 @@ function App() {
     /* load assortiment for photo/logo fallback */
     const r3 = db.ref('ptg/assortiment');
     const h3 = r3.on('value', s => setAssortMap(s.val() || {}));
-    /* load stock gold */
+    /* load stock gold — expire après 24h */
     const r4 = db.ref('ptg/stockGold');
+    const MAX_STOCK_AGE = 24 * 3600 * 1000;
     const h4 = r4.on('value', s => {
       const m = {};
       if (s.val()) Object.values(s.val()).forEach(x => {
         if (!x || x.magasin == null || x.codeInterne == null) return;
+        if (!x.importedAt || (Date.now() - x.importedAt) > MAX_STOCK_AGE) return;
         const k = String(x.magasin).trim() + '_' + String(x.codeInterne).trim();
         m[k] = Number(x.stock) || 0;
       });
-      console.log('[StockGold] chargé:', Object.keys(m).length, 'entrées', Object.keys(m).slice(0,5));
       setStockMap(m);
     });
     return () => { r1.off('value', h1); r2.off('value', h2); r3.off('value', h3); r4.off('value', h4); };
