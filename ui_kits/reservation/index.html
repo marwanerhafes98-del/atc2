@@ -91,7 +91,8 @@ input,select{font-family:inherit;-webkit-appearance:none}
 .counter-btn:active{background:var(--neutral-200)}
 .counter-btn.plus{color:var(--primary)}
 .counter-btn.plus:active{background:var(--primary-100)}
-.counter-val{min-width:42px;text-align:center;font-size:17px;font-weight:800;color:var(--neutral-800);line-height:36px}
+.counter-val{min-width:42px;width:52px;text-align:center;font-size:17px;font-weight:800;color:var(--neutral-800);line-height:36px;padding:0}
+.counter-val::-webkit-inner-spin-button,.counter-val::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 .counter-val.over{color:var(--orange)}
 .counter-val.done{color:var(--green)}
 /* saved badge */
@@ -252,7 +253,19 @@ function ArticleCard({ cible, rev, value, stock, onChange }) {
         <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
           <div className="counter">
             <button className="counter-btn" onClick={dec} type="button" aria-label="Moins">−</button>
-            <span className={'counter-val' + (isOver?' over':isDone?' done':'')}>{num !== null ? num : '—'}</span>
+            <input
+              type="number" inputMode="numeric" pattern="[0-9]*"
+              value={num !== null ? num : ''}
+              onChange={e => {
+                const v = e.target.value;
+                if (v === '' || v === '-') { onChange(0); return; }
+                const n = parseInt(v, 10);
+                if (!isNaN(n) && n >= 0) onChange(n);
+              }}
+              onFocus={e => e.target.select()}
+              className={'counter-val' + (isOver?' over':isDone?' done':'')}
+              style={{width:52,textAlign:'center',border:'none',outline:'none',background:'transparent',fontWeight:800,MozAppearance:'textfield'}}
+            />
             <button className="counter-btn plus" onClick={inc} type="button" aria-label="Plus">+</button>
           </div>
           {isDone && !isOver && (
