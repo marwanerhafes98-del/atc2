@@ -10,7 +10,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx-js-style.umd.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
@@ -417,23 +417,87 @@ function App() {
     const mag = selMag || session.zone;
     const d = new Date();
     const dateFmt = String(d.getDate()).padStart(2,'0') + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + d.getFullYear();
-    const HEADERS = ['Magasin','Code Interne','Libellé','Cible (palettes)','Palettes réservées','Statut'];
+    const timeFmt = String(d.getHours()).padStart(2,'0') + 'h' + String(d.getMinutes()).padStart(2,'0');
     const srcCibles = selMag ? cibles.filter(c => c.magasin === selMag) : cibles;
+    const COLS = ['Code','Libellé','Rayon','Famille','Cible (pal.)','Réservé (pal.)','Statut'];
+
     const dataRows = srcCibles.map(c => {
       const prod = assortMap[c.codeInterne] || {};
       const libelle = c.libelle || prod.libelle || c.codeInterne;
+      const rayon   = (c.rayon   || prod.rayon   || '').toUpperCase();
+      const famille = c.famille  || prod.famille  || '';
       const rev = revs.find(r => r.codeInterne === c.codeInterne && r.magasin === c.magasin);
       const pal = rev ? (Number(rev.palettes)||0) : 0;
-      const statut = pal >= c.ciblePalettes ? 'Atteinte' : pal > 0 ? 'En cours' : 'Non réservé';
-      return [c.magasin, c.codeInterne, libelle, c.ciblePalettes, pal, statut];
+      const statut = pal >= c.ciblePalettes && c.ciblePalettes > 0 ? 'Atteinte' : pal > 0 ? 'En cours' : 'Non réservé';
+      return { code:c.codeInterne, libelle, rayon, famille, cible:c.ciblePalettes, pal, statut };
     });
-    const aoa = [HEADERS, ...dataRows];
+
+    const totalCible = dataRows.reduce((s,r) => s + (r.cible||0), 0);
+    const totalPal   = dataRows.reduce((s,r) => s + r.pal, 0);
+    const nbAtteints = dataRows.filter(r => r.statut === 'Atteinte').length;
+    const pct = srcCibles.length > 0 ? Math.round(nbAtteints / srcCibles.length * 100) : 0;
+
+    /* ── build AOA ── */
+    const ROW_TITLE   = 0;
+    const ROW_SUB     = 1;
+    const ROW_SUMMARY = 2;
+    const ROW_EMPTY   = 3;
+    const ROW_HEADER  = 4;
+    const ROW_DATA    = 5;
+    const NC = COLS.length;
+
+    const aoa = [
+      [mag + '  —  RÉSERVATIONS PALETTES ATC2', ...Array(NC-1).fill('')],
+      [dateFmt + '  |  ' + timeFmt + '  |  Exporté par ' + session.name, ...Array(NC-1).fill('')],
+      [nbAtteints + '/' + srcCibles.length + ' articles atteints (' + pct + '%)', '', '', '', totalCible + ' pal. cible', totalPal + ' pal. réservé', ''],
+      Array(NC).fill(''),
+      COLS,
+      ...dataRows.map(r => [r.code, r.libelle, r.rayon, r.famille, r.cible, r.pal, r.statut]),
+    ];
+
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    const colW = [20,14,36,16,18,14];
-    ws['!cols'] = colW.map(w => ({wch:w}));
+
+    ws['!cols'] = [{wch:13},{wch:38},{wch:16},{wch:20},{wch:13},{wch:15},{wch:13}];
+    ws['!rows'] = [{hpt:26},{hpt:18},{hpt:18},{hpt:6},{hpt:20}];
+    ws['!merges'] = [
+      {s:{r:ROW_TITLE,c:0},   e:{r:ROW_TITLE,c:NC-1}},
+      {s:{r:ROW_SUB,c:0},     e:{r:ROW_SUB,c:NC-1}},
+      {s:{r:ROW_SUMMARY,c:0}, e:{r:ROW_SUMMARY,c:3}},
+    ];
+
+    const B = { top:{style:'thin',color:{rgb:'CBD5E1'}}, bottom:{style:'thin',color:{rgb:'CBD5E1'}}, left:{style:'thin',color:{rgb:'CBD5E1'}}, right:{style:'thin',color:{rgb:'CBD5E1'}} };
+    const enc = (r,c) => XLSX.utils.encode_cell({r,c});
+    const sty = (addr, s) => { if (!ws[addr]) ws[addr] = {v:'',t:'s'}; ws[addr].s = s; };
+
+    /* title */
+    sty(enc(ROW_TITLE,0), { font:{bold:true,sz:14,color:{rgb:'FFFFFF'},name:'Calibri'}, fill:{fgColor:{rgb:'0052CC'},patternType:'solid'}, alignment:{horizontal:'center',vertical:'center'} });
+    /* subtitle */
+    sty(enc(ROW_SUB,0),   { font:{sz:10,color:{rgb:'FFFFFF'},italic:true}, fill:{fgColor:{rgb:'1D4ED8'},patternType:'solid'}, alignment:{horizontal:'center',vertical:'center'} });
+    /* summary */
+    sty(enc(ROW_SUMMARY,0), { font:{bold:true,sz:11,color:{rgb:'1E3A5F'}}, fill:{fgColor:{rgb:'DBEAFE'},patternType:'solid'}, border:B });
+    sty(enc(ROW_SUMMARY,4), { font:{bold:true,sz:11,color:{rgb:'1E3A5F'}}, fill:{fgColor:{rgb:'DBEAFE'},patternType:'solid'}, alignment:{horizontal:'center'}, border:B });
+    sty(enc(ROW_SUMMARY,5), { font:{bold:true,sz:11,color:{rgb:'166534'}}, fill:{fgColor:{rgb:'DCFCE7'},patternType:'solid'}, alignment:{horizontal:'center'}, border:B });
+    /* header row */
+    COLS.forEach((_,ci) => {
+      sty(enc(ROW_HEADER,ci), { font:{bold:true,sz:11,color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'334155'},patternType:'solid'}, alignment:{horizontal:'center',vertical:'center',wrapText:true}, border:B });
+    });
+    /* data rows */
+    dataRows.forEach((row, ri) => {
+      const r = ROW_DATA + ri;
+      const fill = ri % 2 === 0 ? {fgColor:{rgb:'F8FAFC'},patternType:'solid'} : {fgColor:{rgb:'FFFFFF'},patternType:'solid'};
+      [0,1,2,3].forEach(ci => sty(enc(r,ci), { font:{sz:11}, fill, border:B, alignment:{vertical:'center'} }));
+      sty(enc(r,4), { font:{bold:true,sz:11,color:{rgb:'1E3A5F'}}, fill:{fgColor:{rgb:'EFF6FF'},patternType:'solid'}, alignment:{horizontal:'center',vertical:'center'}, border:B });
+      const palColor  = row.pal > 0 ? '166534' : '94A3B8';
+      const palBg     = row.pal > 0 ? 'DCFCE7' : 'F8FAFC';
+      sty(enc(r,5), { font:{bold:true,sz:12,color:{rgb:palColor}}, fill:{fgColor:{rgb:palBg},patternType:'solid'}, alignment:{horizontal:'center',vertical:'center'}, border:B });
+      const stColors = { 'Atteinte':['166534','DCFCE7'], 'En cours':['92400E','FEF3C7'], 'Non réservé':['991B1B','FEE2E2'] };
+      const [fc,bc] = stColors[row.statut] || ['475569','F1F5F9'];
+      sty(enc(r,6), { font:{bold:true,sz:11,color:{rgb:fc}}, fill:{fgColor:{rgb:bc},patternType:'solid'}, alignment:{horizontal:'center',vertical:'center'}, border:B });
+    });
+
     XLSX.utils.book_append_sheet(wb, ws, 'Réservation');
-    XLSX.writeFile(wb, mag + ' Reservation ' + dateFmt + '.xlsx');
+    XLSX.writeFile(wb, mag + '_Reservation_' + dateFmt + '.xlsx');
   };
 
   const logout = () => { localStorage.removeItem('ptg_resv_sess'); setSession(null); };

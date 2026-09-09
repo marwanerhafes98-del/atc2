@@ -6880,6 +6880,13 @@ function ReservationsView() {
   const [editUser, setEditUser]         = useState(null);
   const [userForm, setUserForm]         = useState({ name:'', login:'', password:'', zone:'', actif:true });
   const [userMsg, setUserMsg]           = useState('');
+  /* magasins DB */
+  const [magasinsDB,   setMagasinsDB]   = useState({});
+  const [subTab,       setSubTab]       = useState('chefs');
+  const [magForm,      setMagForm]      = useState({ code:'', nom:'' });
+  const [showMagForm,  setShowMagForm]  = useState(false);
+  const [editMag,      setEditMag]      = useState(null);
+  const [magMsg,       setMagMsg]       = useState('');
 
   /* import cibles */
   const [importing, setImporting]   = useState(false);
@@ -6916,7 +6923,9 @@ function ReservationsView() {
       });
       setStockGold(entries);
     });
-    return () => { r1.off('value',h1); r2.off('value',h2); r3.off('value',h3); r4.off('value',h4); r5.off('value',h5); };
+    const r6 = db.ref('ptg/magasins');
+    const h6 = r6.on('value', s => setMagasinsDB(s.val() || {}));
+    return () => { r1.off('value',h1); r2.off('value',h2); r3.off('value',h3); r4.off('value',h4); r5.off('value',h5); r6.off('value',h6); };
   }, []);
 
   /* derived */
@@ -6926,8 +6935,16 @@ function ReservationsView() {
     return [...new Set(src.map(c=>c.magasin).filter(Boolean))].sort();
   }, [cibles, fZone]);
 
-  /* code magasin → nom magasin */
-  const CODE_MAGASIN = {'500':'AIN SEBAA','501':'FES','502':'TANGER','503':'OUJDA','504':'RABAT','505':'AGADIR','506':'MARRAKECH','511':'MEKNES','517':'NADOR','802':'BENI MELLAL'};
+  /* code magasin → nom magasin (dynamique Firebase, fallback hardcodé) */
+  const CODE_MAGASIN = useMemo(() => {
+    const fallback = {'500':'AIN SEBAA','501':'FES','502':'TANGER','503':'OUJDA','504':'RABAT','505':'AGADIR','506':'MARRAKECH','511':'MEKNES','517':'NADOR','802':'BENI MELLAL'};
+    if (Object.keys(magasinsDB).length === 0) return fallback;
+    const m = {};
+    Object.values(magasinsDB).forEach(mg => { if (mg.code && mg.nom) m[mg.code] = mg.nom; });
+    return m;
+  }, [magasinsDB]);
+  /* liste triée des noms de magasins pour les selects */
+  const magasinsList = useMemo(() => Object.values(CODE_MAGASIN).sort(), [CODE_MAGASIN]);
 
   /* lookup stock : stockMap['TANGER_1608'] → nb unités — expire après 24h */
   const stockMap = useMemo(() => {
@@ -7175,6 +7192,21 @@ function ReservationsView() {
   const toggleUser = (u) => db.ref('ptg/reservUsers/' + u.id).update({ actif: u.actif === false ? true : false });
   const deleteUser = (u) => { if (confirm('Supprimer ' + u.name + ' ?')) db.ref('ptg/reservUsers/' + u.id).remove(); };
 
+  /* ── MAGASIN CRUD ── */
+  const openAddMag = () => { setEditMag(null); setMagForm({ code:'', nom:'' }); setShowMagForm(true); setMagMsg(''); };
+  const openEditMag = (mg) => { setEditMag(mg); setMagForm({ code:mg.code, nom:mg.nom }); setShowMagForm(true); setMagMsg(''); };
+  const saveMag = async () => {
+    const code = magForm.code.trim();
+    const nom  = magForm.nom.trim().toUpperCase();
+    if (!code || !nom) { setMagMsg('❌ Code et nom requis.'); return; }
+    const existing = Object.values(magasinsDB).find(mg => mg.code === code && (!editMag || mg.code !== editMag.code));
+    if (existing) { setMagMsg('❌ Ce code existe déjà.'); return; }
+    if (editMag && editMag.code !== code) await db.ref('ptg/magasins/' + editMag.code).remove();
+    await db.ref('ptg/magasins/' + code).set({ code, nom });
+    setShowMagForm(false); setMagMsg('');
+  };
+  const deleteMag = (mg) => { if (confirm('Supprimer le magasin ' + mg.nom + ' ?')) db.ref('ptg/magasins/' + mg.code).remove(); };
+
   /* ── RAYON COLORS ── */
   const RAYON_COLORS = {
     'EPICERIE':     { bg:'#CCFBF1', color:'#0F766E' },
@@ -7246,7 +7278,7 @@ function ReservationsView() {
 
   /* ── TEMPLATE CIBLES DOWNLOAD ── */
   const handleDownloadTemplateCibles = () => {
-    const MAGS = ['AGADIR','AIN SEBAA','BENI MELLAL','FES','MARRAKECH','MEKNES','NADOR','OQBA','OUJDA','RABAT','TANGER'];
+    const MAGS = magasinsList.length > 0 ? magasinsList : ['AGADIR','AIN SEBAA','BENI MELLAL','FES','MARRAKECH','MEKNES','NADOR','OUJDA','RABAT','TANGER'];
     const HEADERS = ['CODE INTERNE', 'LIBELLE ATC+ Français', ...MAGS];
     const N = HEADERS.length;
     const example = [
@@ -7343,10 +7375,12 @@ function ReservationsView() {
   const setUF = (k,v) => setUserForm(p => ({...p,[k]:v}));
 
   const tabStyle = (t) => ({
-    padding:'8px 18px', border:'none', borderRadius:8, fontWeight:700, fontSize:13, cursor:'pointer',
-    background: tab===t ? 'var(--primary)' : 'var(--neutral-100)',
-    color: tab===t ? '#fff' : 'var(--neutral-600)',
-    transition:'all .15s',
+    padding:'10px 20px', fontWeight:700, fontSize:13, cursor:'pointer',
+    borderRadius:10, border:'2px solid transparent', transition:'all .15s',
+    background: tab===t ? '#0052CC' : '#F1F5F9',
+    color:       tab===t ? '#ffffff' : '#475569',
+    boxShadow:   tab===t ? '0 2px 8px rgba(0,82,204,.3)' : 'none',
+    borderColor:  tab===t ? '#0052CC' : '#E2E8F0',
   });
 
   return (
@@ -7359,11 +7393,12 @@ function ReservationsView() {
       </div>
 
       {/* ── TAB NAV ── */}
-      <div style={{display:'flex',gap:8,marginBottom:20,flexWrap:'wrap'}}>
+      <div style={{display:'flex',gap:8,marginBottom:24,flexWrap:'wrap',padding:'4px',background:'#F8FAFC',borderRadius:14,border:'1px solid #E2E8F0'}}>
         <button style={tabStyle('suivi')}       onClick={()=>setTab('suivi')}>📊 Suivi global</button>
         <button style={tabStyle('cibles')}      onClick={()=>setTab('cibles')}>📋 Cibles & Import</button>
         <button style={tabStyle('assortiment')} onClick={()=>setTab('assortiment')}>🗂 Assortiment ({assortiment.length})</button>
         <button style={tabStyle('comptes')}     onClick={()=>setTab('comptes')}>👤 Comptes chefs</button>
+        <button style={tabStyle('magasins')}    onClick={()=>setTab('magasins')}>🏪 Magasins</button>
       </div>
 
       {/* ══ SUIVI TAB ══ */}
@@ -7705,14 +7740,21 @@ function ReservationsView() {
                   {label:'Nom complet',key:'name',placeholder:'ex: Ahmed Bennani'},
                   {label:'Identifiant',key:'login',placeholder:'ex: chef.ainsebaa'},
                   {label:'Mot de passe',key:'password',placeholder:'••••••••'},
-                  {label:'Zone affectée',key:'zone',placeholder:'ex: Ain Sebaa'},
                 ].map(f => (
                   <div key={f.key} style={{marginBottom:14}}>
-                    <label style={{display:'block',fontSize:11,fontWeight:700,color:'var(--neutral-600)',textTransform:'uppercase',letterSpacing:.5,marginBottom:5}}>{f.label}</label>
+                    <label style={{display:'block',fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:.5,marginBottom:5}}>{f.label}</label>
                     <input value={userForm[f.key]} onChange={e=>setUF(f.key,e.target.value)} placeholder={f.placeholder}
-                      style={{width:'100%',border:'1.5px solid var(--neutral-200)',borderRadius:8,padding:'9px 12px',fontSize:14,outline:'none'}} />
+                      style={{width:'100%',border:'1.5px solid #E2E8F0',borderRadius:8,padding:'9px 12px',fontSize:14,outline:'none',color:'#1E293B'}} />
                   </div>
                 ))}
+                <div style={{marginBottom:14}}>
+                  <label style={{display:'block',fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:.5,marginBottom:5}}>Magasin affecté</label>
+                  <select value={userForm.zone} onChange={e=>setUF('zone',e.target.value)}
+                    style={{width:'100%',border:'1.5px solid #E2E8F0',borderRadius:8,padding:'9px 12px',fontSize:14,outline:'none',background:'#fff',color:'#1E293B'}}>
+                    <option value="">— Choisir un magasin —</option>
+                    {magasinsList.map(nom => <option key={nom} value={nom}>{nom}</option>)}
+                  </select>
+                </div>
                 <div style={{marginBottom:14,display:'flex',alignItems:'center',gap:10}}>
                   <label style={{fontSize:12,fontWeight:700,color:'var(--neutral-600)',textTransform:'uppercase',letterSpacing:.5}}>Statut</label>
                   <label style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:userForm.actif?'var(--green)':'var(--neutral-500)'}}>
@@ -7724,8 +7766,8 @@ function ReservationsView() {
                 </div>
                 {userMsg && <div style={{marginBottom:12,fontSize:13,fontWeight:700,color:userMsg.startsWith('❌')?'var(--red)':'var(--green)'}}>{userMsg}</div>}
                 <div style={{display:'flex',gap:10,marginTop:20}}>
-                  <button onClick={saveUser} style={{flex:1,padding:'10px',background:'var(--primary)',color:'#fff',border:'none',borderRadius:8,fontSize:14,fontWeight:700,cursor:'pointer'}}>Enregistrer</button>
-                  <button onClick={()=>setShowUserForm(false)} style={{flex:1,padding:'10px',background:'var(--neutral-100)',color:'var(--neutral-700)',border:'1px solid var(--neutral-200)',borderRadius:8,fontSize:14,fontWeight:700,cursor:'pointer'}}>Annuler</button>
+                  <button onClick={saveUser} style={{flex:1,padding:'11px',background:'#0052CC',color:'#fff',border:'none',borderRadius:8,fontSize:14,fontWeight:700,cursor:'pointer',boxShadow:'0 2px 8px rgba(0,82,204,.3)'}}>💾 Enregistrer</button>
+                  <button onClick={()=>setShowUserForm(false)} style={{flex:1,padding:'11px',background:'#F1F5F9',color:'#334155',border:'1.5px solid #CBD5E1',borderRadius:8,fontSize:14,fontWeight:700,cursor:'pointer'}}>Annuler</button>
                 </div>
               </div>
             </div>
@@ -7748,7 +7790,7 @@ function ReservationsView() {
                   <tr key={u.id} style={{borderBottom:'1px solid var(--neutral-100)'}}>
                     <td style={{padding:'12px 16px',fontWeight:700,fontSize:14,color:'var(--neutral-800)'}}>{u.name}</td>
                     <td style={{padding:'12px 16px',fontSize:13,color:'var(--neutral-600)',fontFamily:'monospace'}}>{u.login}</td>
-                    <td style={{padding:'12px 16px'}}><span style={{background:'var(--primary-light)',color:'var(--primary)',fontWeight:700,padding:'2px 10px',borderRadius:99,fontSize:12}}>{u.zone}</span></td>
+                    <td style={{padding:'12px 16px'}}><span style={{background:'#DBEAFE',color:'#1D4ED8',fontWeight:700,padding:'3px 10px',borderRadius:99,fontSize:12}}>{u.zone}</span></td>
                     <td style={{padding:'12px 16px'}}>
                       <span style={{fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:99,background:u.actif!==false?'#DCFCE7':'#FEE2E2',color:u.actif!==false?'#15803D':'#991B1B'}}>
                         {u.actif !== false ? '● Actif' : '○ Inactif'}
@@ -7767,6 +7809,98 @@ function ReservationsView() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+      {/* ══ MAGASINS TAB ══ */}
+      {tab === 'magasins' && (
+        <div>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20}}>
+            <div>
+              <div style={{fontSize:17,fontWeight:800,color:'#1E293B'}}>Gestion des magasins</div>
+              <div style={{fontSize:13,color:'#64748B',marginTop:2}}>Ajoutez ou modifiez les codes et noms de magasins utilisés par tous les outils</div>
+            </div>
+            <button onClick={openAddMag}
+              style={{padding:'10px 20px',background:'#0052CC',color:'#fff',border:'none',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer',boxShadow:'0 2px 8px rgba(0,82,204,.3)',display:'flex',alignItems:'center',gap:8}}>
+              + Ajouter un magasin
+            </button>
+          </div>
+
+          {/* modal magasin */}
+          {showMagForm && (
+            <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+              <div style={{background:'#fff',borderRadius:16,padding:32,width:'100%',maxWidth:400,boxShadow:'0 24px 64px rgba(0,0,0,.25)'}}>
+                <div style={{fontSize:18,fontWeight:800,color:'#1E293B',marginBottom:6}}>{editMag ? '✏️ Modifier le magasin' : '🏪 Nouveau magasin'}</div>
+                <div style={{fontSize:13,color:'#64748B',marginBottom:24}}>{editMag ? 'Modifiez le code ou le nom du magasin.' : 'Entrez le code numérique et le nom officiel du magasin.'}</div>
+                <div style={{marginBottom:16}}>
+                  <label style={{display:'block',fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:.5,marginBottom:5}}>Code magasin</label>
+                  <input value={magForm.code} onChange={e=>setMagForm(p=>({...p,code:e.target.value}))} placeholder="ex: 508"
+                    style={{width:'100%',border:'1.5px solid #E2E8F0',borderRadius:8,padding:'10px 12px',fontSize:15,outline:'none',fontWeight:700,color:'#1E293B',letterSpacing:1}} />
+                </div>
+                <div style={{marginBottom:20}}>
+                  <label style={{display:'block',fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:.5,marginBottom:5}}>Nom du magasin</label>
+                  <input value={magForm.nom} onChange={e=>setMagForm(p=>({...p,nom:e.target.value.toUpperCase()}))} placeholder="ex: CASABLANCA"
+                    style={{width:'100%',border:'1.5px solid #E2E8F0',borderRadius:8,padding:'10px 12px',fontSize:15,outline:'none',fontWeight:700,color:'#1E293B'}} />
+                </div>
+                {magMsg && <div style={{marginBottom:14,fontSize:13,fontWeight:700,color:magMsg.startsWith('❌')?'#DC2626':'#16A34A'}}>{magMsg}</div>}
+                <div style={{display:'flex',gap:10}}>
+                  <button onClick={saveMag} style={{flex:1,padding:'12px',background:'#0052CC',color:'#fff',border:'none',borderRadius:8,fontSize:14,fontWeight:700,cursor:'pointer',boxShadow:'0 2px 8px rgba(0,82,204,.3)'}}>💾 Enregistrer</button>
+                  <button onClick={()=>{setShowMagForm(false);setMagMsg('');}} style={{flex:1,padding:'12px',background:'#F1F5F9',color:'#334155',border:'1.5px solid #CBD5E1',borderRadius:8,fontSize:14,fontWeight:700,cursor:'pointer'}}>Annuler</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* table magasins */}
+          <div style={{background:'#fff',border:'1px solid #E2E8F0',borderRadius:12,overflow:'hidden',boxShadow:'0 1px 4px rgba(0,0,0,.06)'}}>
+            <table style={{width:'100%',borderCollapse:'collapse'}}>
+              <thead>
+                <tr style={{background:'#F8FAFC',borderBottom:'2px solid #E2E8F0'}}>
+                  {['Code','Nom du magasin','Clé Firebase','Actions'].map(h => (
+                    <th key={h} style={{padding:'12px 20px',fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:.6,color:'#64748B',textAlign:'left'}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Object.keys(magasinsDB).length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={{padding:'48px',textAlign:'center'}}>
+                      <div style={{fontSize:36,marginBottom:12}}>🏪</div>
+                      <div style={{fontSize:15,fontWeight:700,color:'#334155',marginBottom:6}}>Aucun magasin configuré</div>
+                      <div style={{fontSize:13,color:'#94A3B8'}}>Les codes par défaut sont utilisés. Ajoutez un magasin pour personnaliser.</div>
+                      <div style={{marginTop:16,padding:'12px 16px',background:'#F0F9FF',border:'1px solid #BAE6FD',borderRadius:8,fontSize:12,color:'#0369A1',textAlign:'left',maxWidth:400,margin:'16px auto 0'}}>
+                        <strong>Codes par défaut :</strong><br/>
+                        {Object.entries({'500':'AIN SEBAA','501':'FES','502':'TANGER','503':'OUJDA','504':'RABAT','505':'AGADIR','506':'MARRAKECH','511':'MEKNES','517':'NADOR','802':'BENI MELLAL'}).map(([code,nom])=>(
+                          <span key={code} style={{display:'inline-block',margin:'2px 4px 2px 0',padding:'1px 8px',background:'#DBEAFE',color:'#1D4ED8',borderRadius:99,fontSize:11,fontWeight:700}}>{code} → {nom}</span>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                ) : Object.values(magasinsDB).sort((a,b)=>a.nom.localeCompare(b.nom)).map(mg => (
+                  <tr key={mg.code} style={{borderBottom:'1px solid #F1F5F9'}}>
+                    <td style={{padding:'14px 20px'}}>
+                      <span style={{background:'#F1F5F9',color:'#334155',fontWeight:800,fontFamily:'monospace',fontSize:15,padding:'4px 12px',borderRadius:8,border:'1px solid #E2E8F0'}}>{mg.code}</span>
+                    </td>
+                    <td style={{padding:'14px 20px'}}>
+                      <div style={{fontWeight:700,fontSize:14,color:'#1E293B'}}>{mg.nom}</div>
+                    </td>
+                    <td style={{padding:'14px 20px'}}>
+                      <span style={{fontSize:12,fontFamily:'monospace',color:'#7C3AED',background:'#EDE9FE',padding:'3px 8px',borderRadius:6}}>{mg.nom.replace(/ /g,'_')}</span>
+                    </td>
+                    <td style={{padding:'14px 20px'}}>
+                      <div style={{display:'flex',gap:8}}>
+                        <button onClick={()=>openEditMag(mg)} style={{padding:'6px 14px',background:'#F1F5F9',border:'1.5px solid #E2E8F0',borderRadius:6,fontSize:12,fontWeight:700,cursor:'pointer',color:'#334155'}}>✏️ Modifier</button>
+                        <button onClick={()=>deleteMag(mg)} style={{padding:'6px 12px',background:'#FEE2E2',border:'none',borderRadius:6,fontSize:12,fontWeight:700,cursor:'pointer',color:'#991B1B'}}>✕ Supprimer</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{marginTop:16,padding:'14px 16px',background:'#FFFBEB',border:'1px solid #FDE68A',borderRadius:10,fontSize:13,color:'#92400E'}}>
+            ⚠️ <strong>Important :</strong> après avoir ajouté un magasin ici, son code sera reconnu lors du prochain import STOCK GOLD. Le nom saisi ici doit correspondre exactement aux colonnes de votre template Cibles.
           </div>
         </div>
       )}
