@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
@@ -102,6 +103,17 @@ input,select{font-family:inherit;-webkit-appearance:none}
 .btn-save:active{background:var(--primary-dark)}
 .btn-save:disabled{background:var(--neutral-300)}
 .save-info{font-size:12px;color:var(--green);font-weight:700;text-align:center;flex-shrink:0}
+
+/* ── FILTER BAR ── */
+.filter-bar{background:#fff;border-bottom:1.5px solid var(--neutral-200);position:sticky;top:100px;z-index:39;padding-bottom:2px}
+.filter-row{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:6px 12px}
+.filter-row::-webkit-scrollbar{display:none}
+.fchip{padding:7px 13px;border-radius:99px;font-size:12px;font-weight:700;border:1.5px solid var(--neutral-200);background:#fff;color:var(--neutral-500);white-space:nowrap;flex-shrink:0;transition:all .15s;-webkit-tap-highlight-color:transparent}
+.fchip:active{opacity:.8}
+.fchip.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.fchip.on-green{background:var(--green);border-color:var(--green);color:#fff}
+.fchip.on-red{background:var(--red);border-color:var(--red);color:#fff}
+.filter-clear{padding:4px 12px 6px;font-size:11px;color:var(--primary);font-weight:700;background:none;border:none;cursor:pointer;display:block;text-align:left}
 
 /* ── EMPTY ── */
 .empty{padding:60px 20px;text-align:center;color:var(--neutral-400)}
@@ -258,6 +270,9 @@ function App() {
   const [saving, setSaving]     = useState(false);
   const [savedTime, setSavedTime] = useState({});
   const [loading, setLoading]   = useState(true);
+  const [fRayon,   setFRayon]   = useState('Tous');
+  const [fFamille, setFFamille] = useState('Toutes');
+  const [fStatus,  setFStatus]  = useState('tous');
 
   /* load */
   useEffect(() => {
@@ -276,6 +291,45 @@ function App() {
   }, [session]);
 
   const magasins = useMemo(() => [...new Set(cibles.map(c => c.magasin))].sort(), [cibles]);
+
+  const curCibles = useMemo(() => selMag ? cibles.filter(c => c.magasin === selMag) : [], [selMag, cibles]);
+
+  /* reset filtres au changement de magasin */
+  useEffect(() => { setFRayon('Tous'); setFFamille('Toutes'); setFStatus('tous'); }, [selMag]);
+
+  /* reset famille quand le rayon change */
+  useEffect(() => { setFFamille('Toutes'); }, [fRayon]);
+
+  const rayons = useMemo(() => {
+    const s = new Set();
+    curCibles.forEach(c => { const r = (c.rayon || (assortMap[c.codeInterne]||{}).rayon || '').toUpperCase().trim(); if(r) s.add(r); });
+    return [...s].sort();
+  }, [curCibles, assortMap]);
+
+  const familles = useMemo(() => {
+    const s = new Set();
+    curCibles.forEach(c => {
+      const prod  = assortMap[c.codeInterne] || {};
+      const rayon = (c.rayon || prod.rayon || '').toUpperCase().trim();
+      if (fRayon !== 'Tous' && rayon !== fRayon) return;
+      const f = (c.famille || prod.famille || '').trim();
+      if (f) s.add(f);
+    });
+    return [...s].sort();
+  }, [curCibles, assortMap, fRayon]);
+
+  const visibleCibles = useMemo(() => {
+    return curCibles.filter(c => {
+      const prod    = assortMap[c.codeInterne] || {};
+      const rayon   = (c.rayon   || prod.rayon   || '').toUpperCase().trim();
+      const famille = (c.famille || prod.famille || '').trim();
+      const pal     = Number(inputs[c.codeInterne] ?? 0);
+      const isRes   = pal > 0;
+      return (fRayon   === 'Tous'   || rayon   === fRayon)
+          && (fFamille === 'Toutes' || famille === fFamille)
+          && (fStatus  === 'tous'   || (fStatus === 'reserves' ? isRes : !isRes));
+    });
+  }, [curCibles, assortMap, inputs, fRayon, fFamille, fStatus]);
 
   useEffect(() => {
     if (magasins.length > 0 && !selMag) setSelMag(magasins[0]);
@@ -335,6 +389,29 @@ function App() {
     setSaving(false);
   };
 
+  const handleExportReservation = () => {
+    const mag = selMag || session.zone;
+    const d = new Date();
+    const dateFmt = String(d.getDate()).padStart(2,'0') + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + d.getFullYear();
+    const HEADERS = ['Magasin','Code Interne','Libellé','Cible (palettes)','Palettes réservées','Statut'];
+    const srcCibles = selMag ? cibles.filter(c => c.magasin === selMag) : cibles;
+    const dataRows = srcCibles.map(c => {
+      const prod = assortMap[c.codeInterne] || {};
+      const libelle = c.libelle || prod.libelle || c.codeInterne;
+      const rev = revs.find(r => r.codeInterne === c.codeInterne && r.magasin === c.magasin);
+      const pal = rev ? (Number(rev.palettes)||0) : 0;
+      const statut = pal >= c.ciblePalettes ? 'Atteinte' : pal > 0 ? 'En cours' : 'Non réservé';
+      return [c.magasin, c.codeInterne, libelle, c.ciblePalettes, pal, statut];
+    });
+    const aoa = [HEADERS, ...dataRows];
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const colW = [20,14,36,16,18,14];
+    ws['!cols'] = colW.map(w => ({wch:w}));
+    XLSX.utils.book_append_sheet(wb, ws, 'Réservation');
+    XLSX.writeFile(wb, mag + ' Reservation ' + dateFmt + '.xlsx');
+  };
+
   const logout = () => { localStorage.removeItem('ptg_resv_sess'); setSession(null); };
 
   if (!session) return <LoginView onLogin={setSession} />;
@@ -348,7 +425,6 @@ function App() {
     </div>
   );
 
-  const curCibles  = selMag ? cibles.filter(c => c.magasin === selMag) : [];
   const totalArts  = cibles.length;
   const doneArts   = revs.filter(r => r.palettes > 0).length;
   const pct        = totalArts > 0 ? Math.round(doneArts / totalArts * 100) : 0;
@@ -395,6 +471,50 @@ function App() {
         </div>
       )}
 
+      {/* filter bar */}
+      {curCibles.length > 0 && (
+        <div className="filter-bar">
+          {/* status pills */}
+          <div className="filter-row">
+            {[
+              {k:'tous',        label:'Tous'},
+              {k:'reserves',    label:'✓ Réservés',     cls:'on-green'},
+              {k:'nonreserves', label:'🔴 Non réservés', cls:'on-red'},
+            ].map(s => (
+              <button key={s.k} className={'fchip' + (fStatus===s.k ? ' on '+(s.cls||'') : '')} onClick={()=>setFStatus(s.k)}>
+                {s.label}
+              </button>
+            ))}
+          </div>
+          {/* rayon + famille selects */}
+          {(rayons.length > 0 || familles.length > 0) && (
+            <div style={{display:'flex',gap:8,padding:'0 12px 6px'}}>
+              {rayons.length > 0 && (
+                <select value={fRayon} onChange={e=>setFRayon(e.target.value)}
+                  style={{flex:1,border:'1.5px solid '+(fRayon!=='Tous'?'var(--primary)':'var(--neutral-200)'),borderRadius:10,padding:'8px 10px',fontSize:13,fontWeight:700,outline:'none',background:'#fff',color:fRayon!=='Tous'?'var(--primary)':'var(--neutral-600)',WebkitAppearance:'none',appearance:'none',backgroundImage:'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\'%3E%3Cpath fill=\'%2394A3B8\' d=\'M7 10l5 5 5-5z\'/%3E%3C/svg%3E")',backgroundRepeat:'no-repeat',backgroundPosition:'right 8px center',paddingRight:28}}>
+                  <option value="Tous">Tous rayons</option>
+                  {rayons.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              )}
+              {familles.length > 0 && (
+                <select value={fFamille} onChange={e=>setFFamille(e.target.value)}
+                  style={{flex:1,border:'1.5px solid '+(fFamille!=='Toutes'?'var(--primary)':'var(--neutral-200)'),borderRadius:10,padding:'8px 10px',fontSize:13,fontWeight:700,outline:'none',background:'#fff',color:fFamille!=='Toutes'?'var(--primary)':'var(--neutral-600)',WebkitAppearance:'none',appearance:'none',backgroundImage:'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\'%3E%3Cpath fill=\'%2394A3B8\' d=\'M7 10l5 5 5-5z\'/%3E%3C/svg%3E")',backgroundRepeat:'no-repeat',backgroundPosition:'right 8px center',paddingRight:28}}>
+                  <option value="Toutes">Toutes familles</option>
+                  {familles.map(f => <option key={f} value={f}>{f}</option>)}
+                </select>
+              )}
+            </div>
+          )}
+          {/* count + reset */}
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 12px 6px'}}>
+            <span style={{fontSize:11,color:'var(--neutral-400)',fontWeight:600}}>{visibleCibles.length}/{curCibles.length} articles</span>
+            {(fRayon!=='Tous'||fFamille!=='Toutes'||fStatus!=='tous') && (
+              <button className="filter-clear" onClick={()=>{setFRayon('Tous');setFFamille('Toutes');setFStatus('tous');}}>✕ Effacer filtres</button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* cards */}
       {magasins.length === 0 ? (
         <div className="empty">
@@ -409,7 +529,14 @@ function App() {
               ✓ Enregistré à {savedTime[selMag]}
             </div>
           )}
-          {curCibles.map(c => {
+          {visibleCibles.length === 0 && curCibles.length > 0 && (
+            <div className="empty" style={{padding:'40px 20px'}}>
+              <div className="empty-icon">🔍</div>
+              <div className="empty-title">Aucun article</div>
+              <div className="empty-sub">Essayez de changer les filtres</div>
+            </div>
+          )}
+          {visibleCibles.map(c => {
             const prod = assortMap[c.codeInterne] || {};
             const enriched = {
               ...c,
@@ -434,9 +561,13 @@ function App() {
 
       {/* save bar */}
       {magasins.length > 0 && (
-        <div className="save-bar">
-          <button className="btn-save" onClick={handleSave} disabled={saving || !dirty}>
+        <div className="save-bar" style={{display:'flex',gap:8}}>
+          <button className="btn-save" onClick={handleSave} disabled={saving || !dirty} style={{flex:1}}>
             {saving ? '⏳ Enregistrement…' : '💾 Enregistrer ' + (selMag || '')}
+          </button>
+          <button onClick={handleExportReservation}
+            style={{padding:'14px 16px',background:'#16A34A',color:'#fff',borderRadius:12,fontSize:13,fontWeight:800,border:'none',cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',gap:6,whiteSpace:'nowrap'}}>
+            ⬇ Excel
           </button>
         </div>
       )}

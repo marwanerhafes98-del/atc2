@@ -6870,6 +6870,10 @@ function ReservationsView() {
   const [fRayon, setFRayon]     = useState('Tous');
   const [fFamille, setFFamille] = useState('Tous');
   const [assortSearch, setAssortSearch] = useState('');
+  /* suivi filters */
+  const [sSearch, setSSearch]   = useState('');
+  const [sRayon, setSRayon]     = useState('Tous');
+  const [sStatus, setSStatus]   = useState('tous'); /* tous | reserves | nonreserves */
 
   /* user form */
   const [showUserForm, setShowUserForm] = useState(false);
@@ -6906,11 +6910,52 @@ function ReservationsView() {
     return [...new Set(src.map(c=>c.magasin).filter(Boolean))].sort();
   }, [cibles, fZone]);
 
-  const filteredRevs = useMemo(() => reservations.filter(r =>
-    (fZone === 'Toutes' || r.zone === fZone) &&
-    (fMag  === 'Tous'   || r.magasin === fMag) &&
-    r.date === fDate
-  ), [reservations, fZone, fMag, fDate]);
+  /* ── SUIVI ROWS: one row per cible, enriched with reservation totals ── */
+  /* pivot: une ligne par article, une colonne par magasin */
+  const suiviPivot = useMemo(() => {
+    const src = cibles.filter(c => fZone === 'Toutes' || c.zone === fZone);
+    const magList = [...new Set(src.map(c => c.magasin))].sort();
+    const byCode = {};
+    src.forEach(c => {
+      const prod = assortiment.find(a => a.id === c.codeInterne) || {};
+      if (!byCode[c.codeInterne]) {
+        byCode[c.codeInterne] = {
+          id: c.codeInterne,
+          codeInterne: c.codeInterne,
+          libelle:  c.libelle  || prod.libelle  || c.codeInterne,
+          rayon:    c.rayon    || prod.rayon    || '',
+          famille:  c.famille  || prod.famille  || '',
+          type:     c.type     || prod.type     || '',
+          photoUrl: c.photoUrl || prod.photoUrl || '',
+          logoUrl:  c.logoUrl  || prod.logoUrl  || '',
+          maxCible: 0,
+          magData: {},
+        };
+      }
+      const row = byCode[c.codeInterne];
+      if (Math.ceil(c.ciblePalettes||0) > row.maxCible) row.maxCible = Math.ceil(c.ciblePalettes||0);
+      const revList = reservations.filter(r =>
+        r.codeInterne === c.codeInterne && r.magasin === c.magasin && r.zone === c.zone && r.date === fDate
+      );
+      const totalPal = revList.reduce((s,r) => s + (Number(r.palettes)||0), 0);
+      row.magData[c.magasin] = totalPal;
+    });
+    const rows = Object.values(byCode);
+    return { rows, magList };
+  }, [cibles, assortiment, reservations, fZone, fDate]);
+
+  const suiviRows = suiviPivot.rows;
+
+  const suiviVisible = useMemo(() => {
+    const q = sSearch.toLowerCase();
+    return suiviPivot.rows.filter(r => {
+      const matchQ  = !q || (r.libelle||'').toLowerCase().includes(q) || (r.codeInterne||'').toLowerCase().includes(q);
+      const matchRy = sRayon === 'Tous' || (r.rayon||'').toUpperCase() === sRayon.toUpperCase();
+      const hasAny  = Object.values(r.magData).some(v => v > 0);
+      const matchSt = sStatus === 'tous' || (sStatus==='reserves' ? hasAny : !hasAny);
+      return matchQ && matchRy && matchSt;
+    });
+  }, [suiviPivot, sSearch, sRayon, sStatus]);
 
   /* ── IMPORT ASSORTIMENT ── */
   const handleImportAssortiment = (e) => {
@@ -6933,9 +6978,10 @@ function ReservationsView() {
           const famille = String(row['FAMILLE'] || row['Famille'] || '').trim();
           const photo   = String(row['Photos produits'] || row['Photo produits'] || row['photos produits'] || row['Photo produit'] || row['URL Photo'] || row['Photo'] || row['PHOTO'] || row['photo'] || row['image'] || row['IMAGE'] || '').trim();
           const logo    = String(row['logos'] || row['Logo'] || row['logo'] || row['LOGO'] || row['Logo marque'] || row['URL Logo'] || row['LOGO URL'] || '').trim();
+          const type    = String(row['TYPE'] || row['Type'] || row['type'] || row['SOUS TYPE'] || row['Sous type'] || '').trim();
           if (!code) continue;
           if (count === 0) console.log('[Assortiment debug] 1ère ligne lue :', { code, libelle, rayon, famille, photo, logo, rawKeys: Object.keys(row) });
-          batch[code] = { id: code, codeInterne: code, libelle, rayon, famille, photoUrl: photo, logoUrl: logo };
+          batch[code] = { id: code, codeInterne: code, libelle, rayon, famille, photoUrl: photo, logoUrl: logo, type };
           count++;
         }
         if (count === 0) { setImportMsgA('❌ Aucune ligne valide.'); setImportingA(false); return; }
@@ -6950,7 +6996,11 @@ function ReservationsView() {
     reader.readAsBinaryString(file);
   };
 
-  /* ── IMPORT CIBLES (Code Interne → croise assortiment) ── */
+  /* ── IMPORT CIBLES ── */
+  /* Supporte 2 formats :
+     Ancien : Zone | Magasin | Code Interne | Cible
+     Nouveau (pivot) : CODE INTERNE | LIBELLE ATC+ Français | [Magasin1] | [Magasin2] | ...
+  */
   const handleImport = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -6960,37 +7010,107 @@ function ReservationsView() {
       try {
         const wb = XLSX.read(ev.target.result, { type:'binary' });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, { defval:'' });
+
+        /* ── trouver la ligne d'en-têtes réelles (contient CODE INTERNE ou Zone) ── */
+        const rawAll = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+        const CODE_KEYS  = ['CODE INTERNE','Code Interne','CODE','code interne'];
+        const ZONE_KEYS  = ['Zone','ZONE','zone'];
+        const headerIdx  = rawAll.findIndex(row =>
+          row.some(c => CODE_KEYS.includes(String(c).trim()) || ZONE_KEYS.includes(String(c).trim()))
+        );
+        if (headerIdx === -1 || headerIdx >= rawAll.length - 1) {
+          setImportMsg('❌ En-têtes non trouvées. Colonne "CODE INTERNE" manquante ?');
+          setImporting(false); return;
+        }
+        const headers = rawAll[headerIdx].map(h => String(h).trim());
+        const rows = rawAll.slice(headerIdx + 1)
+          .map(row => {
+            const obj = {};
+            headers.forEach((h, i) => { obj[h] = row[i] !== undefined ? row[i] : ''; });
+            return obj;
+          })
+          .filter(row => headers.some(h => CODE_KEYS.includes(h) && String(row[h]).trim() !== ''));
+
         if (rows.length === 0) { setImportMsg('❌ Fichier vide ou format invalide.'); setImporting(false); return; }
         const assortSnap = await db.ref('ptg/assortiment').once('value');
         const assortMap  = assortSnap.val() || {};
         const batch = {};
         let count = 0;
         const missingCodes = [];
+
+        const NON_MAG = [...CODE_KEYS,'LIBELLE ATC+ Français','Libellé','LIBELLE','libelle','Zone','ZONE','zone','Magasin','MAGASIN','magasin','Cible','CIBLE','Cible (palettes)',''];
+        const hasZone = headers.some(h => ZONE_KEYS.includes(h));
+        const hasMag  = headers.some(h => ['Magasin','MAGASIN','magasin'].includes(h));
+        const isPivot = !hasZone && !hasMag;
+        const magCols = isPivot ? headers.filter(h => !NON_MAG.includes(h) && h !== '') : [];
+
+        /* clé code détectée dynamiquement */
+        const codeKey = headers.find(h => CODE_KEYS.includes(h)) || 'CODE INTERNE';
+
         for (const row of rows) {
-          const zone    = String(row['Zone'] || row['ZONE'] || '').trim();
-          const magasin = String(row['Magasin'] || row['MAGASIN'] || '').trim();
-          const code    = String(row['Code Interne'] || row['CODE INTERNE'] || row['Code'] || row['CODE'] || '').trim();
-          const cible   = Number(row['Cible'] || row['CIBLE'] || row['Cible (palettes)'] || 0);
-          if (!zone || !magasin || !code) continue;
+          const code = String(row[codeKey] || '').trim();
+          if (!code) continue;
           const prod = assortMap[code] || {};
           if (!prod.libelle) missingCodes.push(code);
-          const key = zone + '_' + magasin + '_' + code;
-          batch[key] = {
-            id: key, zone, magasin, codeInterne: code,
-            libelle:  prod.libelle  || code,
-            rayon:    prod.rayon    || '',
-            famille:  prod.famille  || '',
-            photoUrl: prod.photoUrl || '',
-            logoUrl:  prod.logoUrl  || '',
-            ciblePalettes: cible, uploadedAt: DASH_TODAY_ISO,
-          };
-          count++;
+
+          if (isPivot) {
+            /* ── Nouveau format pivot ── */
+            const libelle = String(row['LIBELLE ATC+ Français'] || row['Libellé'] || row['LIBELLE'] || prod.libelle || code).trim();
+            for (const mag of magCols) {
+              const rawVal = row[mag];
+              if (rawVal === '' || rawVal === null || rawVal === undefined) continue;
+              const cible = Math.ceil(Number(rawVal));
+              if (isNaN(cible) || cible <= 0) continue;
+              const magTrim = mag.trim();
+              const key = magTrim + '_' + code;
+              batch[key] = {
+                id: key,
+                zone:    magTrim,
+                magasin: magTrim,
+                codeInterne: code,
+                libelle:  prod.libelle  || libelle,
+                rayon:    prod.rayon    || '',
+                famille:  prod.famille  || '',
+                photoUrl: prod.photoUrl || '',
+                logoUrl:  prod.logoUrl  || '',
+                type:     prod.type     || '',
+                ciblePalettes: cible,
+                uploadedAt: DASH_TODAY_ISO,
+              };
+              count++;
+            }
+          } else {
+            /* ── Ancien format Zone | Magasin | Code Interne | Cible ── */
+            const zoneKey = headers.find(h => ZONE_KEYS.includes(h)) || 'Zone';
+            const magKey  = headers.find(h => ['Magasin','MAGASIN','magasin'].includes(h)) || 'Magasin';
+            const cibKey  = headers.find(h => ['Cible','CIBLE','Cible (palettes)'].includes(h)) || 'Cible';
+            const zone    = String(row[zoneKey]  || '').trim();
+            const magasin = String(row[magKey]   || '').trim();
+            const cible   = Math.ceil(Number(row[cibKey] || 0));
+            if (!zone || !magasin) continue;
+            const key = zone + '_' + magasin + '_' + code;
+            batch[key] = {
+              id: key, zone, magasin, codeInterne: code,
+              libelle:  prod.libelle  || code,
+              rayon:    prod.rayon    || '',
+              famille:  prod.famille  || '',
+              photoUrl: prod.photoUrl || '',
+              logoUrl:  prod.logoUrl  || '',
+              type:     prod.type     || '',
+              ciblePalettes: cible,
+              uploadedAt: DASH_TODAY_ISO,
+            };
+            count++;
+          }
         }
-        if (count === 0) { setImportMsg('❌ Aucune ligne valide. Colonnes : Zone | Magasin | Code Interne | Cible'); setImporting(false); return; }
+
+        if (count === 0) {
+          setImportMsg('❌ Aucune ligne valide. Vérifiez le format du fichier.');
+          setImporting(false); return;
+        }
         await db.ref('ptg/reservCibles').set(batch);
-        let msg = '✅ ' + count + ' articles importés.';
-        if (missingCodes.length > 0) msg += ' ⚠ ' + missingCodes.length + ' code(s) non trouvé(s) dans l\'assortiment.';
+        let msg = '✅ ' + count + ' lignes importées' + (isPivot ? ' (format pivot)' : '') + '.';
+        if (missingCodes.length > 0) msg += ' ⚠ ' + missingCodes.length + ' code(s) absent(s) de l\'assortiment.';
         setImportMsg(msg);
       } catch(ex) {
         setImportMsg('❌ Erreur : ' + ex.message);
@@ -7025,41 +7145,111 @@ function ReservationsView() {
   const toggleUser = (u) => db.ref('ptg/reservUsers/' + u.id).update({ actif: u.actif === false ? true : false });
   const deleteUser = (u) => { if (confirm('Supprimer ' + u.name + ' ?')) db.ref('ptg/reservUsers/' + u.id).remove(); };
 
+  /* ── RAYON COLORS ── */
+  const RAYON_COLORS = {
+    'EPICERIE':     { bg:'#CCFBF1', color:'#0F766E' },
+    'LIQUIDE':      { bg:'#DBEAFE', color:'#1D4ED8' },
+    'BISCUITERIE':  { bg:'#EDE9FE', color:'#7C3AED' },
+    'FROMAGERIE':   { bg:'#FEF3C7', color:'#B45309' },
+    'CHARCUTERIE':  { bg:'#FEE2E2', color:'#DC2626' },
+    'SURGELE':      { bg:'#E0F2FE', color:'#0369A1' },
+    'HYGIENE':      { bg:'#FCE7F3', color:'#BE185D' },
+    'ENTRETIEN':    { bg:'#F0FDF4', color:'#15803D' },
+    'BOISSONS':     { bg:'#FFF7ED', color:'#C2410C' },
+  };
+  const getRayonStyle = (r) => RAYON_COLORS[(r||'').toUpperCase()] || { bg:'var(--neutral-100)', color:'var(--neutral-600)' };
+
   /* ── EXPORT EXCEL SUIVI ── */
   const handleExportSuivi = () => {
-    const dateLabel = new Date(fDate + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
-    const HEADERS = ['Date','Zone','Magasin','Article','Palettes réservées','Cible','Statut','Chef d\'équipe','Heure'];
-    const rows = filteredRevs.map(r => [
-      r.date, r.zone, r.magasin, r.article, r.palettes, r.cible || '',
-      r.palettes >= (r.cible || 0) ? 'Atteinte' : 'En cours',
-      r.userName || '', r.updatedAt || ''
-    ]);
+    const refDate   = new Date(fDate + 'T12:00:00');
+    const dateLabel = refDate.toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+    const dateFmt   = refDate.toLocaleDateString('fr-FR').replace(/\//g,'-');
+    const scope     = fZone !== 'Toutes' ? fZone : 'Tous magasins';
+    const HEADERS   = ['Magasin','Code Interne','Libellé','Cible (palettes)','Palettes réservées','Statut','Chef d\'équipe','Heure'];
+    const N         = HEADERS.length;
+    /* données plates : une ligne par article × magasin, cible = max de ce code */
+    const src = cibles.filter(c => fZone === 'Toutes' || c.zone === fZone);
+    const maxCibleMap = {};
+    src.forEach(c => { if (Math.ceil(c.ciblePalettes||0) > (maxCibleMap[c.codeInterne]||0)) maxCibleMap[c.codeInterne] = Math.ceil(c.ciblePalettes||0); });
+    const dataRows = src.map(c => {
+      const prod     = assortiment.find(a => a.id === c.codeInterne) || {};
+      const libelle  = c.libelle || prod.libelle || c.codeInterne;
+      const maxCible = maxCibleMap[c.codeInterne] || 0;
+      const revList  = reservations.filter(r =>
+        r.codeInterne === c.codeInterne && r.magasin === c.magasin && r.zone === c.zone && r.date === fDate
+      );
+      const totalPal = revList.reduce((s,r) => s + (Number(r.palettes)||0), 0);
+      const chefs    = [...new Set(revList.map(r=>r.userName).filter(Boolean))];
+      const lastTime = revList.map(r=>r.updatedAt||'').sort().pop() || '';
+      const statut   = totalPal >= maxCible ? 'Atteinte' : totalPal > 0 ? 'En cours' : 'Non réservé';
+      return [c.magasin, c.codeInterne, libelle, maxCible, totalPal, statut, chefs.join(', '), lastTime];
+    });
     const aoa = [
-      ['RAPPORT RÉSERVATIONS — ATC2', ...Array(HEADERS.length-1).fill('')],
-      [dateLabel, ...Array(HEADERS.length-1).fill('')],
-      [(fZone!=='Toutes'?'Zone: '+fZone:'Toutes zones') + (fMag!=='Tous'?' | Magasin: '+fMag:''), ...Array(HEADERS.length-1).fill('')],
-      Array(HEADERS.length).fill(''),
+      ['RAPPORT RÉSERVATIONS — ATC2', ...Array(N-1).fill('')],
+      [dateLabel, ...Array(N-1).fill('')],
+      [scope,     ...Array(N-1).fill('')],
+      Array(N).fill(''),
       HEADERS,
-      ...rows,
+      ...dataRows,
     ];
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-    const hS = { font:{bold:true,sz:11,color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'0052CC'}}, alignment:{horizontal:'center',vertical:'center',wrapText:true} };
-    const tS = { font:{bold:true,sz:14,color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'003580'}}, alignment:{horizontal:'center',vertical:'center'} };
-    ['A1','B1','C1','D1','E1','F1','G1','H1','I1'].slice(0,HEADERS.length).forEach(c => { const cell = ws[c.replace('1','5')]; if(cell) cell.s = hS; });
+    const ws  = XLSX.utils.aoa_to_sheet(aoa);
+    const tS  = { font:{bold:true,sz:14,color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'003580'}}, alignment:{horizontal:'center',vertical:'center'} };
+    const sS  = { font:{sz:11,color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'003580'}}, alignment:{horizontal:'center'} };
+    const hS  = { font:{bold:true,sz:11,color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'DC2626'}}, alignment:{horizontal:'center',vertical:'center',wrapText:true} };
     ws['A1'] && (ws['A1'].s = tS);
-    ws['!merges'] = [
-      {s:{r:0,c:0},e:{r:0,c:HEADERS.length-1}},
-      {s:{r:1,c:0},e:{r:1,c:HEADERS.length-1}},
-      {s:{r:2,c:0},e:{r:2,c:HEADERS.length-1}},
-    ];
-    ws['!cols'] = [10,14,18,22,14,10,12,18,10].map(w=>({wch:w}));
-    HEADERS.forEach((_,i) => {
-      const cell = ws[XLSX.utils.encode_cell({r:4,c:i})];
-      if (cell) cell.s = hS;
+    ws['A2'] && (ws['A2'].s = sS); ws['A3'] && (ws['A3'].s = sS);
+    ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:N-1}},{s:{r:1,c:0},e:{r:1,c:N-1}},{s:{r:2,c:0},e:{r:2,c:N-1}}];
+    ws['!cols'] = [22,14,32,14,14,14,20,10].map(w=>({wch:w}));
+    HEADERS.forEach((_,i) => { const cell = ws[XLSX.utils.encode_cell({r:4,c:i})]; if(cell) cell.s = hS; });
+    dataRows.forEach((row,ri) => {
+      const pal = row[4]; const cib = row[3];
+      const bg = pal >= cib ? 'DCFCE7' : pal > 0 ? 'FEF3C7' : 'FEE2E2';
+      const cell = ws[XLSX.utils.encode_cell({r:ri+5,c:4})];
+      if (cell) cell.s = { font:{bold:true}, fill:{fgColor:{rgb:bg}}, alignment:{horizontal:'center'} };
+      const cCell = ws[XLSX.utils.encode_cell({r:ri+5,c:3})];
+      if (cCell) cCell.s = { font:{bold:true,color:{rgb:'DC2626'}}, alignment:{horizontal:'center'} };
     });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Réservations');
-    XLSX.writeFile(wb, 'reservations_' + fDate + '.xlsx');
+    XLSX.writeFile(wb, scope + ' Reservation ' + dateFmt + '.xlsx');
+  };
+
+  /* ── TEMPLATE CIBLES DOWNLOAD ── */
+  const handleDownloadTemplateCibles = () => {
+    const MAGS = ['AGADIR','AIN SEBAA','BENI MELLAL','FES','MARRAKECH','MEKNES','NADOR','OQBA','OUJDA','RABAT','TANGER'];
+    const HEADERS = ['CODE INTERNE', 'LIBELLE ATC+ Français', ...MAGS];
+    const N = HEADERS.length;
+    const example = [
+      ['1608', 'BISCUITS CACAO TOP COOKIES 28GR', 3, 2, '', 4, '', 3, '', '', 2, 5, 1],
+      ['920',  'LAIT ENTIER UHT 1L',              5, 4, 3, '', 2, '', 4, 3, '', 5, ''],
+    ];
+    const aoa = [
+      ['TEMPLATE CIBLES — ATC2', ...Array(N-1).fill('')],
+      ['Remplir la cible (nb palettes) dans chaque colonne magasin. Laisser vide si l\'article n\'est pas dans ce magasin.', ...Array(N-1).fill('')],
+      Array(N).fill(''),
+      HEADERS,
+      ...example,
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const tS = { font:{bold:true,sz:13,color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'003580'}}, alignment:{horizontal:'center',wrapText:true} };
+    const hS = { font:{bold:true,sz:10,color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'DC2626'}}, alignment:{horizontal:'center',wrapText:true} };
+    const hF = { font:{bold:true,sz:10,color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'0052CC'}}, alignment:{horizontal:'center',wrapText:true} };
+    const eS = { font:{color:{rgb:'94A3B8'},italic:true}, alignment:{horizontal:'center'} };
+    ws['A1'] && (ws['A1'].s = tS);
+    ws['A2'] && (ws['A2'].s = { font:{sz:10,color:{rgb:'64748B'},italic:true} });
+    ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:N-1}},{s:{r:1,c:0},e:{r:1,c:N-1}}];
+    ws['!cols'] = [{wch:14},{wch:32},...MAGS.map(()=>({wch:13}))];
+    HEADERS.forEach((h,i) => {
+      const cell = ws[XLSX.utils.encode_cell({r:3,c:i})];
+      if (cell) cell.s = i < 2 ? hF : hS;
+    });
+    example.forEach((_,ri) => HEADERS.forEach((_,ci) => {
+      const cell = ws[XLSX.utils.encode_cell({r:ri+4,c:ci})];
+      if (cell) cell.s = eS;
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Cibles');
+    XLSX.writeFile(wb, 'Template_Cibles_ATC2.xlsx');
   };
 
   /* ── UI helpers ── */
@@ -7092,18 +7282,31 @@ function ReservationsView() {
       {/* ══ SUIVI TAB ══ */}
       {tab === 'suivi' && (
         <div>
-          {/* stat cards */}
-          <div style={{display:'flex',gap:12,marginBottom:20,flexWrap:'wrap'}}>
+          {/* zone progress cards */}
+          {/* zone progress cards */}
+          <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap'}}>
             {['Toutes',...zones].map(z => {
-              const zRevs = z==='Toutes' ? reservations.filter(r=>r.date===fDate) : reservations.filter(r=>r.zone===z&&r.date===fDate);
-              const zArts = z==='Toutes' ? cibles.length : cibles.filter(c=>c.zone===z).length;
-              const pct = zArts>0 ? Math.round(zRevs.length/zArts*100) : 0;
+              const allRows = z==='Toutes' ? suiviPivot.rows : cibles.filter(c=>c.zone===z).map(c=>c.codeInterne);
+              let done=0, total=0;
+              if (z==='Toutes') {
+                total = suiviPivot.rows.length;
+                done  = suiviPivot.rows.filter(r=>Object.values(r.magData).some(v=>v>0)).length;
+              } else {
+                const zCodes = [...new Set(cibles.filter(c=>c.magasin===z).map(c=>c.codeInterne))];
+                total = zCodes.length;
+                done  = zCodes.filter(code => {
+                  const r = suiviPivot.rows.find(x=>x.codeInterne===code);
+                  return r && (r.magData[z] || 0) > 0;
+                }).length;
+              }
+              const pct = total>0 ? Math.round(done/total*100) : 0;
               return (
-                <div key={z} style={{background:'#fff',border:'1px solid var(--neutral-200)',borderRadius:10,padding:'14px 18px',minWidth:140,flex:'1 1 140px',cursor:'pointer',boxShadow:fZone===z?'0 0 0 2px var(--primary)':undefined}} onClick={()=>{setFZone(z);setFMag('Tous');}}>
-                  <div style={{fontSize:11,fontWeight:700,color:'var(--neutral-500)',textTransform:'uppercase',letterSpacing:.5,marginBottom:6}}>{z==='Toutes'?'Toutes zones':z}</div>
-                  <div style={{fontSize:24,fontWeight:800,color:pct===100?'var(--green)':'var(--primary)'}}>{pct}%</div>
-                  <div style={{fontSize:11,color:'var(--neutral-400)',marginTop:2}}>{zRevs.length}/{zArts} articles</div>
-                  <div style={{height:4,background:'var(--neutral-200)',borderRadius:99,marginTop:6}}>
+                <div key={z} onClick={()=>setFZone(z)}
+                  style={{background:'#fff',border:'1.5px solid '+(fZone===z?'var(--primary)':'var(--neutral-200)'),borderRadius:10,padding:'10px 14px',minWidth:120,flex:'1 1 120px',cursor:'pointer',transition:'border-color .15s'}}>
+                  <div style={{fontSize:10,fontWeight:800,color:'var(--neutral-500)',textTransform:'uppercase',letterSpacing:.5,marginBottom:4}}>{z==='Toutes'?'Tous magasins':z}</div>
+                  <div style={{fontSize:20,fontWeight:800,color:pct===100?'var(--green)':fZone===z?'var(--primary)':'var(--neutral-700)'}}>{pct}<span style={{fontSize:12}}>%</span></div>
+                  <div style={{fontSize:10,color:'var(--neutral-400)',marginTop:2}}>{done}/{total} articles</div>
+                  <div style={{height:3,background:'var(--neutral-200)',borderRadius:99,marginTop:5}}>
                     <div style={{height:'100%',width:pct+'%',background:pct===100?'var(--green)':'var(--primary)',borderRadius:99}}></div>
                   </div>
                 </div>
@@ -7111,54 +7314,111 @@ function ReservationsView() {
             })}
           </div>
 
-          {/* filters */}
-          <div style={{background:'#fff',border:'1px solid var(--neutral-200)',borderRadius:10,padding:'12px 16px',display:'flex',gap:10,flexWrap:'wrap',alignItems:'center',marginBottom:16}}>
-            <input type="date" value={fDate} max={DASH_TODAY_ISO} onChange={e=>{ if(e.target.value) setFDate(e.target.value); }} style={{border:'1.5px solid var(--neutral-200)',borderRadius:7,padding:'7px 10px',fontSize:13,fontWeight:600,outline:'none'}} />
-            <select value={fZone} onChange={e=>{setFZone(e.target.value);setFMag('Tous');}} style={{border:'1.5px solid var(--neutral-200)',borderRadius:7,padding:'7px 12px',fontSize:13,fontWeight:600,outline:'none'}}>
-              <option value="Toutes">Toutes les zones</option>
+          {/* date + zone + export */}
+          <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap',alignItems:'center'}}>
+            <input type="date" value={fDate} max={DASH_TODAY_ISO} onChange={e=>{ if(e.target.value) setFDate(e.target.value); }}
+              style={{border:'1.5px solid var(--neutral-200)',borderRadius:8,padding:'7px 10px',fontSize:13,fontWeight:600,outline:'none',background:'#fff'}} />
+            <select value={fZone} onChange={e=>setFZone(e.target.value)}
+              style={{border:'1.5px solid var(--neutral-200)',borderRadius:8,padding:'7px 12px',fontSize:13,fontWeight:600,outline:'none',background:'#fff'}}>
+              <option value="Toutes">Tous les magasins</option>
               {zones.map(z=><option key={z} value={z}>{z}</option>)}
             </select>
-            <select value={fMag} onChange={e=>setFMag(e.target.value)} style={{border:'1.5px solid var(--neutral-200)',borderRadius:7,padding:'7px 12px',fontSize:13,fontWeight:600,outline:'none'}}>
-              <option value="Tous">Tous les magasins</option>
-              {magasins.map(m=><option key={m} value={m}>{m}</option>)}
-            </select>
-            <div style={{marginLeft:'auto'}}>
-              <button onClick={handleExportSuivi} style={{padding:'8px 16px',background:'#16A34A',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:6}}>
-                ⬇ Export Excel
-              </button>
-            </div>
+            <button onClick={handleExportSuivi} style={{marginLeft:'auto',padding:'8px 16px',background:'#16A34A',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:6}}>
+              ⬇ Export Excel
+            </button>
           </div>
 
-          {/* table */}
-          <div style={{background:'#fff',border:'1px solid var(--neutral-200)',borderRadius:10,overflow:'hidden'}}>
+          {/* search + rayon + status */}
+          <div style={{background:'#fff',border:'1px solid var(--neutral-200)',borderRadius:10,borderBottomLeftRadius:0,borderBottomRightRadius:0,padding:'10px 14px',display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',borderBottom:'none'}}>
+            <div style={{position:'relative',flex:'1 1 180px',minWidth:140}}>
+              <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',color:'var(--neutral-400)',fontSize:14}}>🔍</span>
+              <input value={sSearch} onChange={e=>setSSearch(e.target.value)} placeholder="Article ou code..."
+                style={{width:'100%',border:'1.5px solid var(--neutral-200)',borderRadius:8,padding:'7px 10px 7px 30px',fontSize:13,outline:'none',background:'#fff'}} />
+            </div>
+            <div style={{display:'flex',gap:4,background:'var(--neutral-100)',borderRadius:8,padding:3}}>
+              {[{k:'tous',label:'Tous'},{k:'reserves',label:'✓ Réservés'},{k:'nonreserves',label:'🔴 Non réservés'}].map(s => {
+                const cnt = s.k==='nonreserves' ? suiviPivot.rows.filter(r=>Object.values(r.magData).every(v=>!v)).length : 0;
+                return (
+                  <button key={s.k} onClick={()=>setSStatus(s.k)}
+                    style={{padding:'5px 12px',borderRadius:6,border:'none',fontSize:12,fontWeight:700,cursor:'pointer',background:sStatus===s.k?'#fff':'transparent',color:sStatus===s.k?'var(--neutral-800)':'var(--neutral-400)',boxShadow:sStatus===s.k?'0 1px 3px rgba(0,0,0,.1)':'none',whiteSpace:'nowrap'}}>
+                    {s.label}{cnt>0?<span style={{marginLeft:5,background:'#FEE2E2',color:'#DC2626',padding:'1px 5px',borderRadius:99,fontSize:10,fontWeight:800}}>{cnt}</span>:null}
+                  </button>
+                );
+              })}
+            </div>
+            <select value={sRayon} onChange={e=>setSRayon(e.target.value)}
+              style={{border:'1.5px solid var(--neutral-200)',borderRadius:8,padding:'7px 12px',fontSize:13,fontWeight:600,outline:'none',background:'#fff'}}>
+              <option value="Tous">Tous les rayons</option>
+              {[...new Set(suiviPivot.rows.map(r=>(r.rayon||'').toUpperCase()).filter(Boolean))].sort().map(r=><option key={r} value={r}>{r}</option>)}
+            </select>
+            <span style={{fontSize:12,color:'var(--neutral-400)',fontWeight:600,marginLeft:'auto'}}>{suiviVisible.length} article{suiviVisible.length!==1?'s':''}</span>
+          </div>
+
+          {/* table pivot : colonnes dynamiques par magasin */}
+          <div style={{background:'#fff',border:'1px solid var(--neutral-200)',borderRadius:10,borderTopLeftRadius:0,borderTopRightRadius:0,overflow:'hidden'}}>
             <div style={{overflowX:'auto'}}>
-              <table style={{width:'100%',borderCollapse:'collapse'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',minWidth:600}}>
                 <thead>
-                  <tr style={{background:'var(--neutral-50)'}}>
-                    {['Zone','Magasin','Article','Cible','Réservé','Statut','Chef d\'équipe','Heure'].map(h=>(
-                      <th key={h} style={{padding:'10px 14px',fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:.5,color:'var(--neutral-500)',borderBottom:'1px solid var(--neutral-200)',textAlign:'left',whiteSpace:'nowrap'}}>{h}</th>
+                  <tr style={{background:'#DC2626'}}>
+                    {['#','PHOTO','RAYON','CODE','LIBELLÉ','TYPE','CIBLE'].map(h=>(
+                      <th key={h} style={{padding:'10px 12px',fontSize:11,fontWeight:800,textTransform:'uppercase',letterSpacing:.6,color:'#fff',textAlign:'left',whiteSpace:'nowrap'}}>{h}</th>
+                    ))}
+                    {suiviPivot.magList.map(mag=>(
+                      <th key={mag} style={{padding:'10px 12px',fontSize:11,fontWeight:800,color:'#fff',textAlign:'center',whiteSpace:'nowrap',borderLeft:'1px solid rgba(255,255,255,.2)',textTransform:'uppercase',letterSpacing:.4}}>{mag}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRevs.length === 0 ? (
-                    <tr><td colSpan={8} style={{padding:'40px',textAlign:'center',color:'var(--neutral-400)',fontSize:14}}>Aucune réservation pour ce filtre</td></tr>
-                  ) : filteredRevs.map(r => {
-                    const ok = r.palettes >= (r.cible || 0);
+                  {suiviVisible.length === 0 ? (
+                    <tr><td colSpan={7+suiviPivot.magList.length} style={{padding:'48px',textAlign:'center',color:'var(--neutral-400)',fontSize:14,fontWeight:600}}>
+                      {suiviPivot.rows.length === 0 ? 'Aucune cible configurée pour ce filtre' : 'Aucun résultat'}
+                    </td></tr>
+                  ) : suiviVisible.map((c,i) => {
+                    const rs = getRayonStyle(c.rayon);
                     return (
-                      <tr key={r.id} style={{borderBottom:'1px solid var(--neutral-100)'}}>
-                        <td style={{padding:'10px 14px',fontSize:13}}><span style={{fontWeight:700,color:'var(--primary)'}}>{r.zone}</span></td>
-                        <td style={{padding:'10px 14px',fontSize:13,fontWeight:600}}>{r.magasin}</td>
-                        <td style={{padding:'10px 14px',fontSize:13}}>{r.article}</td>
-                        <td style={{padding:'10px 14px',fontSize:13}}><span style={{background:'var(--primary-light)',color:'var(--primary)',fontWeight:700,padding:'2px 8px',borderRadius:99,fontSize:11}}>{r.cible||'—'} pal.</span></td>
-                        <td style={{padding:'10px 14px',fontSize:14,fontWeight:800,color:ok?'var(--green)':'var(--neutral-700)'}}>{r.palettes}</td>
-                        <td style={{padding:'10px 14px'}}>
-                          <span style={{fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:99,background:ok?'#DCFCE7':'#FEF3C7',color:ok?'#15803D':'#92400E'}}>
-                            {ok ? '✓ Atteinte' : '⏳ En cours'}
-                          </span>
+                      <tr key={c.id} style={{borderBottom:'1px solid var(--neutral-100)',background:i%2===0?'#fff':'#FAFAFA'}}
+                        onMouseEnter={e=>e.currentTarget.style.background='#F0F7FF'}
+                        onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#fff':'#FAFAFA'}>
+                        <td style={{padding:'10px 12px',fontSize:13,fontWeight:700,color:'var(--neutral-400)',width:36}}>{i+1}</td>
+                        <td style={{padding:'8px 10px',width:52}}>
+                          <div style={{width:44,height:44,background:'var(--neutral-50)',borderRadius:8,border:'1px solid var(--neutral-200)',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',fontSize:20}}>
+                            {c.photoUrl ? <img src={c.photoUrl} alt="" style={{width:44,height:44,objectFit:'contain'}} onError={e=>{e.target.outerHTML='<span>📦</span>'}} /> : '📦'}
+                          </div>
                         </td>
-                        <td style={{padding:'10px 14px',fontSize:13,color:'var(--neutral-600)'}}>{r.userName}</td>
-                        <td style={{padding:'10px 14px',fontSize:12,color:'var(--neutral-400)'}}>{r.updatedAt||''}</td>
+                        <td style={{padding:'10px 10px',whiteSpace:'nowrap'}}>
+                          {c.rayon ? <span style={{fontSize:11,fontWeight:800,padding:'3px 8px',borderRadius:6,background:rs.bg,color:rs.color,textTransform:'uppercase',letterSpacing:.4}}>{c.rayon}</span> : <span style={{color:'var(--neutral-300)',fontSize:12}}>—</span>}
+                        </td>
+                        <td style={{padding:'10px 10px',fontSize:13,fontFamily:'monospace',fontWeight:700,color:'var(--neutral-600)',whiteSpace:'nowrap'}}>{c.codeInterne}</td>
+                        <td style={{padding:'10px 12px',fontSize:13,fontWeight:600,color:'var(--neutral-800)',minWidth:180}}>
+                          <div style={{display:'flex',alignItems:'center',gap:8}}>
+                            {c.logoUrl && <img src={c.logoUrl} alt="" style={{height:18,maxWidth:48,objectFit:'contain',flexShrink:0}} onError={e=>{e.target.style.display='none'}} />}
+                            {c.libelle}
+                          </div>
+                        </td>
+                        <td style={{padding:'10px 10px',whiteSpace:'nowrap'}}>
+                          {c.type ? <span style={{fontSize:11,fontWeight:800,padding:'2px 8px',borderRadius:6,background:'#FEF3C7',color:'#B45309'}}>{c.type}</span> : <span style={{color:'var(--neutral-300)',fontSize:12}}>—</span>}
+                        </td>
+                        <td style={{padding:'10px 12px',textAlign:'center'}}>
+                          <span style={{fontSize:15,fontWeight:800,color:'#DC2626'}}>{c.maxCible}</span>
+                        </td>
+                        {suiviPivot.magList.map(mag => {
+                          const inMag = mag in c.magData;
+                          if (!inMag) return (
+                            <td key={mag} style={{padding:'8px 12px',textAlign:'center',borderLeft:'1px solid var(--neutral-100)',color:'var(--neutral-200)',fontSize:13}}>—</td>
+                          );
+                          const pal    = c.magData[mag] || 0;
+                          const cib    = cibles.find(x=>x.codeInterne===c.codeInterne&&x.magasin===mag);
+                          const cibVal = cib ? Math.ceil(cib.ciblePalettes||0) : 0;
+                          const bg  = pal===0 ? '#FEE2E2' : pal>=cibVal&&cibVal>0 ? '#DCFCE7' : '#FEF3C7';
+                          const col = pal===0 ? '#DC2626' : pal>=cibVal&&cibVal>0 ? '#15803D' : '#D97706';
+                          return (
+                            <td key={mag} style={{padding:'8px 12px',textAlign:'center',borderLeft:'1px solid var(--neutral-100)'}}>
+                              <span style={{fontSize:14,fontWeight:800,color:col,background:bg,padding:'3px 10px',borderRadius:8,display:'inline-block',minWidth:32}}>
+                                {pal}
+                              </span>
+                            </td>
+                          );
+                        })}
                       </tr>
                     );
                   })}
@@ -7178,8 +7438,12 @@ function ReservationsView() {
               Colonnes requises : <strong>Zone | Magasin | Code Interne | Cible</strong> — les infos produit sont récupérées depuis l'assortiment
             </div>
             <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+              <button onClick={handleDownloadTemplateCibles}
+                style={{padding:'9px 18px',background:'#fff',color:'var(--primary)',border:'2px solid var(--primary)',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:8}}>
+                ⬇ Télécharger le template
+              </button>
               <label style={{padding:'9px 18px',background:'var(--primary)',color:'#fff',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:8}}>
-                📂 {importing ? 'Importation…' : 'Sélectionner fichier Excel'}
+                📂 {importing ? 'Importation…' : 'Importer Excel rempli'}
                 <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{display:'none'}} onChange={handleImport} disabled={importing} />
               </label>
               {importMsg && <span style={{fontSize:13,fontWeight:600,color:importMsg.startsWith('✅')?'var(--green)':'var(--red)'}}>{importMsg}</span>}
