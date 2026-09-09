@@ -7588,7 +7588,7 @@ function ReservationsView() {
                                 </div>
                               )}
                               <span style={{fontSize:14,fontWeight:800,color:col,background:bg,padding:'3px 10px',borderRadius:8,display:'inline-block',minWidth:32}}>
-                                {pal}
+                                {pal % 1 === 0 ? pal : String(pal).replace('.',',')}
                               </span>
                             </td>
                           );

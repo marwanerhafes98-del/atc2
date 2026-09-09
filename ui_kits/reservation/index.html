@@ -235,7 +235,7 @@ function ArticleCard({ cible, rev, value, stock, onChange }) {
         </div>
         <div className="art-name">{cible.libelle || cible.codeInterne}</div>
         <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-          <div className="art-cible">Cible : <strong>{cible.ciblePalettes}</strong> pal.</div>
+          <div className="art-cible">Cible : <strong>{String(cible.ciblePalettes).replace('.',',')}</strong> pal.</div>
           {stock !== undefined && (
             <div style={{display:'inline-flex',alignItems:'center',gap:4,background:'#EDE9FE',borderRadius:8,padding:'3px 9px'}}>
               <span style={{fontSize:12}}>📦</span>
@@ -254,17 +254,24 @@ function ArticleCard({ cible, rev, value, stock, onChange }) {
           <div className="counter">
             <button className="counter-btn" onClick={dec} type="button" aria-label="Moins">−</button>
             <input
-              type="number" inputMode="numeric" pattern="[0-9]*"
-              value={num !== null ? num : ''}
+              type="text" inputMode="decimal" pattern="[0-9]*[.,]?[0-9]*"
+              value={num !== null ? String(num).replace('.',',') : ''}
               onChange={e => {
-                const v = e.target.value;
-                if (v === '' || v === '-') { onChange(0); return; }
-                const n = parseInt(v, 10);
+                const v = e.target.value.replace(',', '.');
+                if (v === '' || v === '.') { onChange(0); return; }
+                if (/^\d*\.$/.test(v)) return; /* en cours de saisie décimale */
+                const n = parseFloat(v);
                 if (!isNaN(n) && n >= 0) onChange(n);
+              }}
+              onBlur={e => {
+                /* normalise à la sortie du champ */
+                const v = e.target.value.replace(',', '.');
+                const n = parseFloat(v);
+                onChange(isNaN(n) || n < 0 ? 0 : n);
               }}
               onFocus={e => e.target.select()}
               className={'counter-val' + (isOver?' over':isDone?' done':'')}
-              style={{width:52,textAlign:'center',border:'none',outline:'none',background:'transparent',fontWeight:800,MozAppearance:'textfield'}}
+              style={{width:54,textAlign:'center',border:'none',outline:'none',background:'transparent',fontWeight:800}}
             />
             <button className="counter-btn plus" onClick={inc} type="button" aria-label="Plus">+</button>
           </div>
