@@ -206,7 +206,7 @@ function LoginView({ onLogin }) {
 }
 
 /* ══ ARTICLE CARD ══ */
-function ArticleCard({ cible, rev, value, onChange }) {
+function ArticleCard({ cible, rev, value, stock, onChange }) {
   const num  = value !== '' && value !== undefined ? Number(value) : null;
   const isOver = num !== null && num > cible.ciblePalettes;
   const isDone = num !== null && num > 0;
@@ -233,7 +233,11 @@ function ArticleCard({ cible, rev, value, onChange }) {
           {cible.famille && <span className="art-famille">{cible.famille}</span>}
         </div>
         <div className="art-name">{cible.libelle || cible.codeInterne}</div>
-        <div className="art-cible">Cible : <strong>{cible.ciblePalettes}</strong> palette{cible.ciblePalettes>1?'s':''}</div>
+        <div className="art-cible">Cible : <strong>{cible.ciblePalettes}</strong> palette{cible.ciblePalettes>1?'s':''}
+          {stock !== undefined && (
+            <span style={{marginLeft:10,fontWeight:700,color:'#7C3AED',fontSize:11}}>📦 Stock : <strong>{Number(stock).toLocaleString('fr-FR')}</strong> u</span>
+          )}
+        </div>
         {/* progress mini */}
         {isDone && (
           <div style={{height:3,background:'var(--neutral-200)',borderRadius:99,overflow:'hidden'}}>
@@ -274,6 +278,7 @@ function App() {
   const [fRayon,   setFRayon]   = useState('Tous');
   const [fFamille, setFFamille] = useState('Toutes');
   const [fStatus,  setFStatus]  = useState('tous');
+  const [stockMap, setStockMap] = useState({});
 
   /* load */
   useEffect(() => {
@@ -288,7 +293,14 @@ function App() {
     /* load assortiment for photo/logo fallback */
     const r3 = db.ref('ptg/assortiment');
     const h3 = r3.on('value', s => setAssortMap(s.val() || {}));
-    return () => { r1.off('value', h1); r2.off('value', h2); r3.off('value', h3); };
+    /* load stock gold */
+    const r4 = db.ref('ptg/stockGold');
+    const h4 = r4.on('value', s => {
+      const m = {};
+      if (s.val()) Object.values(s.val()).forEach(x => { m[x.magasin + '_' + x.codeInterne] = x.stock; });
+      setStockMap(m);
+    });
+    return () => { r1.off('value', h1); r2.off('value', h2); r3.off('value', h3); r4.off('value', h4); };
   }, [session]);
 
   const magasins = useMemo(() => [...new Set(cibles.map(c => c.magasin))].sort(), [cibles]);
@@ -553,6 +565,7 @@ function App() {
                 cible={enriched}
                 rev={revs.find(r => r.codeInterne === c.codeInterne && r.magasin === selMag)}
                 value={inputs[c.codeInterne] ?? 0}
+                stock={stockMap[selMag + '_' + c.codeInterne]}
                 onChange={val => handleChange(c.codeInterne, val)}
               />
             );

@@ -6889,6 +6889,11 @@ function ReservationsView() {
   const [importingA, setImportingA] = useState(false);
   const [importMsgA, setImportMsgA] = useState('');
   const fileRefA = useRef(null);
+  /* stock gold */
+  const [stockGold,      setStockGold]      = useState([]);
+  const [importingStock, setImportingStock]  = useState(false);
+  const [importMsgStock, setImportMsgStock]  = useState('');
+  const fileRefStock = useRef(null);
 
   /* load */
   useEffect(() => {
@@ -6900,7 +6905,9 @@ function ReservationsView() {
     const h3 = r3.on('value', s => setResvs(s.val() ? Object.values(s.val()) : []));
     const r4 = db.ref('ptg/assortiment');
     const h4 = r4.on('value', s => setAssort(s.val() ? Object.values(s.val()) : []));
-    return () => { r1.off('value',h1); r2.off('value',h2); r3.off('value',h3); r4.off('value',h4); };
+    const r5 = db.ref('ptg/stockGold');
+    const h5 = r5.on('value', s => setStockGold(s.val() ? Object.values(s.val()) : []));
+    return () => { r1.off('value',h1); r2.off('value',h2); r3.off('value',h3); r4.off('value',h4); r5.off('value',h5); };
   }, []);
 
   /* derived */
@@ -6909,6 +6916,16 @@ function ReservationsView() {
     const src = fZone !== 'Toutes' ? cibles.filter(c=>c.zone===fZone) : cibles;
     return [...new Set(src.map(c=>c.magasin).filter(Boolean))].sort();
   }, [cibles, fZone]);
+
+  /* code magasin → nom magasin */
+  const CODE_MAGASIN = {'500':'AIN SEBAA','501':'FES','502':'TANGER','503':'OUJDA','504':'RABAT','505':'AGADIR','506':'MARRAKECH','511':'MEKNES','517':'NADOR','802':'BENI MELLAL'};
+
+  /* lookup stock : stockMap['TANGER_1608'] → nb unités */
+  const stockMap = useMemo(() => {
+    const m = {};
+    stockGold.forEach(s => { m[s.magasin + '_' + s.codeInterne] = s.stock; });
+    return m;
+  }, [stockGold]);
 
   /* ── SUIVI ROWS: one row per cible, enriched with reservation totals ── */
   /* pivot: une ligne par article, une colonne par magasin */
@@ -7252,6 +7269,59 @@ function ReservationsView() {
     XLSX.writeFile(wb, 'Template_Cibles_ATC2.xlsx');
   };
 
+  /* ── IMPORT STOCK GOLD (multi-fichiers) ── */
+  const handleImportStock = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setImportingStock(true); setImportMsgStock('');
+    const processAll = async () => {
+      const batch = {};
+      let total = 0; const errs = [];
+      for (const file of files) {
+        await new Promise(resolve => {
+          const reader = new FileReader();
+          reader.onload = ev => {
+            try {
+              const wb   = XLSX.read(ev.target.result, { type:'binary' });
+              const ws   = wb.Sheets[wb.SheetNames[0]];
+              const rawAll = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+              /* trouver la ligne d'en-têtes */
+              const headerIdx = rawAll.findIndex(row => row.some(c => ['code_magasin','CODE_MAGASIN','code_interne','CODE_INTERNE'].includes(String(c).trim().toLowerCase().replace(' ','_'))));
+              const hdr = headerIdx >= 0 ? rawAll[headerIdx].map(h => String(h).trim()) : [];
+              const rows = headerIdx >= 0
+                ? rawAll.slice(headerIdx+1).map(row => { const o={}; hdr.forEach((h,i)=>o[h]=row[i]??''); return o; })
+                : XLSX.utils.sheet_to_json(ws, { defval:'' });
+              /* colonnes dynamiques */
+              const getCol = (row, ...keys) => { for(const k of keys){ const v=row[k]; if(v!==undefined&&v!=='') return v; } return ''; };
+              for (const row of rows) {
+                const codeuv = String(getCol(row,'CODEUV','codeuv','CodeUV','code_uv')).trim();
+                if (codeuv !== '0') continue;
+                const codeMag = String(getCol(row,'code_magasin','CODE_MAGASIN','CodeMagasin')).trim();
+                const codeInt = String(getCol(row,'code_interne','CODE_INTERNE','CodeInterne')).trim();
+                const stock   = Number(getCol(row,'stock','STOCK','Stock') || 0);
+                if (!codeMag || !codeInt) continue;
+                const magasin = CODE_MAGASIN[codeMag];
+                if (!magasin) continue;
+                const key = magasin + '_' + codeInt;
+                batch[key] = { key, codeInterne:codeInt, magasin, codeMagasin:codeMag, stock, updatedAt:DASH_TODAY_ISO };
+                total++;
+              }
+            } catch(ex) { errs.push(file.name + ' : ' + ex.message); }
+            resolve();
+          };
+          reader.readAsBinaryString(file);
+        });
+      }
+      if (total > 0) await db.ref('ptg/stockGold').update(batch);
+      setImportingStock(false);
+      let msg = '✅ ' + total + ' stocks importés (' + files.length + ' fichier' + (files.length>1?'s':'') + ').';
+      if (errs.length) msg += ' ⚠ ' + errs.join(' | ');
+      setImportMsgStock(msg);
+      if (fileRefStock.current) fileRefStock.current.value = '';
+    };
+    processAll().catch(ex => { setImportingStock(false); setImportMsgStock('❌ ' + ex.message); });
+  };
+
   /* ── UI helpers ── */
   const setUF = (k,v) => setUserForm(p => ({...p,[k]:v}));
 
@@ -7323,10 +7393,23 @@ function ReservationsView() {
               <option value="Toutes">Tous les magasins</option>
               {zones.map(z=><option key={z} value={z}>{z}</option>)}
             </select>
-            <button onClick={handleExportSuivi} style={{marginLeft:'auto',padding:'8px 16px',background:'#16A34A',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:6}}>
-              ⬇ Export Excel
-            </button>
+            <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+              <button onClick={handleExportSuivi} style={{padding:'8px 16px',background:'#16A34A',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:6}}>
+                ⬇ Export Excel
+              </button>
+              <label style={{padding:'8px 16px',background:'#7C3AED',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:6,whiteSpace:'nowrap'}}>
+                📦 STOCK GOLD
+                <input ref={fileRefStock} type="file" accept=".xlsx,.xls,.csv" multiple style={{display:'none'}} onChange={handleImportStock} disabled={importingStock} />
+              </label>
+            </div>
           </div>
+
+          {/* stock gold import feedback */}
+          {(importMsgStock || importingStock) && (
+            <div style={{marginBottom:8,padding:'8px 14px',background:importingStock?'#EDE9FE':importMsgStock.startsWith('✅')?'#F0FDF4':'#FEF2F2',borderRadius:8,fontSize:12,fontWeight:600,color:importingStock?'#7C3AED':importMsgStock.startsWith('✅')?'#15803D':'#DC2626',border:'1px solid '+(importingStock?'#DDD6FE':importMsgStock.startsWith('✅')?'#BBF7D0':'#FCA5A5')}}>
+              {importingStock ? '⏳ Import en cours…' : importMsgStock}
+            </div>
+          )}
 
           {/* search + rayon + status */}
           <div style={{background:'#fff',border:'1px solid var(--neutral-200)',borderRadius:10,borderBottomLeftRadius:0,borderBottomRightRadius:0,padding:'10px 14px',display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',borderBottom:'none'}}>
@@ -7403,6 +7486,7 @@ function ReservationsView() {
                         </td>
                         {suiviPivot.magList.map(mag => {
                           const inMag = mag in c.magData;
+                          const stockVal = stockMap[mag + '_' + c.codeInterne];
                           if (!inMag) return (
                             <td key={mag} style={{padding:'8px 12px',textAlign:'center',borderLeft:'1px solid var(--neutral-100)',color:'var(--neutral-200)',fontSize:13}}>—</td>
                           );
@@ -7412,7 +7496,12 @@ function ReservationsView() {
                           const bg  = pal===0 ? '#FEE2E2' : pal>=cibVal&&cibVal>0 ? '#DCFCE7' : '#FEF3C7';
                           const col = pal===0 ? '#DC2626' : pal>=cibVal&&cibVal>0 ? '#15803D' : '#D97706';
                           return (
-                            <td key={mag} style={{padding:'8px 12px',textAlign:'center',borderLeft:'1px solid var(--neutral-100)'}}>
+                            <td key={mag} style={{padding:'6px 12px',textAlign:'center',borderLeft:'1px solid var(--neutral-100)'}}>
+                              {stockVal !== undefined && (
+                                <div style={{fontSize:10,fontWeight:700,color:'#7C3AED',marginBottom:3,whiteSpace:'nowrap'}}>
+                                  📦 {Number(stockVal).toLocaleString('fr-FR')} u
+                                </div>
+                              )}
                               <span style={{fontSize:14,fontWeight:800,color:col,background:bg,padding:'3px 10px',borderRadius:8,display:'inline-block',minWidth:32}}>
                                 {pal}
                               </span>
