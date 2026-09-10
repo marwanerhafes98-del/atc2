@@ -2217,7 +2217,6 @@ function ReclamationView({ user }) {
 
   const handlePhoto = (e) => {
     const file = e.target.files[0]; if (!file) return;
-    setPhotoKey(k => k + 1);
     const reader = new FileReader();
     reader.onload = ev => {
       const img = new Image();
@@ -2227,6 +2226,7 @@ function ReclamationView({ user }) {
         const c=document.createElement('canvas'); c.width=w; c.height=h;
         c.getContext('2d').drawImage(img,0,0,w,h);
         setPhotoB64(c.toDataURL('image/jpeg',Q));
+        setPhotoKey(k => k + 1);
       };
       img.src = ev.target.result;
     };
