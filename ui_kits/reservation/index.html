@@ -255,10 +255,10 @@ function ArticleCard({ cible, rev, value, stock, j1, onChange }) {
       {/* image */}
       <div className="art-img">
         {cible.photoUrl
-          ? <img src={cible.photoUrl} alt={cible.libelle} loading="lazy" style={{maxWidth:'100%',maxHeight:74,objectFit:'contain'}} onError={e=>{e.target.outerHTML='<span style="font-size:32px">📦</span>'}} />
+          ? <img src={cible.photoUrl} alt={cible.libelle} referrerPolicy="no-referrer" style={{maxWidth:'100%',maxHeight:74,objectFit:'contain'}} onError={e=>{e.target.outerHTML='<span style="font-size:32px">📦</span>'}} />
           : <span style={{fontSize:32}}>📦</span>
         }
-        {cible.logoUrl && <img className="art-logo" src={cible.logoUrl} alt="" loading="lazy" />}
+        {cible.logoUrl && <img className="art-logo" src={cible.logoUrl} alt="" referrerPolicy="no-referrer" />}
       </div>
       {/* body */}
       <div className="art-body">
