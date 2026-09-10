@@ -2293,44 +2293,40 @@ function ReclamationView({ user }) {
                   <div style={{fontSize:14,fontWeight:800,color:'#0C4A6E'}}>{article.libelle}</div>
                   <div style={{fontSize:12,color:'#0369A1',marginTop:2}}>{article.codeInterne||article.id} · {article.rayon}{article.famille?' · '+article.famille:''}</div>
                 </div>
-                <button onClick={()=>{setArticle(null);setSearch('');}} style={{background:'none',border:'none',color:'#0369A1',cursor:'pointer',fontSize:18,padding:4,lineHeight:1}}>✕ Changer</button>
+                <button onClick={()=>{setArticle(null);setSearch('');}} style={{background:'#fff',border:'1px solid #BAE6FD',color:'#0369A1',cursor:'pointer',fontSize:12,fontWeight:700,padding:'4px 10px',borderRadius:6}}>Changer</button>
               </div>
             ) : (
-              <div style={{border:'1.5px solid #E2E8F0',borderRadius:12,overflow:'hidden',background:'white'}}>
-                {/* Liste au-dessus */}
-                <div style={{maxHeight:300,overflowY:'auto'}}>
-                  {filtered.length === 0 ? (
-                    <div style={{padding:'32px 16px',textAlign:'center',color:'#94A3B8',fontSize:13}}>Aucun résultat pour "{search}"</div>
-                  ) : (
-                    <>
-                      <div style={{padding:'6px 12px',fontSize:11,color:'#94A3B8',fontWeight:700,borderBottom:'1px solid #F1F5F9',background:'#FAFAFA',position:'sticky',top:0}}>
-                        {search.trim() ? `${filtered.length} résultat${filtered.length!==1?'s':''}` : `${assort.length} produits · 50 affichés`}
-                      </div>
-                      {filtered.map(a => (
-                        <div key={a.codeInterne||a.id}
-                          onClick={()=>{setArticle(a);setSearch(a.libelle||String(a.codeInterne||a.id));}}
-                          style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',cursor:'pointer',borderBottom:'1px solid #F1F5F9',active:{background:'#F0F9FF'}}}
-                          onMouseEnter={e=>e.currentTarget.style.background='#F0F9FF'}
-                          onMouseLeave={e=>e.currentTarget.style.background='white'}>
-                          {(a.photoUrl||a.photo)
-                            ? <img src={a.photoUrl||a.photo} style={{width:40,height:40,objectFit:'contain',borderRadius:6,background:'#F8FAFC',flexShrink:0}} onError={e=>e.target.style.display='none'}/>
-                            : <div style={{width:40,height:40,borderRadius:6,background:'#F1F5F9',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>📦</div>}
-                          <div>
-                            <div style={{fontSize:13,fontWeight:700,color:'#1E293B'}}>{a.libelle}</div>
-                            <div style={{fontSize:11,color:'#94A3B8'}}>{a.codeInterne||a.id} · {a.rayon}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </>
-                  )}
-                </div>
-                {/* Barre de recherche en bas */}
-                <div style={{borderTop:'1.5px solid #E2E8F0',padding:'10px 12px',background:'#F8FAFC',display:'flex',alignItems:'center',gap:8}}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                  <input value={search} onChange={e=>{setSearch(e.target.value);}} autoComplete="off"
+              <div style={{border:'1.5px solid #E2E8F0',borderRadius:12,background:'white'}}>
+                {/* Barre de recherche en haut du panneau */}
+                <div style={{padding:'10px 12px',borderBottom:'1.5px solid #E2E8F0',display:'flex',alignItems:'center',gap:8,background:'#F8FAFC',borderRadius:'12px 12px 0 0'}}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <input value={search} onChange={e=>setSearch(e.target.value)} autoComplete="off"
                     placeholder="Filtrer par nom ou code article..."
                     style={{flex:1,border:'none',outline:'none',fontSize:14,background:'transparent',color:'#1E293B'}}/>
                   {search && <button onClick={()=>setSearch('')} style={{background:'none',border:'none',color:'#94A3B8',cursor:'pointer',fontSize:16,lineHeight:1,padding:0}}>✕</button>}
+                </div>
+                {/* Liste des articles en dessous */}
+                <div style={{maxHeight:320,overflowY:'auto',borderRadius:'0 0 12px 12px'}}>
+                  <div style={{padding:'4px 12px 4px',fontSize:11,color:'#94A3B8',fontWeight:700,background:'#FAFAFA',borderBottom:'1px solid #F1F5F9'}}>
+                    {search.trim() ? `${filtered.length} résultat${filtered.length!==1?'s':''}` : `${assort.length} produits · 50 affichés`}
+                  </div>
+                  {filtered.length === 0 ? (
+                    <div style={{padding:'32px 16px',textAlign:'center',color:'#94A3B8',fontSize:13}}>Aucun résultat pour "{search}"</div>
+                  ) : filtered.map(a => (
+                    <div key={a.codeInterne||a.id}
+                      onClick={()=>{setArticle(a);setSearch(a.libelle||String(a.codeInterne||a.id));}}
+                      style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',cursor:'pointer',borderBottom:'1px solid #F1F5F9'}}
+                      onMouseEnter={e=>e.currentTarget.style.background='#F0F9FF'}
+                      onMouseLeave={e=>e.currentTarget.style.background='white'}>
+                      {(a.photoUrl||a.photo)
+                        ? <img src={a.photoUrl||a.photo} style={{width:40,height:40,objectFit:'contain',borderRadius:6,background:'#F8FAFC',flexShrink:0}} onError={e=>e.target.style.display='none'}/>
+                        : <div style={{width:40,height:40,borderRadius:6,background:'#F1F5F9',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>📦</div>}
+                      <div>
+                        <div style={{fontSize:13,fontWeight:700,color:'#1E293B'}}>{a.libelle}</div>
+                        <div style={{fontSize:11,color:'#94A3B8'}}>{a.codeInterne||a.id} · {a.rayon}</div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
