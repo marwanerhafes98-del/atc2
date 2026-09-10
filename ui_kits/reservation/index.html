@@ -213,6 +213,13 @@ function LoginView({ onLogin }) {
   );
 }
 
+/* proxy images externes (postimg.cc, etc.) via weserv.nl pour mobile */
+function imgProxy(url) {
+  if (!url) return url;
+  const stripped = url.replace(/^https?:\/\//, '');
+  return 'https://images.weserv.nl/?url=' + stripped + '&output=webp&q=80';
+}
+
 /* ══ ARTICLE CARD ══ */
 function ArticleCard({ cible, rev, value, stock, j1, onChange }) {
   const num  = value !== '' && value !== undefined ? Number(value) : null;
@@ -255,10 +262,10 @@ function ArticleCard({ cible, rev, value, stock, j1, onChange }) {
       {/* image */}
       <div className="art-img">
         {cible.photoUrl
-          ? <img src={cible.photoUrl} alt={cible.libelle} referrerPolicy="no-referrer" style={{maxWidth:'100%',maxHeight:74,objectFit:'contain'}} onError={e=>{e.target.outerHTML='<span style="font-size:32px">📦</span>'}} />
+          ? <img src={imgProxy(cible.photoUrl)} alt={cible.libelle} style={{maxWidth:'100%',maxHeight:74,objectFit:'contain'}} onError={e=>{e.target.outerHTML='<span style="font-size:32px">📦</span>'}} />
           : <span style={{fontSize:32}}>📦</span>
         }
-        {cible.logoUrl && <img className="art-logo" src={cible.logoUrl} alt="" referrerPolicy="no-referrer" />}
+        {cible.logoUrl && <img className="art-logo" src={imgProxy(cible.logoUrl)} alt="" />}
       </div>
       {/* body */}
       <div className="art-body">
