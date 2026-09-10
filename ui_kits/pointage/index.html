@@ -2286,38 +2286,52 @@ function ReclamationView({ user }) {
         <div style={{padding:16}}>
           <div style={{marginBottom:16}}>
             <label style={{display:'block',fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:.5,marginBottom:6}}>Article</label>
-            <div style={{position:'relative'}}>
-              <input value={search}
-                onChange={e=>{setSearch(e.target.value);setArticle(null);setShowSugg(true);}}
-                onFocus={()=>setShowSugg(true)} onBlur={()=>setTimeout(()=>setShowSugg(false),200)}
-                placeholder="Rechercher par nom ou code..." autoComplete="off"
-                style={{width:'100%',border:'1.5px solid '+(article?'#3B82F6':'#CBD5E1'),borderRadius:10,padding:'11px 14px',fontSize:14,outline:'none',boxSizing:'border-box',background:article?'#EFF6FF':'white'}}/>
-              {showSugg && filtered.length>0 && (
-                <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',border:'1.5px solid #E2E8F0',borderRadius:10,boxShadow:'0 8px 24px rgba(0,0,0,.12)',zIndex:200,maxHeight:260,overflowY:'auto'}}>
-                  <div style={{padding:'6px 12px',fontSize:11,color:'#94A3B8',fontWeight:700,borderBottom:'1px solid #F1F5F9',background:'#FAFAFA',position:'sticky',top:0}}>
-                    {search.trim() ? `${filtered.length} résultat${filtered.length!==1?'s':''}` : `Tous les produits — ${assort.length} au total`}
-                  </div>
-                  {filtered.map(a => (
-                    <div key={a.codeInterne||a.id}
-                      onMouseDown={()=>{setArticle(a);setSearch(a.libelle||String(a.codeInterne||a.id));setShowSugg(false);}}
-                      style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',cursor:'pointer',borderBottom:'1px solid #F1F5F9'}}
-                      onMouseEnter={e=>e.currentTarget.style.background='#F0F9FF'}
-                      onMouseLeave={e=>e.currentTarget.style.background='white'}>
-                      {(a.photoUrl||a.photo) && <img src={a.photoUrl||a.photo} style={{width:36,height:36,objectFit:'contain',borderRadius:6,background:'#F8FAFC',flexShrink:0}} onError={e=>e.target.style.display='none'}/>}
-                      <div><div style={{fontSize:13,fontWeight:700,color:'#1E293B'}}>{a.libelle}</div><div style={{fontSize:11,color:'#94A3B8'}}>{a.codeInterne||a.id} · {a.rayon}</div></div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            {article && (
-              <div style={{marginTop:10,display:'flex',gap:12,alignItems:'center',background:'#EFF6FF',borderRadius:10,padding:'10px 14px',border:'1.5px solid #BAE6FD'}}>
+            {article ? (
+              <div style={{display:'flex',gap:12,alignItems:'center',background:'#EFF6FF',borderRadius:10,padding:'10px 14px',border:'1.5px solid #BAE6FD'}}>
                 {(article.photoUrl||article.photo) && <img src={article.photoUrl||article.photo} style={{width:52,height:52,objectFit:'contain',borderRadius:8,background:'white',flexShrink:0}} onError={e=>e.target.style.display='none'}/>}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:14,fontWeight:800,color:'#0C4A6E'}}>{article.libelle}</div>
                   <div style={{fontSize:12,color:'#0369A1',marginTop:2}}>{article.codeInterne||article.id} · {article.rayon}{article.famille?' · '+article.famille:''}</div>
                 </div>
-                <button onClick={()=>{setArticle(null);setSearch('');}} style={{background:'none',border:'none',color:'#0369A1',cursor:'pointer',fontSize:18,padding:4,lineHeight:1}}>✕</button>
+                <button onClick={()=>{setArticle(null);setSearch('');}} style={{background:'none',border:'none',color:'#0369A1',cursor:'pointer',fontSize:18,padding:4,lineHeight:1}}>✕ Changer</button>
+              </div>
+            ) : (
+              <div style={{border:'1.5px solid #E2E8F0',borderRadius:12,overflow:'hidden',background:'white'}}>
+                {/* Liste au-dessus */}
+                <div style={{maxHeight:300,overflowY:'auto'}}>
+                  {filtered.length === 0 ? (
+                    <div style={{padding:'32px 16px',textAlign:'center',color:'#94A3B8',fontSize:13}}>Aucun résultat pour "{search}"</div>
+                  ) : (
+                    <>
+                      <div style={{padding:'6px 12px',fontSize:11,color:'#94A3B8',fontWeight:700,borderBottom:'1px solid #F1F5F9',background:'#FAFAFA',position:'sticky',top:0}}>
+                        {search.trim() ? `${filtered.length} résultat${filtered.length!==1?'s':''}` : `${assort.length} produits · 50 affichés`}
+                      </div>
+                      {filtered.map(a => (
+                        <div key={a.codeInterne||a.id}
+                          onClick={()=>{setArticle(a);setSearch(a.libelle||String(a.codeInterne||a.id));}}
+                          style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',cursor:'pointer',borderBottom:'1px solid #F1F5F9',active:{background:'#F0F9FF'}}}
+                          onMouseEnter={e=>e.currentTarget.style.background='#F0F9FF'}
+                          onMouseLeave={e=>e.currentTarget.style.background='white'}>
+                          {(a.photoUrl||a.photo)
+                            ? <img src={a.photoUrl||a.photo} style={{width:40,height:40,objectFit:'contain',borderRadius:6,background:'#F8FAFC',flexShrink:0}} onError={e=>e.target.style.display='none'}/>
+                            : <div style={{width:40,height:40,borderRadius:6,background:'#F1F5F9',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>📦</div>}
+                          <div>
+                            <div style={{fontSize:13,fontWeight:700,color:'#1E293B'}}>{a.libelle}</div>
+                            <div style={{fontSize:11,color:'#94A3B8'}}>{a.codeInterne||a.id} · {a.rayon}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+                {/* Barre de recherche en bas */}
+                <div style={{borderTop:'1.5px solid #E2E8F0',padding:'10px 12px',background:'#F8FAFC',display:'flex',alignItems:'center',gap:8}}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <input value={search} onChange={e=>{setSearch(e.target.value);}} autoComplete="off"
+                    placeholder="Filtrer par nom ou code article..."
+                    style={{flex:1,border:'none',outline:'none',fontSize:14,background:'transparent',color:'#1E293B'}}/>
+                  {search && <button onClick={()=>setSearch('')} style={{background:'none',border:'none',color:'#94A3B8',cursor:'pointer',fontSize:16,lineHeight:1,padding:0}}>✕</button>}
+                </div>
               </div>
             )}
           </div>
