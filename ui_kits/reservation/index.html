@@ -184,7 +184,8 @@ function LoginView({ onLogin }) {
       localStorage.setItem('ptg_resv_sess', JSON.stringify(sess));
       /* log session pour suivi activité manager */
       db.ref('ptg/sessions/' + user.id).update({ id: user.id, nom: user.name, login: user.login, zone: user.zone, lastSeen: Date.now() }).catch(()=>{});
-      onLogin(sess);
+      window.location.reload();
+      return;
     } catch { setErr('Erreur de connexion.'); }
     setBusy(false);
   };
