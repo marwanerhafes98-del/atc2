@@ -2004,7 +2004,7 @@ function App() {
     : animateurs).filter(a => a.actif !== false);
   const unpointed = visibleAnimateurs.filter(a => a.status === 'nonpointe').length;
   const barTitle  = selectedAnimateur ? 'Pointage' :
-    { list:'Animateurs', kpi:'Vue KPI', history:'Historique', profile:'Profil' }[currentView];
+    { list:'Animateurs', kpi:'Vue KPI', history:'Historique', profile:'Profil', reclamation:'Réclamations' }[currentView];
 
   return (
     <div className="mobile-container">
@@ -2061,16 +2061,18 @@ function App() {
           <KpiView animateurs={visibleAnimateurs} userEmail={user.email} />
         )}
         {currentView === 'history' && <HistoryView userEmail={user.email} />}
+        {currentView === 'reclamation' && <ReclamationView user={user} />}
         {currentView === 'profile' && <ProfileView user={user} animateurs={visibleAnimateurs} onLogout={handleLogout} />}
       </div>
 
       {!selectedAnimateur && (
         <div className="bottom-nav">
           {[
-            { key:'list',    icon:'users',          label:'Animateurs', badge:unpointed },
-            { key:'kpi',     icon:'bar-chart-2',   label:'KPI',        badge:0 },
-            { key:'history', icon:'clock',          label:'Historique', badge:todayCount },
-            { key:'profile', icon:'user',           label:'Profil',     badge:0 },
+            { key:'list',        icon:'users',         label:'Animateurs',  badge:unpointed },
+            { key:'kpi',         icon:'bar-chart-2',  label:'KPI',         badge:0 },
+            { key:'history',     icon:'clock',         label:'Historique',  badge:todayCount },
+            { key:'reclamation', icon:'alert-circle',  label:'Réclamation', badge:0 },
+            { key:'profile',     icon:'user',          label:'Profil',      badge:0 },
           ].map(item => (
             <button key={item.key} className={`nav-item ${currentView === item.key ? 'active' : ''}`}
               onClick={() => setCurrentView(item.key)}>
@@ -2104,6 +2106,243 @@ function App() {
     </div>
   );
 }
+
+/* ══ RÉCLAMATION ══════════════════════════════════════ */
+function ReclField({ label, type='text', value, onChange, placeholder='' }) {
+  return (
+    <div>
+      <label style={{display:'block',fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:.5,marginBottom:6}}>{label}</label>
+      <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
+        style={{width:'100%',border:'1.5px solid #CBD5E1',borderRadius:10,padding:'11px 14px',fontSize:14,outline:'none',boxSizing:'border-box',fontFamily:'inherit'}}/>
+    </div>
+  );
+}
+
+function ReclHistCard({ r, typeLabels }) {
+  const isPending = r.status !== 'traite';
+  const typeColors = { qtmh:'#EDE9FE',coef:'#FEF3C7',designation:'#E0F2FE',dispo:'#FEE2E2',prix:'#DCFCE7',photo:'#FDF4FF' };
+  const typeText   = { qtmh:'#6D28D9',coef:'#92400E',designation:'#0369A1',dispo:'#991B1B',prix:'#166534',photo:'#7C3AED' };
+  return (
+    <div style={{background:'white',border:'1.5px solid #E2E8F0',borderRadius:12,padding:'14px',marginBottom:12,boxShadow:'0 1px 4px rgba(0,0,0,.05)'}}>
+      <div style={{display:'flex',gap:10,marginBottom:8}}>
+        {r.articlePhoto && <img src={r.articlePhoto} style={{width:44,height:44,objectFit:'contain',borderRadius:8,background:'#F8FAFC',flexShrink:0}} onError={e=>e.target.style.display='none'}/>}
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:800,color:'#1E293B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.articleLibelle}</div>
+          <div style={{fontSize:11,color:'#94A3B8',marginTop:2}}>{r.articleCode} · {r.rayon}</div>
+        </div>
+        <span style={{background:isPending?'#FEF3C7':'#DCFCE7',color:isPending?'#92400E':'#166534',fontSize:10,fontWeight:800,padding:'3px 8px',borderRadius:6,flexShrink:0,alignSelf:'flex-start'}}>
+          {isPending?'En attente':'Traité ✓'}
+        </span>
+      </div>
+      <span style={{display:'inline-block',background:typeColors[r.type]||'#F1F5F9',color:typeText[r.type]||'#475569',fontSize:11,fontWeight:700,padding:'3px 8px',borderRadius:6,marginBottom:8}}>{typeLabels[r.type]||r.type}</span>
+      <div style={{fontSize:12,color:'#64748B',lineHeight:1.7}}>
+        {r.date && <div>📅 {new Date(r.date).toLocaleDateString('fr-FR')}</div>}
+        {r.qtmhActuel  !==undefined && r.qtmhActuel  !=='' && <div>QTMH : <strong>{r.qtmhActuel}</strong> → <strong>{r.qtmhDemande}</strong></div>}
+        {r.coefActuel  !==undefined && r.coefActuel  !=='' && <div>Coef : <strong>{r.coefActuel}</strong> → <strong>{r.coefDemande}</strong></div>}
+        {r.designationActuelle && <div>Désig. : {r.designationActuelle} → <strong>{r.designationDemandee}</strong></div>}
+        {r.commentaire && <div>💬 {r.commentaire}</div>}
+        {r.prixActuel  !==undefined && r.prixActuel  !=='' && <div>Prix : <strong>{r.prixActuel} DH</strong> → <strong>{r.prixCorrect} DH</strong></div>}
+        {r.type==='photo' && r.photoBase64 && <img src={r.photoBase64} style={{marginTop:6,width:80,height:80,objectFit:'contain',borderRadius:8,border:'1px solid #E2E8F0'}}/>}
+      </div>
+      {r.feedback && (
+        <div style={{background:'#F0FDF4',border:'1px solid #BBF7D0',borderRadius:8,padding:'8px 12px',fontSize:12,color:'#166534',fontWeight:600,marginTop:8}}>
+          💬 {r.feedback}{r.treatedBy?<span style={{fontWeight:400}}> — {r.treatedBy}</span>:''}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReclamationView({ user }) {
+  const [view,     setView]     = React.useState('form');
+  const [assort,   setAssort]   = React.useState([]);
+  const [search,   setSearch]   = React.useState('');
+  const [article,  setArticle]  = React.useState(null);
+  const [showSugg, setShowSugg] = React.useState(false);
+  const [type,     setType]     = React.useState('');
+  const [form,     setForm]     = React.useState({});
+  const [photoB64, setPhotoB64] = React.useState('');
+  const [recls,    setRecls]    = React.useState([]);
+  const [busy,     setBusy]     = React.useState(false);
+  const [msg,      setMsg]      = React.useState('');
+
+  React.useEffect(() => {
+    db.ref('ptg/assortiment').once('value').then(s => setAssort(s.val() ? Object.values(s.val()) : []));
+    const ref = db.ref('ptg/reclamations');
+    const h   = ref.on('value', s => {
+      if (!s.val()) { setRecls([]); return; }
+      setRecls(Object.values(s.val()).filter(r => r.teamLeadEmail === user.email)
+        .sort((a,b) => (b.createdAt||0) - (a.createdAt||0)));
+    });
+    return () => ref.off('value', h);
+  }, [user.email]);
+
+  const TYPES = [
+    { key:'qtmh',        label:'Quantité mini (QTMH)' },
+    { key:'coef',        label:'Coefficient de pack' },
+    { key:'designation', label:'Désignation incorrecte' },
+    { key:'dispo',       label:'Article indisponible en rayon' },
+    { key:'prix',        label:'Erreur de prix' },
+    { key:'photo',       label:'Changement de photo' },
+  ];
+  const typeLabels = Object.fromEntries(TYPES.map(t => [t.key, t.label]));
+
+  const filtered = search.length >= 2
+    ? assort.filter(a => (a.libelle||'').toLowerCase().includes(search.toLowerCase()) || String(a.codeInterne||a.id||'').includes(search)).slice(0,30)
+    : [];
+
+  const F = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const handlePhoto = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX=600, Q=0.65; let w=img.width, h=img.height;
+        if (w>MAX||h>MAX) { if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;} }
+        const c=document.createElement('canvas'); c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        setPhotoB64(c.toDataURL('image/jpeg',Q));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmit = async () => {
+    if (!article) { setMsg('❌ Sélectionnez un article.'); return; }
+    if (!type)    { setMsg('❌ Choisissez le type de réclamation.'); return; }
+    if (type==='photo'       && !photoB64)                             { setMsg('❌ Ajoutez la nouvelle photo.'); return; }
+    if (type==='qtmh'        && (!form.qtmhActuel||!form.qtmhDemande)) { setMsg('❌ Remplissez les champs QTMH.'); return; }
+    if (type==='coef'        && (!form.coefActuel||!form.coefDemande)) { setMsg('❌ Remplissez les champs coefficient.'); return; }
+    if (type==='designation' && (!form.designationActuelle||!form.designationDemandee)) { setMsg('❌ Remplissez les champs désignation.'); return; }
+    if (type==='dispo'       && !form.commentaire)                     { setMsg('❌ Ajoutez un commentaire.'); return; }
+    if (type==='prix'        && (!form.prixActuel||!form.prixCorrect)) { setMsg('❌ Remplissez les champs prix.'); return; }
+    setBusy(true); setMsg('');
+    const id = 'rec_' + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+    const today = new Date().toISOString().split('T')[0];
+    await db.ref('ptg/reclamations/' + id).set({
+      id, type,
+      articleCode:    article.codeInterne || article.id || '',
+      articleLibelle: article.libelle || '',
+      articlePhoto:   article.photoUrl || article.photo || '',
+      rayon:          article.rayon || '',
+      famille:        article.famille || '',
+      magasin:        user.ville || '',
+      teamLeadEmail:  user.email,
+      teamLeadName:   user.name,
+      date:           today,
+      createdAt:      Date.now(),
+      status:         'pending',
+      feedback:       '',
+      treatedBy:      '',
+      treatedAt:      '',
+      ...form,
+      ...(type==='photo' ? { photoBase64: photoB64 } : {}),
+    });
+    setBusy(false);
+    setMsg('✅ Réclamation envoyée !');
+    setArticle(null); setSearch(''); setType(''); setForm({}); setPhotoB64('');
+    setTimeout(() => setMsg(''), 4000);
+  };
+
+  return (
+    <div style={{background:'#F8FAFC',minHeight:'100%'}}>
+      <div style={{display:'flex',background:'white',borderBottom:'1.5px solid #E2E8F0',position:'sticky',top:0,zIndex:10}}>
+        {[['form','➕ Nouvelle'],['list','📋 Mes réclamations (' + recls.length + ')']].map(([v,l]) => (
+          <button key={v} onClick={()=>setView(v)}
+            style={{flex:1,padding:'14px 8px',border:'none',background:'transparent',fontSize:13,fontWeight:700,color:view===v?'#0052CC':'#94A3B8',borderBottom:view===v?'2.5px solid #0052CC':'2.5px solid transparent',cursor:'pointer',fontFamily:'inherit',transition:'color .15s'}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {view==='form' && (
+        <div style={{padding:16}}>
+          <div style={{marginBottom:16}}>
+            <label style={{display:'block',fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:.5,marginBottom:6}}>Article</label>
+            <div style={{position:'relative'}}>
+              <input value={search}
+                onChange={e=>{setSearch(e.target.value);setArticle(null);setShowSugg(true);}}
+                onFocus={()=>setShowSugg(true)} onBlur={()=>setTimeout(()=>setShowSugg(false),200)}
+                placeholder="Rechercher par nom ou code..." autoComplete="off"
+                style={{width:'100%',border:'1.5px solid '+(article?'#3B82F6':'#CBD5E1'),borderRadius:10,padding:'11px 14px',fontSize:14,outline:'none',boxSizing:'border-box',background:article?'#EFF6FF':'white'}}/>
+              {showSugg && filtered.length>0 && (
+                <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',border:'1.5px solid #E2E8F0',borderRadius:10,boxShadow:'0 8px 24px rgba(0,0,0,.12)',zIndex:200,maxHeight:240,overflowY:'auto'}}>
+                  {filtered.map(a => (
+                    <div key={a.codeInterne||a.id}
+                      onMouseDown={()=>{setArticle(a);setSearch(a.libelle||String(a.codeInterne||a.id));setShowSugg(false);}}
+                      style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',cursor:'pointer',borderBottom:'1px solid #F1F5F9'}}
+                      onMouseEnter={e=>e.currentTarget.style.background='#F0F9FF'}
+                      onMouseLeave={e=>e.currentTarget.style.background='white'}>
+                      {(a.photoUrl||a.photo) && <img src={a.photoUrl||a.photo} style={{width:36,height:36,objectFit:'contain',borderRadius:6,background:'#F8FAFC',flexShrink:0}} onError={e=>e.target.style.display='none'}/>}
+                      <div><div style={{fontSize:13,fontWeight:700,color:'#1E293B'}}>{a.libelle}</div><div style={{fontSize:11,color:'#94A3B8'}}>{a.codeInterne||a.id} · {a.rayon}</div></div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {article && (
+              <div style={{marginTop:10,display:'flex',gap:12,alignItems:'center',background:'#EFF6FF',borderRadius:10,padding:'10px 14px',border:'1.5px solid #BAE6FD'}}>
+                {(article.photoUrl||article.photo) && <img src={article.photoUrl||article.photo} style={{width:52,height:52,objectFit:'contain',borderRadius:8,background:'white',flexShrink:0}} onError={e=>e.target.style.display='none'}/>}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:14,fontWeight:800,color:'#0C4A6E'}}>{article.libelle}</div>
+                  <div style={{fontSize:12,color:'#0369A1',marginTop:2}}>{article.codeInterne||article.id} · {article.rayon}{article.famille?' · '+article.famille:''}</div>
+                </div>
+                <button onClick={()=>{setArticle(null);setSearch('');}} style={{background:'none',border:'none',color:'#0369A1',cursor:'pointer',fontSize:18,padding:4,lineHeight:1}}>✕</button>
+              </div>
+            )}
+          </div>
+
+          {article && (<>
+            <div style={{marginBottom:16}}>
+              <label style={{display:'block',fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:.5,marginBottom:6}}>Type de réclamation</label>
+              <select value={type} onChange={e=>{setType(e.target.value);setForm({});setPhotoB64('');}}
+                style={{width:'100%',border:'1.5px solid #CBD5E1',borderRadius:10,padding:'11px 14px',fontSize:14,outline:'none',background:'white',color:type?'#1E293B':'#94A3B8',fontFamily:'inherit'}}>
+                <option value="">— Choisir le type —</option>
+                {TYPES.map(t=><option key={t.key} value={t.key}>{t.label}</option>)}
+              </select>
+            </div>
+
+            {type==='qtmh' && (<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}><ReclField label="QTMH actuel" type="number" value={form.qtmhActuel||''} onChange={v=>F('qtmhActuel',v)}/><ReclField label="QTMH demandé" type="number" value={form.qtmhDemande||''} onChange={v=>F('qtmhDemande',v)}/></div>)}
+            {type==='coef' && (<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}><ReclField label="Coef. actuel" type="number" value={form.coefActuel||''} onChange={v=>F('coefActuel',v)}/><ReclField label="Coef. demandé" type="number" value={form.coefDemande||''} onChange={v=>F('coefDemande',v)}/></div>)}
+            {type==='designation' && (<div style={{display:'flex',flexDirection:'column',gap:12,marginBottom:16}}><ReclField label="Désignation actuelle" value={form.designationActuelle||''} onChange={v=>F('designationActuelle',v)}/><ReclField label="Désignation correcte" value={form.designationDemandee||''} onChange={v=>F('designationDemandee',v)}/></div>)}
+            {type==='dispo' && (<div style={{marginBottom:16}}><label style={{display:'block',fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:.5,marginBottom:6}}>Commentaire</label><textarea value={form.commentaire||''} onChange={e=>F('commentaire',e.target.value)} rows={3} placeholder="Décrivez le problème..." style={{width:'100%',border:'1.5px solid #CBD5E1',borderRadius:10,padding:'11px 14px',fontSize:14,outline:'none',resize:'none',fontFamily:'inherit',boxSizing:'border-box'}}/></div>)}
+            {type==='prix' && (<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}><ReclField label="Prix actuel (DH)" type="number" value={form.prixActuel||''} onChange={v=>F('prixActuel',v)}/><ReclField label="Prix correct (DH)" type="number" value={form.prixCorrect||''} onChange={v=>F('prixCorrect',v)}/></div>)}
+            {type==='photo' && (
+              <div style={{marginBottom:16}}>
+                <label style={{display:'block',fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:.5,marginBottom:6}}>Nouvelle photo</label>
+                <label style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,border:'2px dashed '+(photoB64?'#22C55E':'#CBD5E1'),borderRadius:12,padding:photoB64?'12px':'28px',cursor:'pointer',background:photoB64?'#F0FDF4':'#F8FAFC',transition:'all .15s',textAlign:'center'}}>
+                  {photoB64 ? <img src={photoB64} style={{width:110,height:110,objectFit:'contain',borderRadius:10}}/> : <><span style={{fontSize:36}}>📷</span><span style={{fontSize:13,fontWeight:600,color:'#64748B'}}>Prendre / Importer une photo</span></>}
+                  <input type="file" accept="image/*" capture="environment" onChange={handlePhoto} style={{display:'none'}}/>
+                </label>
+                {photoB64 && <button onClick={()=>setPhotoB64('')} style={{marginTop:8,fontSize:12,color:'#EF4444',background:'none',border:'none',cursor:'pointer',fontWeight:700}}>✕ Supprimer</button>}
+              </div>
+            )}
+
+            {msg && <div style={{background:msg.startsWith('✅')?'#DCFCE7':'#FEE2E2',color:msg.startsWith('✅')?'#166534':'#991B1B',border:'1px solid '+(msg.startsWith('✅')?'#BBF7D0':'#FECACA'),borderRadius:10,padding:'10px 14px',fontSize:13,fontWeight:700,marginBottom:14}}>{msg}</div>}
+
+            <button onClick={handleSubmit} disabled={busy||!type}
+              style={{width:'100%',padding:15,background:busy||!type?'#CBD5E1':'#0052CC',color:'white',border:'none',borderRadius:12,fontSize:15,fontWeight:800,cursor:busy||!type?'not-allowed':'pointer',boxShadow:busy||!type?'none':'0 4px 16px rgba(0,82,204,.3)',transition:'all .15s',fontFamily:'inherit'}}>
+              {busy?'⏳ Envoi…':'📤 Envoyer la réclamation'}
+            </button>
+          </>)}
+        </div>
+      )}
+
+      {view==='list' && (
+        <div style={{padding:16}}>
+          {recls.length===0
+            ? <div style={{textAlign:'center',padding:'48px 16px',color:'#94A3B8'}}><div style={{fontSize:40,marginBottom:12}}>📋</div><div style={{fontSize:15,fontWeight:700}}>Aucune réclamation</div><div style={{fontSize:13,marginTop:4}}>Vos réclamations envoyées apparaîtront ici</div></div>
+            : recls.map(r => <ReclHistCard key={r.id} r={r} typeLabels={typeLabels}/>)
+          }
+        </div>
+      )}
+    </div>
+  );
+}
+/* ══ FIN RÉCLAMATION ══════════════════════════════════ */
 
 ReactDOM.render(<App />, document.getElementById('root'));
 </script>

@@ -6931,6 +6931,12 @@ function ReservationsView({ isReservMgr = false }) {
   const [showMagForm,  setShowMagForm]  = useState(false);
   const [editMag,      setEditMag]      = useState(null);
   const [magMsg,       setMagMsg]       = useState('');
+  /* réclamations */
+  const [reclamations,    setReclamations]    = useState([]);
+  const [reclFeedbacks,   setReclFeedbacks]   = useState({});
+  const [reclFilterMag,   setReclFilterMag]   = useState('Tous');
+  const [reclFilterType,  setReclFilterType]  = useState('Tous');
+  const [reclFilterStatus,setReclFilterStatus]= useState('Tous');
 
   /* import cibles */
   const [importing, setImporting]   = useState(false);
@@ -6973,7 +6979,9 @@ function ReservationsView({ isReservMgr = false }) {
     const h7 = r7.on('value', s => setSessions(s.val() ? Object.values(s.val()) : []));
     const r8 = db.ref('ptg/reservManagers');
     const h8 = r8.on('value', s => setReservMgrs(s.val() ? Object.values(s.val()) : []));
-    return () => { r1.off('value',h1); r2.off('value',h2); r3.off('value',h3); r4.off('value',h4); r5.off('value',h5); r6.off('value',h6); r7.off('value',h7); r8.off('value',h8); };
+    const r9 = db.ref('ptg/reclamations');
+    const h9 = r9.on('value', s => setReclamations(s.val() ? Object.values(s.val()) : []));
+    return () => { r1.off('value',h1); r2.off('value',h2); r3.off('value',h3); r4.off('value',h4); r5.off('value',h5); r6.off('value',h6); r7.off('value',h7); r8.off('value',h8); r9.off('value',h9); };
   }, []);
 
   /* derived */
@@ -7498,6 +7506,7 @@ function ReservationsView({ isReservMgr = false }) {
         <button style={tabStyle('magasins')}    onClick={()=>setTab('magasins')}>🏪 Magasins</button>
         <button style={tabStyle('activite')}    onClick={()=>setTab('activite')}>📈 Activité chefs</button>
         {!isReservMgr && <button style={tabStyle('acces')} onClick={()=>setTab('acces')}>🔑 Accès réservation</button>}
+        <button style={tabStyle('reclamations')} onClick={()=>setTab('reclamations')}>🚨 Réclamations ({reclamations.filter(r=>r.status!=='traite').length})</button>
       </div>
 
       {/* ══ SUIVI TAB ══ */}
@@ -8335,6 +8344,146 @@ function ReservationsView({ isReservMgr = false }) {
           </div>
         </div>
       )}
+
+      {/* ══ RÉCLAMATIONS TAB ══ */}
+      {tab === 'reclamations' && (() => {
+        const RECL_TYPES = { qtmh:'Quantité mini (QTMH)', coef:'Coefficient de pack', designation:'Désignation incorrecte', dispo:'Article indisponible', prix:'Erreur de prix', photo:'Changement de photo' };
+        const TYPE_COLOR = { qtmh:'#EDE9FE', coef:'#FEF3C7', designation:'#E0F2FE', dispo:'#FEE2E2', prix:'#DCFCE7', photo:'#FDF4FF' };
+        const TYPE_TEXT  = { qtmh:'#6D28D9', coef:'#92400E', designation:'#0369A1', dispo:'#991B1B', prix:'#166534', photo:'#7C3AED' };
+
+        const allMags = [...new Set(reclamations.map(r=>r.magasin).filter(Boolean))].sort();
+
+        const visible = reclamations
+          .filter(r => reclFilterMag   ==='Tous' || r.magasin===reclFilterMag)
+          .filter(r => reclFilterType  ==='Tous' || r.type===reclFilterType)
+          .filter(r => reclFilterStatus==='Tous' || (reclFilterStatus==='pending' ? r.status!=='traite' : r.status==='traite'))
+          .sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+
+        const nbTotal   = reclamations.length;
+        const nbPending = reclamations.filter(r=>r.status!=='traite').length;
+        const nbTraite  = reclamations.filter(r=>r.status==='traite').length;
+
+        const markTraite = async (r) => {
+          const fb = (reclFeedbacks[r.id]||'').trim();
+          await db.ref('ptg/reclamations/' + r.id).update({ status:'traite', feedback: fb, treatedBy:'Manager', treatedAt: new Date().toISOString() });
+        };
+
+        const downloadPhoto = (b64, code) => {
+          const a = document.createElement('a');
+          a.href = b64; a.download = 'photo_' + code + '.jpg';
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        };
+
+        return (
+          <div>
+            {/* KPIs */}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}>
+              {[['Total',nbTotal,'#EFF6FF','#1D4ED8'],['En attente',nbPending,'#FEF3C7','#92400E'],['Traités',nbTraite,'#DCFCE7','#166534']].map(([l,v,bg,c])=>(
+                <div key={l} style={{background:bg,borderRadius:12,padding:'14px 16px',textAlign:'center'}}>
+                  <div style={{fontSize:28,fontWeight:800,color:c}}>{v}</div>
+                  <div style={{fontSize:12,fontWeight:700,color:c,opacity:.8,marginTop:2}}>{l}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Filters */}
+            <div style={{display:'flex',gap:10,marginBottom:18,flexWrap:'wrap'}}>
+              <select value={reclFilterMag} onChange={e=>setReclFilterMag(e.target.value)}
+                style={{padding:'8px 12px',border:'1.5px solid #E2E8F0',borderRadius:8,fontSize:13,fontWeight:600,color:'#1E293B',background:'#fff',outline:'none',minWidth:160}}>
+                <option value="Tous">Tous les magasins</option>
+                {allMags.map(m=><option key={m} value={m}>{m}</option>)}
+              </select>
+              <select value={reclFilterType} onChange={e=>setReclFilterType(e.target.value)}
+                style={{padding:'8px 12px',border:'1.5px solid #E2E8F0',borderRadius:8,fontSize:13,fontWeight:600,color:'#1E293B',background:'#fff',outline:'none',minWidth:200}}>
+                <option value="Tous">Tous les types</option>
+                {Object.entries(RECL_TYPES).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+              </select>
+              <select value={reclFilterStatus} onChange={e=>setReclFilterStatus(e.target.value)}
+                style={{padding:'8px 12px',border:'1.5px solid #E2E8F0',borderRadius:8,fontSize:13,fontWeight:600,color:'#1E293B',background:'#fff',outline:'none',minWidth:140}}>
+                <option value="Tous">Tous les statuts</option>
+                <option value="pending">En attente</option>
+                <option value="traite">Traités</option>
+              </select>
+              <span style={{fontSize:12,color:'#94A3B8',fontWeight:600,alignSelf:'center',marginLeft:'auto'}}>{visible.length} réclamation{visible.length!==1?'s':''}</span>
+            </div>
+
+            {/* List */}
+            {visible.length===0 ? (
+              <div style={{textAlign:'center',padding:'60px 20px',color:'#94A3B8',background:'white',borderRadius:14,border:'1.5px solid #E2E8F0'}}>
+                <div style={{fontSize:48,marginBottom:16}}>🎉</div>
+                <div style={{fontSize:16,fontWeight:700,marginBottom:6}}>Aucune réclamation</div>
+                <div style={{fontSize:13}}>Aucune réclamation ne correspond aux filtres</div>
+              </div>
+            ) : visible.map(r => {
+              const isPending = r.status !== 'traite';
+              return (
+                <div key={r.id} style={{background:'white',border:'1.5px solid '+(isPending?'#FEE2E2':'#D1FAE5'),borderRadius:14,padding:'16px',marginBottom:14,boxShadow:'0 2px 8px rgba(0,0,0,.05)'}}>
+                  {/* Header */}
+                  <div style={{display:'flex',gap:12,marginBottom:12}}>
+                    {r.articlePhoto && <img src={r.articlePhoto} style={{width:56,height:56,objectFit:'contain',borderRadius:10,background:'#F8FAFC',border:'1px solid #E2E8F0',flexShrink:0}} onError={e=>e.target.style.display='none'}/>}
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:14,fontWeight:800,color:'#1E293B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.articleLibelle}</div>
+                      <div style={{fontSize:12,color:'#64748B',marginTop:3}}>Code : {r.articleCode} · {r.rayon}{r.famille?' · '+r.famille:''}</div>
+                      <div style={{display:'flex',gap:6,marginTop:6,flexWrap:'wrap'}}>
+                        <span style={{background:TYPE_COLOR[r.type]||'#F1F5F9',color:TYPE_TEXT[r.type]||'#475569',fontSize:11,fontWeight:700,padding:'3px 9px',borderRadius:6}}>{RECL_TYPES[r.type]||r.type}</span>
+                        <span style={{background:isPending?'#FEF3C7':'#DCFCE7',color:isPending?'#92400E':'#166534',fontSize:11,fontWeight:700,padding:'3px 9px',borderRadius:6}}>{isPending?'⏳ En attente':'✅ Traité'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Meta */}
+                  <div style={{display:'flex',gap:12,flexWrap:'wrap',fontSize:12,color:'#64748B',marginBottom:12,padding:'10px 12px',background:'#F8FAFC',borderRadius:8}}>
+                    <span>🏪 <strong>{r.magasin}</strong></span>
+                    <span>👤 {r.teamLeadName}</span>
+                    <span>📅 {r.date ? new Date(r.date).toLocaleDateString('fr-FR') : ''}</span>
+                  </div>
+
+                  {/* Details */}
+                  <div style={{fontSize:13,color:'#475569',marginBottom:12,lineHeight:1.8}}>
+                    {r.qtmhActuel  !==undefined && r.qtmhActuel  !=='' && <div><span style={{color:'#94A3B8'}}>QTMH actuel :</span> <strong>{r.qtmhActuel}</strong> → <strong style={{color:'#0052CC'}}>{r.qtmhDemande}</strong></div>}
+                    {r.coefActuel  !==undefined && r.coefActuel  !=='' && <div><span style={{color:'#94A3B8'}}>Coef. actuel :</span> <strong>{r.coefActuel}</strong> → <strong style={{color:'#0052CC'}}>{r.coefDemande}</strong></div>}
+                    {r.designationActuelle && <div><span style={{color:'#94A3B8'}}>Désignation :</span> {r.designationActuelle} → <strong style={{color:'#0052CC'}}>{r.designationDemandee}</strong></div>}
+                    {r.commentaire && <div><span style={{color:'#94A3B8'}}>Commentaire :</span> {r.commentaire}</div>}
+                    {r.prixActuel  !==undefined && r.prixActuel  !=='' && <div><span style={{color:'#94A3B8'}}>Prix actuel :</span> <strong>{r.prixActuel} DH</strong> → <strong style={{color:'#0052CC'}}>{r.prixCorrect} DH</strong></div>}
+                    {r.type==='photo' && r.photoBase64 && (
+                      <div style={{marginTop:8}}>
+                        <img src={r.photoBase64} style={{width:120,height:120,objectFit:'contain',borderRadius:10,border:'1px solid #E2E8F0',background:'#F8FAFC',display:'block',marginBottom:6}}/>
+                        <button onClick={()=>downloadPhoto(r.photoBase64, r.articleCode)}
+                          style={{padding:'6px 14px',background:'#0052CC',color:'white',border:'none',borderRadius:8,fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                          ⬇ Télécharger la photo
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Traitement */}
+                  {isPending ? (
+                    <div style={{borderTop:'1px solid #F1F5F9',paddingTop:12}}>
+                      <label style={{display:'block',fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:.5,marginBottom:6}}>Feedback / Réponse</label>
+                      <textarea rows={2} value={reclFeedbacks[r.id]||''}
+                        onChange={e=>setReclFeedbacks(f=>({...f,[r.id]:e.target.value}))}
+                        placeholder="Votre retour sur cette réclamation..."
+                        style={{width:'100%',border:'1.5px solid #CBD5E1',borderRadius:8,padding:'9px 12px',fontSize:13,outline:'none',resize:'none',fontFamily:'inherit',boxSizing:'border-box',marginBottom:8}}/>
+                      <button onClick={()=>markTraite(r)}
+                        style={{padding:'9px 20px',background:'#16A34A',color:'white',border:'none',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',boxShadow:'0 2px 8px rgba(22,163,74,.3)'}}>
+                        ✅ Marquer comme traité
+                      </button>
+                    </div>
+                  ) : (
+                    r.feedback && (
+                      <div style={{borderTop:'1px solid #F1F5F9',paddingTop:12,background:'#F0FDF4',borderRadius:8,padding:'10px 14px',marginTop:4}}>
+                        <div style={{fontSize:12,fontWeight:700,color:'#15803D',marginBottom:2}}>💬 Réponse du manager</div>
+                        <div style={{fontSize:13,color:'#166534'}}>{r.feedback}</div>
+                        {r.treatedAt && <div style={{fontSize:11,color:'#4ADE80',marginTop:4}}>Traité le {new Date(r.treatedAt).toLocaleDateString('fr-FR')}</div>}
+                      </div>
+                    )
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
     </div>
   );
 }
