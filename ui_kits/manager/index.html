@@ -6671,6 +6671,7 @@ function App() {
   const [reclPendingCount, setReclPendingCount] = useState(0);
   const [reclToast,        setReclToast]        = useState(false);
   const prevReclCountRef = useRef(null);
+  const [rmAllowedTabs,    setRmAllowedTabs]    = useState(() => { try { const s = JSON.parse(localStorage.getItem('ptg_manager_session')); return s && s.role === 'reservmanager' ? (s.allowedTabs || null) : null; } catch { return null; } });
 
   const loggedIn = !!session;
 
@@ -6725,9 +6726,25 @@ function App() {
     return () => { refAcc.off('value'); refSes.off('value'); refPtg.off('value'); refAnim.off('value'); refSect.off('value'); refVille.off('value'); refRecl.off('value'); };
   }, [loggedIn, refreshKey]);
 
-  if (!loggedIn) return <LoginPage onLogin={(sess, remember) => {
-    if (remember) localStorage.setItem('ptg_manager_session', JSON.stringify(sess));
-    setSession(sess);
+  /* listener temps réel pour les onglets du compte reservmanager */
+  useEffect(() => {
+    if (!session || session.role !== 'reservmanager') return;
+    const ref = db.ref('ptg/reservManagers');
+    ref.on('value', snap => {
+      if (!snap.exists()) return;
+      const rm = Object.values(snap.val()).find(r => r.login === session.email);
+      if (rm) {
+        setRmAllowedTabs(rm.allowedTabs || null);
+        const updated = { ...session, allowedTabs: rm.allowedTabs || null };
+        localStorage.setItem('ptg_manager_session', JSON.stringify(updated));
+      }
+    });
+    return () => ref.off('value');
+  }, [session && session.email]);
+
+  if (!loggedIn) return <LoginPage onLogin={(sess) => {
+    localStorage.setItem('ptg_manager_session', JSON.stringify(sess));
+    window.location.reload();
   }} />;
 
   /* accès réservation uniquement → afficher directement ReservationsView */
@@ -6748,7 +6765,7 @@ function App() {
           </button>
         </div>
         <div style={{flex:1,padding:'24px 32px',overflowY:'auto'}}>
-          <ReservationsView isReservMgr={true} allowedTabs={session.allowedTabs || null} />
+          <ReservationsView isReservMgr={true} allowedTabs={rmAllowedTabs} />
         </div>
       </div>
     );
