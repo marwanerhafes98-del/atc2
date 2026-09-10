@@ -216,8 +216,7 @@ function LoginView({ onLogin }) {
 /* proxy images externes via wsrv.nl */
 function imgProxy(url) {
   if (!url) return url;
-  const stripped = url.replace(/^https?:\/\//, '');
-  return 'https://wsrv.nl/?url=' + stripped;
+  return 'https://wsrv.nl/?url=' + encodeURIComponent(url);
 }
 
 /* ══ ARTICLE CARD ══ */
