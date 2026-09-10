@@ -10,15 +10,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx-js-style.umd.min.js" onerror="window._xlsxFallback=true"></script>
-<script>
-/* fallback SheetJS si xlsx-js-style ne charge pas */
-if(typeof XLSX==='undefined'){
-  var s=document.createElement('script');
-  s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-  document.head.appendChild(s);
-}
-</script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx-js-style.umd.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
@@ -495,101 +487,167 @@ function App() {
   };
 
   const handleExportReservation = () => {
-    if (typeof XLSX === 'undefined') { alert('❌ Librairie Excel non chargée. Vérifiez votre connexion et rechargez la page.'); return; }
+    if (typeof XLSX === 'undefined') { alert('❌ Librairie Excel non chargée. Rechargez la page.'); return; }
     try {
-    const mag = selMag || session.zone;
-    const d = new Date();
-    const dateFmt = String(d.getDate()).padStart(2,'0') + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + d.getFullYear();
-    const timeFmt = String(d.getHours()).padStart(2,'0') + 'h' + String(d.getMinutes()).padStart(2,'0');
-    const srcCibles = selMag ? cibles.filter(c => c.magasin === selMag) : cibles;
-    const COLS = ['Code','Libellé','Rayon','Famille','Cible (pal.)','Réservé (pal.)','Statut'];
+      const mag      = selMag || session.zone;
+      const d        = new Date();
+      const dateFmt  = String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
+      const timeFmt  = String(d.getHours()).padStart(2,'0') + 'h' + String(d.getMinutes()).padStart(2,'0');
+      const fileName = mag.replace(/ /g,'_') + '_Reservation_' + String(d.getDate()).padStart(2,'0') + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + d.getFullYear() + '.xlsx';
 
-    const dataRows = srcCibles.map(c => {
-      const prod = assortMap[c.codeInterne] || {};
-      const libelle = c.libelle || prod.libelle || c.codeInterne;
-      const rayon   = (c.rayon   || prod.rayon   || '').toUpperCase();
-      const famille = c.famille  || prod.famille  || '';
-      const rev = revs.find(r => r.codeInterne === c.codeInterne && r.magasin === c.magasin);
-      const pal = rev ? (Number(rev.palettes)||0) : 0;
-      const statut = pal >= c.ciblePalettes && c.ciblePalettes > 0 ? 'Atteinte' : pal > 0 ? 'En cours' : 'Non réservé';
-      return { code:c.codeInterne, libelle, rayon, famille, cible:c.ciblePalettes, pal, statut };
-    });
+      const srcCibles = selMag ? cibles.filter(c => c.magasin === selMag) : cibles;
+      const dataRows  = srcCibles.map(c => {
+        const prod    = assortMap[c.codeInterne] || {};
+        const libelle = c.libelle || prod.libelle || String(c.codeInterne);
+        const rayon   = (c.rayon   || prod.rayon   || '').toUpperCase();
+        const famille = c.famille  || prod.famille  || '';
+        const rev     = revs.find(r => r.codeInterne === c.codeInterne && r.magasin === c.magasin);
+        const pal     = rev ? (Number(rev.palettes) || 0) : 0;
+        const cible   = Number(c.ciblePalettes) || 0;
+        const statut  = pal >= cible && cible > 0 ? 'Atteinte' : pal > 0 ? 'En cours' : 'Non réservé';
+        return { code: c.codeInterne, libelle, rayon, famille, cible, pal, statut };
+      });
 
-    const totalCible = dataRows.reduce((s,r) => s + (r.cible||0), 0);
-    const totalPal   = dataRows.reduce((s,r) => s + r.pal, 0);
-    const nbAtteints = dataRows.filter(r => r.statut === 'Atteinte').length;
-    const pct = srcCibles.length > 0 ? Math.round(nbAtteints / srcCibles.length * 100) : 0;
+      const totalCible  = dataRows.reduce((s, r) => s + r.cible, 0);
+      const totalPal    = dataRows.reduce((s, r) => s + r.pal,   0);
+      const nbAtteints  = dataRows.filter(r => r.statut === 'Atteinte').length;
+      const nbEnCours   = dataRows.filter(r => r.statut === 'En cours').length;
+      const nbNonRes    = dataRows.filter(r => r.statut === 'Non réservé').length;
+      const pct         = srcCibles.length > 0 ? Math.round(nbAtteints / srcCibles.length * 100) : 0;
 
-    /* ── build AOA ── */
-    const ROW_TITLE   = 0;
-    const ROW_SUB     = 1;
-    const ROW_SUMMARY = 2;
-    const ROW_EMPTY   = 3;
-    const ROW_HEADER  = 4;
-    const ROW_DATA    = 5;
-    const NC = COLS.length;
+      /* ── helpers styles ── */
+      const B  = (rgb='CBD5E1') => ({ top:{style:'thin',color:{rgb}}, bottom:{style:'thin',color:{rgb}}, left:{style:'thin',color:{rgb}}, right:{style:'thin',color:{rgb}} });
+      const Bh = B('93C5FD');   /* bordure bleue pour header */
+      const Bd = B('E2E8F0');   /* bordure claire données */
+      const enc = (r, c) => XLSX.utils.encode_cell({ r, c });
+      const sty = (addr, s) => { if (!ws[addr]) ws[addr] = { v:'', t:'s' }; ws[addr].s = s; };
+      const FONT = 'Calibri';
 
-    const aoa = [
-      [mag + '  —  RÉSERVATIONS PALETTES ATC2', ...Array(NC-1).fill('')],
-      [dateFmt + '  |  ' + timeFmt + '  |  Exporté par ' + session.name, ...Array(NC-1).fill('')],
-      [nbAtteints + '/' + srcCibles.length + ' articles atteints (' + pct + '%)', '', '', '', totalCible + ' pal. cible', totalPal + ' pal. réservé', ''],
-      Array(NC).fill(''),
-      COLS,
-      ...dataRows.map(r => [r.code, r.libelle, r.rayon, r.famille, r.cible, r.pal, r.statut]),
-    ];
+      /* ── layout rows ── */
+      const R_LOGO  = 0;   /* titre magasin */
+      const R_DATE  = 1;   /* date export */
+      const R_BLANK = 2;
+      const R_KPI   = 3;   /* KPI summary */
+      const R_BLANK2= 4;
+      const R_HDR   = 5;   /* en-têtes colonnes */
+      const R_DATA  = 6;   /* données */
+      const NC = 7;
 
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
+      const COLS = ['Code', 'Libellé Article', 'Rayon', 'Famille', 'Cible (pal.)', 'Réservé (pal.)', 'Statut'];
 
-    ws['!cols'] = [{wch:13},{wch:38},{wch:16},{wch:20},{wch:13},{wch:15},{wch:13}];
-    ws['!rows'] = [{hpt:26},{hpt:18},{hpt:18},{hpt:6},{hpt:20}];
-    ws['!merges'] = [
-      {s:{r:ROW_TITLE,c:0},   e:{r:ROW_TITLE,c:NC-1}},
-      {s:{r:ROW_SUB,c:0},     e:{r:ROW_SUB,c:NC-1}},
-      {s:{r:ROW_SUMMARY,c:0}, e:{r:ROW_SUMMARY,c:3}},
-    ];
+      const aoa = [
+        ['📦  ' + mag.toUpperCase() + '  —  RÉSERVATIONS PALETTES ATC2', '', '', '', '', '', ''],
+        ['Date : ' + dateFmt + '   |   Heure : ' + timeFmt + '   |   Exporté par : ' + session.name, '', '', '', '', '', ''],
+        ['', '', '', '', '', '', ''],
+        ['📊 ' + srcCibles.length + ' articles', '✅ Atteints : ' + nbAtteints + ' (' + pct + '%)', '🟡 En cours : ' + nbEnCours, '🔴 Non réservés : ' + nbNonRes, 'Total cible', 'Total réservé', 'Avancement'],
+        ['', '', '', '', '', '', ''],
+        COLS,
+        ...dataRows.map(r => [r.code, r.libelle, r.rayon, r.famille, r.cible, r.pal, r.statut]),
+        /* ligne totaux */
+        ['', 'TOTAL', '', '', totalCible, totalPal, Math.round(totalPal / (totalCible || 1) * 100) + '%'],
+      ];
 
-    const B = { top:{style:'thin',color:{rgb:'CBD5E1'}}, bottom:{style:'thin',color:{rgb:'CBD5E1'}}, left:{style:'thin',color:{rgb:'CBD5E1'}}, right:{style:'thin',color:{rgb:'CBD5E1'}} };
-    const enc = (r,c) => XLSX.utils.encode_cell({r,c});
-    const sty = (addr, s) => { if (!ws[addr]) ws[addr] = {v:'',t:'s'}; ws[addr].s = s; };
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
 
-    /* title */
-    sty(enc(ROW_TITLE,0), { font:{bold:true,sz:14,color:{rgb:'FFFFFF'},name:'Calibri'}, fill:{fgColor:{rgb:'0052CC'},patternType:'solid'}, alignment:{horizontal:'center',vertical:'center'} });
-    /* subtitle */
-    sty(enc(ROW_SUB,0),   { font:{sz:10,color:{rgb:'FFFFFF'},italic:true}, fill:{fgColor:{rgb:'1D4ED8'},patternType:'solid'}, alignment:{horizontal:'center',vertical:'center'} });
-    /* summary */
-    sty(enc(ROW_SUMMARY,0), { font:{bold:true,sz:11,color:{rgb:'1E3A5F'}}, fill:{fgColor:{rgb:'DBEAFE'},patternType:'solid'}, border:B });
-    sty(enc(ROW_SUMMARY,4), { font:{bold:true,sz:11,color:{rgb:'1E3A5F'}}, fill:{fgColor:{rgb:'DBEAFE'},patternType:'solid'}, alignment:{horizontal:'center'}, border:B });
-    sty(enc(ROW_SUMMARY,5), { font:{bold:true,sz:11,color:{rgb:'166534'}}, fill:{fgColor:{rgb:'DCFCE7'},patternType:'solid'}, alignment:{horizontal:'center'}, border:B });
-    /* header row */
-    COLS.forEach((_,ci) => {
-      sty(enc(ROW_HEADER,ci), { font:{bold:true,sz:11,color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'334155'},patternType:'solid'}, alignment:{horizontal:'center',vertical:'center',wrapText:true}, border:B });
-    });
-    /* data rows */
-    dataRows.forEach((row, ri) => {
-      const r = ROW_DATA + ri;
-      const fill = ri % 2 === 0 ? {fgColor:{rgb:'F8FAFC'},patternType:'solid'} : {fgColor:{rgb:'FFFFFF'},patternType:'solid'};
-      [0,1,2,3].forEach(ci => sty(enc(r,ci), { font:{sz:11}, fill, border:B, alignment:{vertical:'center'} }));
-      sty(enc(r,4), { font:{bold:true,sz:11,color:{rgb:'1E3A5F'}}, fill:{fgColor:{rgb:'EFF6FF'},patternType:'solid'}, alignment:{horizontal:'center',vertical:'center'}, border:B });
-      const palColor  = row.pal > 0 ? '166534' : '94A3B8';
-      const palBg     = row.pal > 0 ? 'DCFCE7' : 'F8FAFC';
-      sty(enc(r,5), { font:{bold:true,sz:12,color:{rgb:palColor}}, fill:{fgColor:{rgb:palBg},patternType:'solid'}, alignment:{horizontal:'center',vertical:'center'}, border:B });
-      const stColors = { 'Atteinte':['166534','DCFCE7'], 'En cours':['92400E','FEF3C7'], 'Non réservé':['991B1B','FEE2E2'] };
-      const [fc,bc] = stColors[row.statut] || ['475569','F1F5F9'];
-      sty(enc(r,6), { font:{bold:true,sz:11,color:{rgb:fc}}, fill:{fgColor:{rgb:bc},patternType:'solid'}, alignment:{horizontal:'center',vertical:'center'}, border:B });
-    });
+      ws['!cols']   = [{ wch:14 }, { wch:40 }, { wch:16 }, { wch:20 }, { wch:14 }, { wch:16 }, { wch:14 }];
+      ws['!rows']   = [{ hpt:30 }, { hpt:18 }, { hpt:6 }, { hpt:22 }, { hpt:6 }, { hpt:22 }, ...dataRows.map(() => ({ hpt:19 })), { hpt:22 }];
+      ws['!merges'] = [
+        { s:{r:R_LOGO,c:0},  e:{r:R_LOGO,c:NC-1}  },
+        { s:{r:R_DATE,c:0},  e:{r:R_DATE,c:NC-1}  },
+        { s:{r:R_KPI,c:4},   e:{r:R_KPI,c:4}      },
+        { s:{r:R_KPI,c:5},   e:{r:R_KPI,c:5}      },
+        { s:{r:R_KPI,c:6},   e:{r:R_KPI,c:6}      },
+      ];
+      /* freeze header */
+      ws['!freeze'] = { xSplit:0, ySplit: R_HDR + 1 };
 
-    XLSX.utils.book_append_sheet(wb, ws, 'Réservation');
-    /* téléchargement compatible mobile (iOS/Android) */
-    const wbOut = XLSX.write(wb, { bookType:'xlsx', type:'array' });
-    const blob  = new Blob([wbOut], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url   = URL.createObjectURL(blob);
-    const a     = document.createElement('a');
-    a.href      = url;
-    a.download  = mag + '_Reservation_' + dateFmt + '.xlsx';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { URL.revokeObjectURL(url); document.body.removeChild(a); }, 1500);
+      /* ── TITRE ── */
+      sty(enc(R_LOGO,0), {
+        font:{ bold:true, sz:15, color:{ rgb:'FFFFFF' }, name:FONT },
+        fill:{ fgColor:{ rgb:'0052CC' }, patternType:'solid' },
+        alignment:{ horizontal:'center', vertical:'center' },
+      });
+
+      /* ── DATE ── */
+      sty(enc(R_DATE,0), {
+        font:{ sz:10, color:{ rgb:'DBEAFE' }, italic:true, name:FONT },
+        fill:{ fgColor:{ rgb:'1D4ED8' }, patternType:'solid' },
+        alignment:{ horizontal:'center', vertical:'center' },
+      });
+
+      /* ── KPI SUMMARY ── */
+      const kpiStyles = [
+        { font:{ bold:true, sz:11, color:{ rgb:'1E3A5F' }, name:FONT }, fill:{ fgColor:{ rgb:'EFF6FF' }, patternType:'solid' }, border:Bh, alignment:{ horizontal:'center', vertical:'center' } },
+        { font:{ bold:true, sz:11, color:{ rgb:'166534' }, name:FONT }, fill:{ fgColor:{ rgb:'DCFCE7' }, patternType:'solid' }, border:Bh, alignment:{ horizontal:'center', vertical:'center' } },
+        { font:{ bold:true, sz:11, color:{ rgb:'92400E' }, name:FONT }, fill:{ fgColor:{ rgb:'FEF3C7' }, patternType:'solid' }, border:Bh, alignment:{ horizontal:'center', vertical:'center' } },
+        { font:{ bold:true, sz:11, color:{ rgb:'991B1B' }, name:FONT }, fill:{ fgColor:{ rgb:'FEE2E2' }, patternType:'solid' }, border:Bh, alignment:{ horizontal:'center', vertical:'center' } },
+        { font:{ bold:true, sz:11, color:{ rgb:'1E3A5F' }, name:FONT }, fill:{ fgColor:{ rgb:'BFDBFE' }, patternType:'solid' }, border:Bh, alignment:{ horizontal:'center', vertical:'center' } },
+        { font:{ bold:true, sz:12, color:{ rgb:'166534' }, name:FONT }, fill:{ fgColor:{ rgb:'DCFCE7' }, patternType:'solid' }, border:Bh, alignment:{ horizontal:'center', vertical:'center' } },
+        { font:{ bold:true, sz:11, color:{ rgb:'1E40AF' }, name:FONT }, fill:{ fgColor:{ rgb:'DBEAFE' }, patternType:'solid' }, border:Bh, alignment:{ horizontal:'center', vertical:'center' } },
+      ];
+      kpiStyles.forEach((s, ci) => sty(enc(R_KPI, ci), s));
+
+      /* ── EN-TÊTES COLONNES ── */
+      COLS.forEach((_, ci) => {
+        sty(enc(R_HDR, ci), {
+          font:{ bold:true, sz:11, color:{ rgb:'FFFFFF' }, name:FONT },
+          fill:{ fgColor:{ rgb:'1E3A5F' }, patternType:'solid' },
+          alignment:{ horizontal:'center', vertical:'center', wrapText:true },
+          border: Bh,
+        });
+      });
+
+      /* ── LIGNES DONNÉES ── */
+      dataRows.forEach((row, ri) => {
+        const r    = R_DATA + ri;
+        const even = ri % 2 === 0;
+        const rowBg = even ? 'F8FAFC' : 'FFFFFF';
+
+        /* code */
+        sty(enc(r,0), { font:{ sz:11, bold:true, color:{ rgb:'334155' }, name:FONT }, fill:{ fgColor:{ rgb:rowBg }, patternType:'solid' }, alignment:{ horizontal:'center', vertical:'center' }, border:Bd });
+        /* libelle */
+        sty(enc(r,1), { font:{ sz:11, color:{ rgb:'1E293B' }, name:FONT }, fill:{ fgColor:{ rgb:rowBg }, patternType:'solid' }, alignment:{ vertical:'center', wrapText:false }, border:Bd });
+        /* rayon */
+        sty(enc(r,2), { font:{ sz:10, bold:true, color:{ rgb:'475569' }, name:FONT }, fill:{ fgColor:{ rgb:rowBg }, patternType:'solid' }, alignment:{ horizontal:'center', vertical:'center' }, border:Bd });
+        /* famille */
+        sty(enc(r,3), { font:{ sz:10, color:{ rgb:'64748B' }, name:FONT }, fill:{ fgColor:{ rgb:rowBg }, patternType:'solid' }, alignment:{ horizontal:'center', vertical:'center' }, border:Bd });
+        /* cible */
+        sty(enc(r,4), { font:{ sz:11, bold:true, color:{ rgb:'1E40AF' }, name:FONT }, fill:{ fgColor:{ rgb:'EFF6FF' }, patternType:'solid' }, alignment:{ horizontal:'center', vertical:'center' }, border:Bd });
+        /* réservé */
+        const palColor = row.pal >= row.cible && row.cible > 0 ? '166534' : row.pal > 0 ? '92400E' : '9CA3AF';
+        const palBg    = row.pal >= row.cible && row.cible > 0 ? 'DCFCE7' : row.pal > 0 ? 'FEF3C7' : 'F1F5F9';
+        sty(enc(r,5), { font:{ sz:13, bold:true, color:{ rgb:palColor }, name:FONT }, fill:{ fgColor:{ rgb:palBg }, patternType:'solid' }, alignment:{ horizontal:'center', vertical:'center' }, border:Bd });
+        /* statut */
+        const stMap = { 'Atteinte':['166534','DCFCE7'], 'En cours':['92400E','FEF3C7'], 'Non réservé':['991B1B','FEE2E2'] };
+        const [fc, bc] = stMap[row.statut] || ['475569','F1F5F9'];
+        sty(enc(r,6), { font:{ sz:11, bold:true, color:{ rgb:fc }, name:FONT }, fill:{ fgColor:{ rgb:bc }, patternType:'solid' }, alignment:{ horizontal:'center', vertical:'center' }, border:Bd });
+      });
+
+      /* ── LIGNE TOTAUX ── */
+      const R_TOT = R_DATA + dataRows.length;
+      [
+        { ci:0, v:'', s:{ font:{ bold:true, sz:11, color:{ rgb:'FFFFFF' }, name:FONT }, fill:{ fgColor:{ rgb:'334155' }, patternType:'solid' }, border:B('475569') } },
+        { ci:1, v:'TOTAL', s:{ font:{ bold:true, sz:11, color:{ rgb:'FFFFFF' }, name:FONT }, fill:{ fgColor:{ rgb:'334155' }, patternType:'solid' }, alignment:{ horizontal:'center' }, border:B('475569') } },
+        { ci:2, v:'', s:{ fill:{ fgColor:{ rgb:'334155' }, patternType:'solid' }, border:B('475569') } },
+        { ci:3, v:'', s:{ fill:{ fgColor:{ rgb:'334155' }, patternType:'solid' }, border:B('475569') } },
+        { ci:4, s:{ font:{ bold:true, sz:12, color:{ rgb:'BFDBFE' }, name:FONT }, fill:{ fgColor:{ rgb:'1E3A5F' }, patternType:'solid' }, alignment:{ horizontal:'center' }, border:B('475569') } },
+        { ci:5, s:{ font:{ bold:true, sz:13, color:{ rgb:'DCFCE7' }, name:FONT }, fill:{ fgColor:{ rgb:'166534' }, patternType:'solid' }, alignment:{ horizontal:'center' }, border:B('475569') } },
+        { ci:6, s:{ font:{ bold:true, sz:12, color:{ rgb:'DBEAFE' }, name:FONT }, fill:{ fgColor:{ rgb:'1E40AF' }, patternType:'solid' }, alignment:{ horizontal:'center' }, border:B('475569') } },
+      ].forEach(({ ci, s }) => sty(enc(R_TOT, ci), s));
+
+      XLSX.utils.book_append_sheet(wb, ws, mag.slice(0, 31));
+
+      /* ── téléchargement ── */
+      const wbOut = XLSX.write(wb, { bookType:'xlsx', type:'array' });
+      const blob  = new Blob([wbOut], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url   = URL.createObjectURL(blob);
+      const a     = document.createElement('a');
+      a.href      = url;
+      a.download  = fileName;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); document.body.removeChild(a); }, 1500);
     } catch(e) { alert('❌ Erreur export Excel : ' + e.message); }
   };
 
