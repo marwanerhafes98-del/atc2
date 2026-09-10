@@ -213,11 +213,11 @@ function LoginView({ onLogin }) {
   );
 }
 
-/* proxy images externes (postimg.cc, etc.) via weserv.nl pour mobile */
+/* proxy images externes via wsrv.nl */
 function imgProxy(url) {
   if (!url) return url;
   const stripped = url.replace(/^https?:\/\//, '');
-  return 'https://images.weserv.nl/?url=' + stripped + '&output=webp&q=80';
+  return 'https://wsrv.nl/?url=' + stripped;
 }
 
 /* ══ ARTICLE CARD ══ */
@@ -262,10 +262,15 @@ function ArticleCard({ cible, rev, value, stock, j1, onChange }) {
       {/* image */}
       <div className="art-img">
         {cible.photoUrl
-          ? <img src={imgProxy(cible.photoUrl)} alt={cible.libelle} style={{maxWidth:'100%',maxHeight:74,objectFit:'contain'}} onError={e=>{e.target.outerHTML='<span style="font-size:32px">📦</span>'}} />
+          ? <img src={cible.photoUrl} alt={cible.libelle} referrerPolicy="no-referrer" style={{maxWidth:'100%',maxHeight:74,objectFit:'contain'}}
+              onError={e=>{
+                if (!e.target.dataset.p) { e.target.dataset.p='1'; e.target.src=imgProxy(cible.photoUrl); }
+                else { e.target.outerHTML='<span style="font-size:32px">📦</span>'; }
+              }} />
           : <span style={{fontSize:32}}>📦</span>
         }
-        {cible.logoUrl && <img className="art-logo" src={imgProxy(cible.logoUrl)} alt="" />}
+        {cible.logoUrl && <img className="art-logo" src={cible.logoUrl} alt="" referrerPolicy="no-referrer"
+          onError={e=>{ if(!e.target.dataset.p){e.target.dataset.p='1';e.target.src=imgProxy(cible.logoUrl);}else{e.target.style.display='none';} }} />}
       </div>
       {/* body */}
       <div className="art-body">
