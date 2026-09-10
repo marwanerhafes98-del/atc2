@@ -6884,6 +6884,7 @@ function ReservationsView() {
   const [magasinsDB,   setMagasinsDB]   = useState({});
   const [sessions,     setSessions]     = useState([]);
   const [subTab,       setSubTab]       = useState('chefs');
+  const [fChefMag,     setFChefMag]     = useState('Tous');
   const [magForm,      setMagForm]      = useState({ code:'', nom:'' });
   const [showMagForm,  setShowMagForm]  = useState(false);
   const [editMag,      setEditMag]      = useState(null);
@@ -7764,7 +7765,16 @@ function ReservationsView() {
       {/* ══ COMPTES TAB ══ */}
       {tab === 'comptes' && (
         <div>
-          <div style={{display:'flex',justifyContent:'flex-end',marginBottom:16}}>
+          <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16,flexWrap:'wrap'}}>
+            <select value={fChefMag} onChange={e=>setFChefMag(e.target.value)}
+              style={{padding:'8px 12px',border:'1.5px solid #E2E8F0',borderRadius:8,fontSize:13,fontWeight:600,color:'#1E293B',background:'#fff',outline:'none',minWidth:180}}>
+              <option value="Tous">Tous les magasins</option>
+              {magasinsList.map(nom => <option key={nom} value={nom}>{nom}</option>)}
+            </select>
+            <span style={{fontSize:12,color:'#94A3B8',fontWeight:600}}>
+              {(fChefMag==='Tous'?users:users.filter(u=>u.zone===fChefMag)).length} chef(s)
+            </span>
+            <div style={{flex:1}}/>
             <button onClick={openAddUser} style={{padding:'9px 18px',background:'var(--primary)',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:8}}>
               + Ajouter un chef
             </button>
@@ -7825,9 +7835,9 @@ function ReservationsView() {
                 </tr>
               </thead>
               <tbody>
-                {users.length === 0 ? (
-                  <tr><td colSpan={5} style={{padding:'40px',textAlign:'center',color:'var(--neutral-400)',fontSize:14}}>Aucun compte configuré</td></tr>
-                ) : users.map(u => (
+                {(()=>{ const filtered = fChefMag==='Tous' ? users : users.filter(u=>u.zone===fChefMag); return filtered.length === 0 ? (
+                  <tr><td colSpan={5} style={{padding:'40px',textAlign:'center',color:'var(--neutral-400)',fontSize:14}}>{users.length===0?'Aucun compte configuré':'Aucun chef pour ce magasin'}</td></tr>
+                ) : filtered.map(u => (
                   <tr key={u.id} style={{borderBottom:'1px solid var(--neutral-100)'}}>
                     <td style={{padding:'12px 16px',fontWeight:700,fontSize:14,color:'var(--neutral-800)'}}>{u.name}</td>
                     <td style={{padding:'12px 16px',fontSize:13,color:'var(--neutral-600)',fontFamily:'monospace'}}>{u.login}</td>
@@ -7847,7 +7857,7 @@ function ReservationsView() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                )); })()}
               </tbody>
             </table>
           </div>

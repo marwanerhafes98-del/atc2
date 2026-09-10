@@ -419,13 +419,14 @@ function App() {
       const prod    = assortMap[c.codeInterne] || {};
       const rayon   = (c.rayon   || prod.rayon   || '').toUpperCase().trim();
       const famille = (c.famille || prod.famille || '').trim();
-      const pal     = Number(inputs[c.codeInterne] ?? 0);
-      const isRes   = pal > 0;
+      /* statut basé sur la réservation SAUVEGARDÉE, pas sur la saisie en cours */
+      const savedRev = revs.find(r => r.codeInterne === c.codeInterne && r.magasin === selMag);
+      const isRes    = savedRev && Number(savedRev.palettes) > 0;
       return (fRayon   === 'Tous'   || rayon   === fRayon)
           && (fFamille === 'Toutes' || famille === fFamille)
           && (fStatus  === 'tous'   || (fStatus === 'reserves' ? isRes : !isRes));
     });
-  }, [curCibles, assortMap, inputs, fRayon, fFamille, fStatus]);
+  }, [curCibles, assortMap, revs, selMag, fRayon, fFamille, fStatus]);
 
   useEffect(() => {
     if (magasins.length > 0 && !selMag) setSelMag(magasins[0]);
