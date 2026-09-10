@@ -6759,7 +6759,7 @@ function App() {
               <div style={{color:'rgba(255,255,255,.7)',fontSize:11,fontWeight:600}}>{session.name}</div>
             </div>
           </div>
-          <button onClick={()=>{ localStorage.removeItem('ptg_manager_session'); setSession(null); }}
+          <button onClick={()=>{ localStorage.removeItem('ptg_manager_session'); window.location.reload(); }}
             style={{padding:'7px 16px',background:'rgba(255,255,255,.15)',color:'#fff',border:'1px solid rgba(255,255,255,.3)',borderRadius:8,fontSize:12,fontWeight:700,cursor:'pointer'}}>
             Déconnexion
           </button>
@@ -6818,7 +6818,7 @@ function App() {
     { key:'reservations',icon:'package',          label:'Réservations',         badge:reclPendingCount },
   ];
 
-  const handleLogout = () => { localStorage.removeItem('ptg_manager_session'); setSession(null); setSidebarOpen(false); };
+  const handleLogout = () => { localStorage.removeItem('ptg_manager_session'); window.location.reload(); };
 
   return (
     <div className="app-layout">
