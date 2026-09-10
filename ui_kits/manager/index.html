@@ -938,6 +938,18 @@ function LoginPage({ onLogin }) {
       return;
     }
 
+    // Reservation manager account via Firebase
+    try {
+      const snapR = await db.ref('ptg/reservManagers').once('value');
+      if (snapR.exists()) {
+        const rm = Object.values(snapR.val()).find(a => a.login.toLowerCase() === emailLow && a.password === pwd && a.actif !== false);
+        if (rm) {
+          onLogin({ role:'reservmanager', email:rm.login, name:rm.name, initials:(rm.name||'RM').slice(0,2).toUpperCase() }, remember);
+          return;
+        }
+      }
+    } catch(err) {}
+
     // Team Lead account via Firebase
     try {
       const snap = await db.ref('ptg/accounts').once('value');
@@ -6703,6 +6715,30 @@ function App() {
     setSession(sess);
   }} />;
 
+  /* accès réservation uniquement → afficher directement ReservationsView */
+  if (session.role === 'reservmanager') {
+    return (
+      <div style={{minHeight:'100vh',background:'#F8FAFC'}}>
+        <div style={{background:'#0052CC',padding:'12px 24px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            <span style={{fontSize:22}}>📦</span>
+            <div>
+              <div style={{color:'#fff',fontWeight:800,fontSize:15}}>Espace Réservation</div>
+              <div style={{color:'rgba(255,255,255,.7)',fontSize:11,fontWeight:600}}>{session.name}</div>
+            </div>
+          </div>
+          <button onClick={()=>{ localStorage.removeItem('ptg_manager_session'); setSession(null); }}
+            style={{padding:'7px 16px',background:'rgba(255,255,255,.15)',color:'#fff',border:'1px solid rgba(255,255,255,.3)',borderRadius:8,fontSize:12,fontWeight:700,cursor:'pointer'}}>
+            Déconnexion
+          </button>
+        </div>
+        <div style={{padding:'24px',maxWidth:1200,margin:'0 auto'}}>
+          <ReservationsView isReservMgr={true} />
+        </div>
+      </div>
+    );
+  }
+
   const isTL       = session.role === 'teamlead';
   const cityFilter = isTL ? session.ville : null;
 
@@ -6856,7 +6892,7 @@ function App() {
 /* ════════════════════════════════════════════
    RESERVATIONS VIEW
    ════════════════════════════════════════════ */
-function ReservationsView() {
+function ReservationsView({ isReservMgr = false }) {
   const [tab, setTab]           = useState('suivi');
   const [users, setUsers]       = useState([]);
   const [cibles, setCibles]     = useState([]);
@@ -6885,6 +6921,12 @@ function ReservationsView() {
   const [sessions,     setSessions]     = useState([]);
   const [subTab,       setSubTab]       = useState('chefs');
   const [fChefMag,     setFChefMag]     = useState('Tous');
+  /* comptes accès réservation */
+  const [reservMgrs,   setReservMgrs]   = useState([]);
+  const [rmForm,       setRmForm]       = useState({ name:'', login:'', password:'', actif:true });
+  const [showRmForm,   setShowRmForm]   = useState(false);
+  const [editRm,       setEditRm]       = useState(null);
+  const [rmMsg,        setRmMsg]        = useState('');
   const [magForm,      setMagForm]      = useState({ code:'', nom:'' });
   const [showMagForm,  setShowMagForm]  = useState(false);
   const [editMag,      setEditMag]      = useState(null);
@@ -6929,7 +6971,9 @@ function ReservationsView() {
     const h6 = r6.on('value', s => setMagasinsDB(s.val() || {}));
     const r7 = db.ref('ptg/sessions');
     const h7 = r7.on('value', s => setSessions(s.val() ? Object.values(s.val()) : []));
-    return () => { r1.off('value',h1); r2.off('value',h2); r3.off('value',h3); r4.off('value',h4); r5.off('value',h5); r6.off('value',h6); r7.off('value',h7); };
+    const r8 = db.ref('ptg/reservManagers');
+    const h8 = r8.on('value', s => setReservMgrs(s.val() ? Object.values(s.val()) : []));
+    return () => { r1.off('value',h1); r2.off('value',h2); r3.off('value',h3); r4.off('value',h4); r5.off('value',h5); r6.off('value',h6); r7.off('value',h7); r8.off('value',h8); };
   }, []);
 
   /* derived */
@@ -7209,6 +7253,24 @@ function ReservationsView() {
   };
   const deleteMag = (mg) => { if (confirm('Supprimer le magasin ' + mg.nom + ' ?')) db.ref('ptg/magasins/' + mg.code).remove(); };
 
+  /* ── COMPTES ACCÈS RÉSERVATION ── */
+  const uidRM = () => Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+  const openAddRm  = () => { setEditRm(null); setRmForm({ name:'', login:'', password:'', actif:true }); setRmMsg(''); setShowRmForm(true); };
+  const openEditRm = (r) => { setEditRm(r); setRmForm({ name:r.name, login:r.login, password:r.password, actif:r.actif !== false }); setRmMsg(''); setShowRmForm(true); };
+  const saveRm = async () => {
+    const name  = rmForm.name.trim();
+    const login = rmForm.login.trim().toLowerCase();
+    const pwd   = rmForm.password.trim();
+    if (!name || !login || !pwd) { setRmMsg('❌ Tous les champs sont requis.'); return; }
+    const dup = reservMgrs.find(r => r.login === login && (!editRm || r.id !== editRm.id));
+    if (dup) { setRmMsg('❌ Cet identifiant existe déjà.'); return; }
+    const id = editRm ? editRm.id : uidRM();
+    await db.ref('ptg/reservManagers/' + id).set({ id, name, login, password:pwd, actif:rmForm.actif });
+    setShowRmForm(false); setRmMsg('');
+  };
+  const deleteRm     = (r) => { if (confirm('Supprimer ' + r.name + ' ?')) db.ref('ptg/reservManagers/' + r.id).remove(); };
+  const toggleRm     = (r) => db.ref('ptg/reservManagers/' + r.id).update({ actif: r.actif === false });
+
   /* ── RAYON COLORS ── */
   const RAYON_COLORS = {
     'EPICERIE':     { bg:'#CCFBF1', color:'#0F766E' },
@@ -7435,6 +7497,7 @@ function ReservationsView() {
         <button style={tabStyle('comptes')}     onClick={()=>setTab('comptes')}>👤 Comptes chefs</button>
         <button style={tabStyle('magasins')}    onClick={()=>setTab('magasins')}>🏪 Magasins</button>
         <button style={tabStyle('activite')}    onClick={()=>setTab('activite')}>📈 Activité chefs</button>
+        {!isReservMgr && <button style={tabStyle('acces')} onClick={()=>setTab('acces')}>🔑 Accès réservation</button>}
       </div>
 
       {/* ══ SUIVI TAB ══ */}
@@ -8174,6 +8237,104 @@ function ReservationsView() {
           </div>
         );
       })()}
+
+      {/* ══ ACCÈS RÉSERVATION TAB ══ */}
+      {tab === 'acces' && (
+        <div>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20,flexWrap:'wrap',gap:12}}>
+            <div>
+              <div style={{fontSize:17,fontWeight:800,color:'#1E293B'}}>Comptes accès réservation</div>
+              <div style={{fontSize:13,color:'#64748B',marginTop:2}}>
+                Ces comptes permettent l'accès uniquement à la section réservation du manager (pas l'outil téléphone).
+              </div>
+            </div>
+            <button onClick={openAddRm}
+              style={{padding:'10px 20px',background:'#0052CC',color:'#fff',border:'none',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer',boxShadow:'0 2px 8px rgba(0,82,204,.3)',display:'flex',alignItems:'center',gap:8}}>
+              + Ajouter un accès
+            </button>
+          </div>
+
+          {/* modal */}
+          {showRmForm && (
+            <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+              <div style={{background:'#fff',borderRadius:16,padding:32,width:'100%',maxWidth:400,boxShadow:'0 24px 64px rgba(0,0,0,.25)'}}>
+                <div style={{fontSize:18,fontWeight:800,color:'#1E293B',marginBottom:6}}>{editRm ? '✏️ Modifier le compte' : '🔑 Nouveau compte accès'}</div>
+                <div style={{fontSize:13,color:'#64748B',marginBottom:24}}>Ce compte donne accès uniquement à la section réservation du manager.</div>
+                {[
+                  {label:'Nom complet',key:'name',placeholder:'ex: Karim Alaoui',type:'text'},
+                  {label:'Identifiant (email ou login)',key:'login',placeholder:'ex: karim.alaoui',type:'text'},
+                  {label:'Mot de passe',key:'password',placeholder:'••••••••',type:'password'},
+                ].map(f => (
+                  <div key={f.key} style={{marginBottom:14}}>
+                    <label style={{display:'block',fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:.5,marginBottom:5}}>{f.label}</label>
+                    <input type={f.type} value={rmForm[f.key]} onChange={e=>setRmForm(p=>({...p,[f.key]:e.target.value}))} placeholder={f.placeholder}
+                      style={{width:'100%',border:'1.5px solid #E2E8F0',borderRadius:8,padding:'10px 12px',fontSize:14,outline:'none',color:'#1E293B'}} />
+                  </div>
+                ))}
+                <div style={{marginBottom:16,display:'flex',alignItems:'center',gap:14}}>
+                  <span style={{fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:.5}}>Statut</span>
+                  {[{v:true,l:'Actif',c:'#16A34A'},{v:false,l:'Inactif',c:'#DC2626'}].map(o=>(
+                    <label key={String(o.v)} style={{display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,cursor:'pointer',color:rmForm.actif===o.v?o.c:'#94A3B8'}}>
+                      <input type="radio" checked={rmForm.actif===o.v} onChange={()=>setRmForm(p=>({...p,actif:o.v}))} /> {o.l}
+                    </label>
+                  ))}
+                </div>
+                {rmMsg && <div style={{marginBottom:12,fontSize:13,fontWeight:700,color:rmMsg.startsWith('❌')?'#DC2626':'#16A34A'}}>{rmMsg}</div>}
+                <div style={{display:'flex',gap:10}}>
+                  <button onClick={saveRm} style={{flex:1,padding:'12px',background:'#0052CC',color:'#fff',border:'none',borderRadius:8,fontSize:14,fontWeight:700,cursor:'pointer',boxShadow:'0 2px 8px rgba(0,82,204,.3)'}}>💾 Enregistrer</button>
+                  <button onClick={()=>{setShowRmForm(false);setRmMsg('');}} style={{flex:1,padding:'12px',background:'#F1F5F9',color:'#334155',border:'1.5px solid #CBD5E1',borderRadius:8,fontSize:14,fontWeight:700,cursor:'pointer'}}>Annuler</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div style={{background:'#fff',border:'1px solid #E2E8F0',borderRadius:12,overflow:'hidden',boxShadow:'0 1px 4px rgba(0,0,0,.06)'}}>
+            <table style={{width:'100%',borderCollapse:'collapse'}}>
+              <thead>
+                <tr style={{background:'#F8FAFC',borderBottom:'2px solid #E2E8F0'}}>
+                  {['Nom','Identifiant','Statut','Actions'].map(h=>(
+                    <th key={h} style={{padding:'12px 20px',fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:.6,color:'#64748B',textAlign:'left'}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {reservMgrs.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={{padding:'48px',textAlign:'center'}}>
+                      <div style={{fontSize:36,marginBottom:12}}>🔑</div>
+                      <div style={{fontSize:15,fontWeight:700,color:'#334155',marginBottom:6}}>Aucun compte configuré</div>
+                      <div style={{fontSize:13,color:'#94A3B8'}}>Créez des comptes pour les personnes qui accèderont uniquement à la section réservation.</div>
+                    </td>
+                  </tr>
+                ) : reservMgrs.sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(r => (
+                  <tr key={r.id} style={{borderBottom:'1px solid #F1F5F9'}}>
+                    <td style={{padding:'14px 20px',fontWeight:700,fontSize:14,color:'#1E293B'}}>{r.name}</td>
+                    <td style={{padding:'14px 20px',fontSize:13,color:'#475569',fontFamily:'monospace'}}>{r.login}</td>
+                    <td style={{padding:'14px 20px'}}>
+                      <span style={{display:'inline-block',padding:'4px 12px',borderRadius:99,fontSize:11,fontWeight:700,background:r.actif!==false?'#DCFCE7':'#FEE2E2',color:r.actif!==false?'#15803D':'#991B1B',border:`1px solid ${r.actif!==false?'#86EFAC':'#FCA5A5'}`}}>
+                        {r.actif !== false ? '● Actif' : '○ Inactif'}
+                      </span>
+                    </td>
+                    <td style={{padding:'14px 20px'}}>
+                      <div style={{display:'flex',gap:8}}>
+                        <button onClick={()=>openEditRm(r)} style={{padding:'6px 14px',background:'#F1F5F9',border:'1.5px solid #E2E8F0',borderRadius:6,fontSize:12,fontWeight:700,cursor:'pointer',color:'#334155'}}>✏️ Modifier</button>
+                        <button onClick={()=>toggleRm(r)} style={{padding:'6px 12px',background:r.actif!==false?'#FEE2E2':'#DCFCE7',border:'none',borderRadius:6,fontSize:12,fontWeight:700,cursor:'pointer',color:r.actif!==false?'#991B1B':'#15803D'}}>
+                          {r.actif !== false ? 'Désactiver' : 'Activer'}
+                        </button>
+                        <button onClick={()=>deleteRm(r)} style={{padding:'6px 10px',background:'#FEE2E2',border:'none',borderRadius:6,fontSize:12,fontWeight:700,cursor:'pointer',color:'#991B1B'}}>✕</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{marginTop:16,padding:'14px 16px',background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:10,fontSize:13,color:'#1D4ED8'}}>
+            ℹ️ Ces comptes utilisent la <strong>même page de connexion</strong> que le manager. Une fois connectés, ils accèdent uniquement aux onglets réservation (pas le reste du dashboard).
+          </div>
+        </div>
+      )}
     </div>
   );
 }
