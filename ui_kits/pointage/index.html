@@ -2329,7 +2329,13 @@ function ReclamationView({ user }) {
             {type==='designation' && (
               <div style={{display:'flex',flexDirection:'column',gap:12,marginBottom:16}}>
                 <div>
-                  <label style={{display:'block',fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:.5,marginBottom:6}}>Désignation actuelle</label>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
+                    <label style={{fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:.5}}>Désignation actuelle</label>
+                    <button type="button" onClick={()=>F('designationDemandee', article ? (article.libelle||'') : '')}
+                      style={{fontSize:11,fontWeight:700,color:'#0052CC',background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:6,padding:'3px 10px',cursor:'pointer'}}>
+                      📋 Copier dans le champ correct
+                    </button>
+                  </div>
                   <input readOnly value={article ? (article.libelle||'') : (form.designationActuelle||'')}
                     style={{width:'100%',border:'1.5px solid #E2E8F0',borderRadius:10,padding:'11px 14px',fontSize:14,outline:'none',background:'#F8FAFC',color:'#64748B',fontFamily:'inherit',boxSizing:'border-box',cursor:'default'}}/>
                 </div>
