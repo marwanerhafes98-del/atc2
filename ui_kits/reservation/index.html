@@ -357,14 +357,14 @@ function App() {
       setRevsJ1(all.filter(r => r.date === YESTERDAY_ISO));
       setLoading(false);
     });
-    /* load assortiment for photo/logo fallback */
+    /* load assortiment for photo/logo fallback — once suffit, ne change pas en session */
     const r3 = db.ref('ptg/assortiment');
-    const h3 = r3.on('value', s => setAssortMap(s.val() || {}));
+    r3.once('value', s => setAssortMap(s.val() || {}));
     /* load stock gold — uniquement pour ce magasin, expire après 24h */
     const magKey = session.zone.replace(/ /g, '_');
     const r4 = db.ref('ptg/stockGold/' + magKey);
     const MAX_STOCK_AGE = 24 * 3600 * 1000;
-    const h4 = r4.on('value', s => {
+    r4.once('value', s => {
       const m = {};
       if (s.val()) Object.values(s.val()).forEach(x => {
         if (!x || x.codeInterne == null) return;
@@ -383,7 +383,7 @@ function App() {
         setSession(null);
       }
     });
-    return () => { r1.off('value', h1); r2.off('value', h2); r3.off('value', h3); r4.off('value', h4); rU.off('value', hU); };
+    return () => { r1.off('value', h1); r2.off('value', h2); rU.off('value', hU); };
   }, [session]);
 
   /* actualisation automatique à minuit + au retour sur l'onglet */

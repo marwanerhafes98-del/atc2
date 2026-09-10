@@ -7029,9 +7029,9 @@ function ReservationsView({ isReservMgr = false, allowedTabs = null }) {
     const r3 = db.ref('ptg/reservations');
     const h3 = r3.on('value', s => setResvs(s.val() ? Object.values(s.val()) : []));
     const r4 = db.ref('ptg/assortiment');
-    const h4 = r4.on('value', s => setAssort(s.val() ? Object.values(s.val()) : []));
+    r4.once('value', s => setAssort(s.val() ? Object.values(s.val()) : []));
     const r5 = db.ref('ptg/stockGold');
-    const h5 = r5.on('value', s => {
+    r5.once('value', s => {
       if (!s.val()) { setStockGold([]); return; }
       /* structure imbriquée ptg/stockGold/{magKey}/{codeInt} → aplatir */
       const entries = [];
@@ -7059,7 +7059,7 @@ function ReservationsView({ isReservMgr = false, allowedTabs = null }) {
           db.ref('ptg/reclamations/' + r.id + '/photoBase64').remove().catch(()=>{});
       });
     });
-    return () => { r1.off('value',h1); r2.off('value',h2); r3.off('value',h3); r4.off('value',h4); r5.off('value',h5); r6.off('value',h6); r7.off('value',h7); r8.off('value',h8); r9.off('value',h9); };
+    return () => { r1.off('value',h1); r2.off('value',h2); r3.off('value',h3); r6.off('value',h6); r7.off('value',h7); r8.off('value',h8); r9.off('value',h9); };
   }, []);
 
   /* derived */
