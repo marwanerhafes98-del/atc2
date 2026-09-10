@@ -6980,7 +6980,17 @@ function ReservationsView({ isReservMgr = false }) {
     const r8 = db.ref('ptg/reservManagers');
     const h8 = r8.on('value', s => setReservMgrs(s.val() ? Object.values(s.val()) : []));
     const r9 = db.ref('ptg/reclamations');
-    const h9 = r9.on('value', s => setReclamations(s.val() ? Object.values(s.val()) : []));
+    const h9 = r9.on('value', s => {
+      const all = s.val() ? Object.values(s.val()) : [];
+      setReclamations(all);
+      /* nettoyage auto : supprimer photoBase64 des réclamations > 14 jours */
+      const LIMIT = 14 * 24 * 3600 * 1000;
+      const now = Date.now();
+      all.forEach(r => {
+        if (r.photoBase64 && r.createdAt && (now - r.createdAt) > LIMIT)
+          db.ref('ptg/reclamations/' + r.id + '/photoBase64').remove().catch(()=>{});
+      });
+    });
     return () => { r1.off('value',h1); r2.off('value',h2); r3.off('value',h3); r4.off('value',h4); r5.off('value',h5); r6.off('value',h6); r7.off('value',h7); r8.off('value',h8); r9.off('value',h9); };
   }, []);
 

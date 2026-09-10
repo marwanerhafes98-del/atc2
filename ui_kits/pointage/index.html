@@ -2172,8 +2172,16 @@ function ReclamationView({ user }) {
     const ref = db.ref('ptg/reclamations');
     const h   = ref.on('value', s => {
       if (!s.val()) { setRecls([]); return; }
-      setRecls(Object.values(s.val()).filter(r => r.teamLeadEmail === user.email)
+      const all = Object.values(s.val());
+      setRecls(all.filter(r => r.teamLeadEmail === user.email)
         .sort((a,b) => (b.createdAt||0) - (a.createdAt||0)));
+      /* nettoyage auto : supprimer photoBase64 des réclamations > 14 jours */
+      const LIMIT = 14 * 24 * 3600 * 1000;
+      const now = Date.now();
+      all.forEach(r => {
+        if (r.photoBase64 && r.createdAt && (now - r.createdAt) > LIMIT)
+          db.ref('ptg/reclamations/' + r.id + '/photoBase64').remove().catch(()=>{});
+      });
     });
     return () => ref.off('value', h);
   }, [user.email]);
