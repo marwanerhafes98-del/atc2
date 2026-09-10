@@ -335,6 +335,7 @@ function App() {
   /* load */
   useEffect(() => {
     if (!session) { setLoading(false); return; }
+    setLoading(true);
     const r1 = db.ref('ptg/reservCibles');
     const h1 = r1.on('value', s => setCibles(s.val() ? Object.values(s.val()).filter(c => c.zone === session.zone) : []));
     const r2 = db.ref('ptg/reservations');
