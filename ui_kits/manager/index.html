@@ -6938,11 +6938,9 @@ function ReservationsView() {
     return [...new Set(src.map(c=>c.magasin).filter(Boolean))].sort();
   }, [cibles, fZone]);
 
-  /* code magasin → nom magasin (dynamique Firebase, fallback hardcodé) */
+  /* code magasin → nom magasin : fallback + Firebase fusionnés */
   const CODE_MAGASIN = useMemo(() => {
-    const fallback = {'500':'AIN SEBAA','501':'FES','502':'TANGER','503':'OUJDA','504':'RABAT','505':'AGADIR','506':'MARRAKECH','511':'MEKNES','517':'NADOR','802':'BENI MELLAL'};
-    if (Object.keys(magasinsDB).length === 0) return fallback;
-    const m = {};
+    const m = {'500':'AIN SEBAA','501':'FES','502':'TANGER','503':'OUJDA','504':'RABAT','505':'AGADIR','506':'MARRAKECH','511':'MEKNES','517':'NADOR','802':'BENI MELLAL'};
     Object.values(magasinsDB).forEach(mg => { if (mg.code && mg.nom) m[mg.code] = mg.nom; });
     return m;
   }, [magasinsDB]);
