@@ -176,8 +176,10 @@ function LoginView({ onLogin }) {
     try {
       const snap = await db.ref('ptg/reservUsers').once('value');
       const list = snap.val() ? Object.values(snap.val()) : [];
-      const user = list.find(u => u.login === login.trim() && u.password === pass.trim() && u.actif !== false);
-      if (!user) { setErr('Identifiant ou mot de passe incorrect.'); setBusy(false); return; }
+      const userMatch = list.find(u => u.login === login.trim() && u.password === pass.trim());
+      if (!userMatch) { setErr('Identifiant ou mot de passe incorrect.'); setBusy(false); return; }
+      if (userMatch.actif === false) { setErr('⛔ Compte désactivé. Merci de contacter le support pour activer votre compte.'); setBusy(false); return; }
+      const user = userMatch;
       const sess = { id: user.id, name: user.name, login: user.login, zone: user.zone };
       localStorage.setItem('ptg_resv_sess', JSON.stringify(sess));
       /* log session pour suivi activité manager */
@@ -359,7 +361,16 @@ function App() {
       });
       setStockMap(m);
     });
-    return () => { r1.off('value', h1); r2.off('value', h2); r3.off('value', h3); r4.off('value', h4); };
+    /* surveiller le statut du compte en temps réel → déconnexion auto si désactivé */
+    const rU = db.ref('ptg/reservUsers/' + session.id);
+    const hU = rU.on('value', s => {
+      const u = s.val();
+      if (u && u.actif === false) {
+        localStorage.removeItem('ptg_resv_sess');
+        setSession(null);
+      }
+    });
+    return () => { r1.off('value', h1); r2.off('value', h2); r3.off('value', h3); r4.off('value', h4); rU.off('value', hU); };
   }, [session]);
 
   const magasins = useMemo(() => [...new Set(cibles.map(c => c.magasin))].sort(), [cibles]);
