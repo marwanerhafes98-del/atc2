@@ -945,7 +945,7 @@ function LoginPage({ onLogin }) {
       if (snapR.exists()) {
         const rm = Object.values(snapR.val()).find(a => a.login.toLowerCase() === emailLow && a.password === pwd && a.actif !== false);
         if (rm) {
-          onLogin({ role:'reservmanager', email:rm.login, name:rm.name, initials:(rm.name||'RM').slice(0,2).toUpperCase() }, remember);
+          onLogin({ role:'reservmanager', email:rm.login, name:rm.name, initials:(rm.name||'RM').slice(0,2).toUpperCase(), allowedTabs: rm.allowedTabs || null }, remember);
           return;
         }
       }
@@ -6748,7 +6748,7 @@ function App() {
           </button>
         </div>
         <div style={{flex:1,padding:'24px 32px',overflowY:'auto'}}>
-          <ReservationsView isReservMgr={true} />
+          <ReservationsView isReservMgr={true} allowedTabs={session.allowedTabs || null} />
         </div>
       </div>
     );
@@ -6917,7 +6917,17 @@ function App() {
 /* ════════════════════════════════════════════
    RESERVATIONS VIEW
    ════════════════════════════════════════════ */
-function ReservationsView({ isReservMgr = false }) {
+const RESV_ALL_TABS = [
+  { key:'suivi',        label:'📊 Suivi global' },
+  { key:'cibles',       label:'📋 Cibles & Import' },
+  { key:'assortiment',  label:'🗂 Assortiment' },
+  { key:'comptes',      label:'👤 Comptes chefs' },
+  { key:'magasins',     label:'🏪 Magasins' },
+  { key:'activite',     label:'📈 Activité chefs' },
+  { key:'reclamations', label:'🚨 Réclamations' },
+];
+
+function ReservationsView({ isReservMgr = false, allowedTabs = null }) {
   const [tab, setTab]           = useState('suivi');
   const [users, setUsers]       = useState([]);
   const [cibles, setCibles]     = useState([]);
@@ -6948,7 +6958,7 @@ function ReservationsView({ isReservMgr = false }) {
   const [fChefMag,     setFChefMag]     = useState('Tous');
   /* comptes accès réservation */
   const [reservMgrs,   setReservMgrs]   = useState([]);
-  const [rmForm,       setRmForm]       = useState({ name:'', login:'', password:'', actif:true });
+  const [rmForm,       setRmForm]       = useState({ name:'', login:'', password:'', actif:true, allowedTabs: RESV_ALL_TABS.map(t=>t.key) });
   const [showRmForm,   setShowRmForm]   = useState(false);
   const [editRm,       setEditRm]       = useState(null);
   const [rmMsg,        setRmMsg]        = useState('');
@@ -7299,8 +7309,8 @@ function ReservationsView({ isReservMgr = false }) {
 
   /* ── COMPTES ACCÈS RÉSERVATION ── */
   const uidRM = () => Date.now().toString(36) + Math.random().toString(36).slice(2,5);
-  const openAddRm  = () => { setEditRm(null); setRmForm({ name:'', login:'', password:'', actif:true }); setRmMsg(''); setShowRmForm(true); };
-  const openEditRm = (r) => { setEditRm(r); setRmForm({ name:r.name, login:r.login, password:r.password, actif:r.actif !== false }); setRmMsg(''); setShowRmForm(true); };
+  const openAddRm  = () => { setEditRm(null); setRmForm({ name:'', login:'', password:'', actif:true, allowedTabs: RESV_ALL_TABS.map(t=>t.key) }); setRmMsg(''); setShowRmForm(true); };
+  const openEditRm = (r) => { setEditRm(r); setRmForm({ name:r.name, login:r.login, password:r.password, actif:r.actif !== false, allowedTabs: r.allowedTabs || RESV_ALL_TABS.map(t=>t.key) }); setRmMsg(''); setShowRmForm(true); };
   const saveRm = async () => {
     const name  = rmForm.name.trim();
     const login = rmForm.login.trim().toLowerCase();
@@ -7309,7 +7319,7 @@ function ReservationsView({ isReservMgr = false }) {
     const dup = reservMgrs.find(r => r.login === login && (!editRm || r.id !== editRm.id));
     if (dup) { setRmMsg('❌ Cet identifiant existe déjà.'); return; }
     const id = editRm ? editRm.id : uidRM();
-    await db.ref('ptg/reservManagers/' + id).set({ id, name, login, password:pwd, actif:rmForm.actif });
+    await db.ref('ptg/reservManagers/' + id).set({ id, name, login, password:pwd, actif:rmForm.actif, allowedTabs: rmForm.allowedTabs || RESV_ALL_TABS.map(t=>t.key) });
     setShowRmForm(false); setRmMsg('');
   };
   const deleteRm     = (r) => { if (confirm('Supprimer ' + r.name + ' ?')) db.ref('ptg/reservManagers/' + r.id).remove(); };
@@ -7524,6 +7534,13 @@ function ReservationsView({ isReservMgr = false }) {
     borderColor:  tab===t ? '#0052CC' : '#E2E8F0',
   });
 
+  const tabAllowed = (key) => !isReservMgr || !allowedTabs || allowedTabs.length === 0 || allowedTabs.includes(key);
+
+  useEffect(() => {
+    if (!isReservMgr || !allowedTabs || allowedTabs.length === 0) return;
+    if (!allowedTabs.includes(tab)) setTab(allowedTabs[0] || 'suivi');
+  }, []);
+
   return (
     <div>
       <div style={{marginBottom:20,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
@@ -7535,14 +7552,14 @@ function ReservationsView({ isReservMgr = false }) {
 
       {/* ── TAB NAV ── */}
       <div style={{display:'flex',gap:8,marginBottom:24,flexWrap:'wrap',padding:'4px',background:'#F8FAFC',borderRadius:14,border:'1px solid #E2E8F0'}}>
-        <button style={tabStyle('suivi')}       onClick={()=>setTab('suivi')}>📊 Suivi global</button>
-        <button style={tabStyle('cibles')}      onClick={()=>setTab('cibles')}>📋 Cibles & Import</button>
-        <button style={tabStyle('assortiment')} onClick={()=>setTab('assortiment')}>🗂 Assortiment ({assortiment.length})</button>
-        <button style={tabStyle('comptes')}     onClick={()=>setTab('comptes')}>👤 Comptes chefs</button>
-        <button style={tabStyle('magasins')}    onClick={()=>setTab('magasins')}>🏪 Magasins</button>
-        <button style={tabStyle('activite')}    onClick={()=>setTab('activite')}>📈 Activité chefs</button>
-        {!isReservMgr && <button style={tabStyle('acces')} onClick={()=>setTab('acces')}>🔑 Accès réservation</button>}
-        <button style={tabStyle('reclamations')} onClick={()=>setTab('reclamations')}>🚨 Réclamations ({reclamations.filter(r=>r.status!=='traite').length})</button>
+        {tabAllowed('suivi')        && <button style={tabStyle('suivi')}        onClick={()=>setTab('suivi')}>📊 Suivi global</button>}
+        {tabAllowed('cibles')       && <button style={tabStyle('cibles')}       onClick={()=>setTab('cibles')}>📋 Cibles & Import</button>}
+        {tabAllowed('assortiment')  && <button style={tabStyle('assortiment')}  onClick={()=>setTab('assortiment')}>🗂 Assortiment ({assortiment.length})</button>}
+        {tabAllowed('comptes')      && <button style={tabStyle('comptes')}      onClick={()=>setTab('comptes')}>👤 Comptes chefs</button>}
+        {tabAllowed('magasins')     && <button style={tabStyle('magasins')}     onClick={()=>setTab('magasins')}>🏪 Magasins</button>}
+        {tabAllowed('activite')     && <button style={tabStyle('activite')}     onClick={()=>setTab('activite')}>📈 Activité chefs</button>}
+        {!isReservMgr               && <button style={tabStyle('acces')}        onClick={()=>setTab('acces')}>🔑 Accès réservation</button>}
+        {tabAllowed('reclamations') && <button style={tabStyle('reclamations')} onClick={()=>setTab('reclamations')}>🚨 Réclamations ({reclamations.filter(r=>r.status!=='traite').length})</button>}
       </div>
 
       {/* ══ SUIVI TAB ══ */}
@@ -8324,6 +8341,29 @@ function ReservationsView({ isReservMgr = false }) {
                     </label>
                   ))}
                 </div>
+                <div style={{marginBottom:16}}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+                    <span style={{fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:.5}}>Onglets accessibles</span>
+                    <div style={{display:'flex',gap:6}}>
+                      <button type="button" onClick={()=>setRmForm(p=>({...p,allowedTabs:RESV_ALL_TABS.map(t=>t.key)}))} style={{fontSize:11,fontWeight:700,color:'#0052CC',background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:6,padding:'2px 8px',cursor:'pointer'}}>Tout cocher</button>
+                      <button type="button" onClick={()=>setRmForm(p=>({...p,allowedTabs:[]}))} style={{fontSize:11,fontWeight:700,color:'#64748B',background:'#F1F5F9',border:'1px solid #E2E8F0',borderRadius:6,padding:'2px 8px',cursor:'pointer'}}>Tout décocher</button>
+                    </div>
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+                    {RESV_ALL_TABS.map(t => {
+                      const checked = (rmForm.allowedTabs||[]).includes(t.key);
+                      return (
+                        <label key={t.key} onClick={()=>setRmForm(p=>({...p,allowedTabs: checked ? (p.allowedTabs||[]).filter(k=>k!==t.key) : [...(p.allowedTabs||[]),t.key]}))}
+                          style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,border:'1.5px solid '+(checked?'#0052CC':'#E2E8F0'),background:checked?'#EFF6FF':'#F8FAFC',cursor:'pointer',transition:'all .12s',userSelect:'none'}}>
+                          <div style={{width:16,height:16,borderRadius:4,background:checked?'#0052CC':'#fff',border:'2px solid '+(checked?'#0052CC':'#CBD5E1'),display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                            {checked && <span style={{color:'#fff',fontSize:11,fontWeight:900,lineHeight:1}}>✓</span>}
+                          </div>
+                          <span style={{fontSize:12,fontWeight:600,color:checked?'#1E40AF':'#475569'}}>{t.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
                 {rmMsg && <div style={{marginBottom:12,fontSize:13,fontWeight:700,color:rmMsg.startsWith('❌')?'#DC2626':'#16A34A'}}>{rmMsg}</div>}
                 <div style={{display:'flex',gap:10}}>
                   <button onClick={saveRm} style={{flex:1,padding:'12px',background:'#0052CC',color:'#fff',border:'none',borderRadius:8,fontSize:14,fontWeight:700,cursor:'pointer',boxShadow:'0 2px 8px rgba(0,82,204,.3)'}}>💾 Enregistrer</button>
@@ -8337,7 +8377,7 @@ function ReservationsView({ isReservMgr = false }) {
             <table style={{width:'100%',borderCollapse:'collapse'}}>
               <thead>
                 <tr style={{background:'#F8FAFC',borderBottom:'2px solid #E2E8F0'}}>
-                  {['Nom','Identifiant','Statut','Actions'].map(h=>(
+                  {['Nom','Identifiant','Onglets autorisés','Statut','Actions'].map(h=>(
                     <th key={h} style={{padding:'12px 20px',fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:.6,color:'#64748B',textAlign:'left'}}>{h}</th>
                   ))}
                 </tr>
@@ -8355,6 +8395,14 @@ function ReservationsView({ isReservMgr = false }) {
                   <tr key={r.id} style={{borderBottom:'1px solid #F1F5F9'}}>
                     <td style={{padding:'14px 20px',fontWeight:700,fontSize:14,color:'#1E293B'}}>{r.name}</td>
                     <td style={{padding:'14px 20px',fontSize:13,color:'#475569',fontFamily:'monospace'}}>{r.login}</td>
+                    <td style={{padding:'14px 20px'}}>
+                      <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                        {(r.allowedTabs || RESV_ALL_TABS.map(t=>t.key)).map(k => {
+                          const t = RESV_ALL_TABS.find(x=>x.key===k);
+                          return t ? <span key={k} style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:6,background:'#EFF6FF',color:'#1D4ED8',border:'1px solid #BFDBFE'}}>{t.label}</span> : null;
+                        })}
+                      </div>
+                    </td>
                     <td style={{padding:'14px 20px'}}>
                       <span style={{display:'inline-block',padding:'4px 12px',borderRadius:99,fontSize:11,fontWeight:700,background:r.actif!==false?'#DCFCE7':'#FEE2E2',color:r.actif!==false?'#15803D':'#991B1B',border:`1px solid ${r.actif!==false?'#86EFAC':'#FCA5A5'}`}}>
                         {r.actif !== false ? '● Actif' : '○ Inactif'}
