@@ -2196,9 +2196,14 @@ function ReclamationView({ user }) {
   ];
   const typeLabels = Object.fromEntries(TYPES.map(t => [t.key, t.label]));
 
-  const filtered = React.useMemo(() => search.length >= 2
-    ? assort.filter(a => (a.libelle||'').toLowerCase().includes(search.toLowerCase()) || String(a.codeInterne||a.id||'').includes(search)).slice(0,30)
-    : [], [search, assort]);
+  const filtered = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return assort.slice(0, 50);
+    return assort.filter(a =>
+      (a.libelle||'').toLowerCase().includes(q) ||
+      String(a.codeInterne||a.id||'').includes(search.trim())
+    ).slice(0, 50);
+  }, [search, assort]);
 
   /* précharger les photos des résultats de recherche */
   React.useEffect(() => {
@@ -2288,7 +2293,10 @@ function ReclamationView({ user }) {
                 placeholder="Rechercher par nom ou code..." autoComplete="off"
                 style={{width:'100%',border:'1.5px solid '+(article?'#3B82F6':'#CBD5E1'),borderRadius:10,padding:'11px 14px',fontSize:14,outline:'none',boxSizing:'border-box',background:article?'#EFF6FF':'white'}}/>
               {showSugg && filtered.length>0 && (
-                <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',border:'1.5px solid #E2E8F0',borderRadius:10,boxShadow:'0 8px 24px rgba(0,0,0,.12)',zIndex:200,maxHeight:240,overflowY:'auto'}}>
+                <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',border:'1.5px solid #E2E8F0',borderRadius:10,boxShadow:'0 8px 24px rgba(0,0,0,.12)',zIndex:200,maxHeight:260,overflowY:'auto'}}>
+                  <div style={{padding:'6px 12px',fontSize:11,color:'#94A3B8',fontWeight:700,borderBottom:'1px solid #F1F5F9',background:'#FAFAFA',position:'sticky',top:0}}>
+                    {search.trim() ? `${filtered.length} résultat${filtered.length!==1?'s':''}` : `Tous les produits — ${assort.length} au total`}
+                  </div>
                   {filtered.map(a => (
                     <div key={a.codeInterne||a.id}
                       onMouseDown={()=>{setArticle(a);setSearch(a.libelle||String(a.codeInterne||a.id));setShowSugg(false);}}
