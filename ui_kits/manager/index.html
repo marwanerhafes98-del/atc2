@@ -6735,8 +6735,6 @@ function App() {
       const rm = Object.values(snap.val()).find(r => r.login === session.email);
       if (rm) {
         setRmAllowedTabs(rm.allowedTabs || null);
-        const updated = { ...session, allowedTabs: rm.allowedTabs || null };
-        localStorage.setItem('ptg_manager_session', JSON.stringify(updated));
       }
     });
     return () => ref.off('value');
