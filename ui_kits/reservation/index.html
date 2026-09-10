@@ -373,6 +373,19 @@ function App() {
     return () => { r1.off('value', h1); r2.off('value', h2); r3.off('value', h3); r4.off('value', h4); rU.off('value', hU); };
   }, [session]);
 
+  /* actualisation automatique à minuit + au retour sur l'onglet */
+  useEffect(() => {
+    const getISODate = () => { const d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+    /* timer jusqu'à minuit + 2s */
+    const now = new Date();
+    const msUntilMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()+1, 0, 0, 2).getTime() - now.getTime();
+    const timer = setTimeout(() => window.location.reload(), msUntilMidnight);
+    /* retour sur l'onglet : vérifier si le jour a changé */
+    const onVisible = () => { if (document.visibilityState === 'visible' && getISODate() !== TODAY_ISO) window.location.reload(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible); };
+  }, []);
+
   const magasins = useMemo(() => [...new Set(cibles.map(c => c.magasin))].sort(), [cibles]);
 
   const curCibles = useMemo(() => selMag ? cibles.filter(c => c.magasin === selMag) : [], [selMag, cibles]);
