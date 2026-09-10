@@ -570,7 +570,16 @@ function App() {
     });
 
     XLSX.utils.book_append_sheet(wb, ws, 'Réservation');
-    XLSX.writeFile(wb, mag + '_Reservation_' + dateFmt + '.xlsx');
+    /* téléchargement compatible mobile (iOS/Android) */
+    const wbOut = XLSX.write(wb, { bookType:'xlsx', type:'array' });
+    const blob  = new Blob([wbOut], { type:'application/octet-stream' });
+    const url   = URL.createObjectURL(blob);
+    const a     = document.createElement('a');
+    a.href      = url;
+    a.download  = mag + '_Reservation_' + dateFmt + '.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); document.body.removeChild(a); }, 1000);
   };
 
   const logout = () => { localStorage.removeItem('ptg_resv_sess'); setSession(null); };
