@@ -10,7 +10,15 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx-js-style.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx-js-style.umd.min.js" onerror="window._xlsxFallback=true"></script>
+<script>
+/* fallback SheetJS si xlsx-js-style ne charge pas */
+if(typeof XLSX==='undefined'){
+  var s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  document.head.appendChild(s);
+}
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
@@ -487,6 +495,8 @@ function App() {
   };
 
   const handleExportReservation = () => {
+    if (typeof XLSX === 'undefined') { alert('❌ Librairie Excel non chargée. Vérifiez votre connexion et rechargez la page.'); return; }
+    try {
     const mag = selMag || session.zone;
     const d = new Date();
     const dateFmt = String(d.getDate()).padStart(2,'0') + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + d.getFullYear();
@@ -572,14 +582,15 @@ function App() {
     XLSX.utils.book_append_sheet(wb, ws, 'Réservation');
     /* téléchargement compatible mobile (iOS/Android) */
     const wbOut = XLSX.write(wb, { bookType:'xlsx', type:'array' });
-    const blob  = new Blob([wbOut], { type:'application/octet-stream' });
+    const blob  = new Blob([wbOut], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url   = URL.createObjectURL(blob);
     const a     = document.createElement('a');
     a.href      = url;
     a.download  = mag + '_Reservation_' + dateFmt + '.xlsx';
     document.body.appendChild(a);
     a.click();
-    setTimeout(() => { URL.revokeObjectURL(url); document.body.removeChild(a); }, 1000);
+    setTimeout(() => { URL.revokeObjectURL(url); document.body.removeChild(a); }, 1500);
+    } catch(e) { alert('❌ Erreur export Excel : ' + e.message); }
   };
 
   const logout = () => { localStorage.removeItem('ptg_resv_sess'); setSession(null); };
