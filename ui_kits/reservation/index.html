@@ -156,6 +156,8 @@ const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
 const _dn = new Date();
 const TODAY_ISO = _dn.getFullYear() + '-' + String(_dn.getMonth()+1).padStart(2,'0') + '-' + String(_dn.getDate()).padStart(2,'0');
+const _yd = new Date(_dn); _yd.setDate(_yd.getDate() - 1);
+const YESTERDAY_ISO = _yd.getFullYear() + '-' + String(_yd.getMonth()+1).padStart(2,'0') + '-' + String(_yd.getDate()).padStart(2,'0');
 const TODAY_FR  = _dn.toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
 
 function uidKey() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
@@ -209,7 +211,7 @@ function LoginView({ onLogin }) {
 }
 
 /* ══ ARTICLE CARD ══ */
-function ArticleCard({ cible, rev, value, stock, onChange }) {
+function ArticleCard({ cible, rev, value, stock, j1, onChange }) {
   const num  = value !== '' && value !== undefined ? Number(value) : null;
   const isOver = num !== null && num > cible.ciblePalettes;
   const isDone = num !== null && num > 0;
@@ -271,6 +273,11 @@ function ArticleCard({ cible, rev, value, stock, onChange }) {
               <span style={{fontSize:12,fontWeight:800,color:'#7C3AED'}}>{Number(stock).toLocaleString('fr-FR')} u</span>
             </div>
           )}
+          {j1 !== null && j1 !== undefined && (
+            <div style={{display:'inline-flex',alignItems:'center',gap:4,background:'#FEF3C7',borderRadius:8,padding:'3px 9px',border:'1px solid #FDE68A'}}>
+              <span style={{fontSize:11,fontWeight:700,color:'#92400E'}}>J-1 : {String(j1).replace('.',',')} pal.</span>
+            </div>
+          )}
         </div>
         {/* progress mini */}
         {isDone && (
@@ -311,6 +318,7 @@ function App() {
   const [cibles, setCibles]     = useState([]);
   const [assortMap, setAssortMap] = useState({});
   const [revs, setRevs]         = useState([]);
+  const [revsJ1, setRevsJ1]     = useState([]);
   const [selMag, setSelMag]     = useState(null);
   const [inputs, setInputs]     = useState({});
   const [dirty, setDirty]       = useState(false);
@@ -329,7 +337,9 @@ function App() {
     const h1 = r1.on('value', s => setCibles(s.val() ? Object.values(s.val()).filter(c => c.zone === session.zone) : []));
     const r2 = db.ref('ptg/reservations');
     const h2 = r2.on('value', s => {
-      setRevs(s.val() ? Object.values(s.val()).filter(r => r.zone === session.zone && r.date === TODAY_ISO) : []);
+      const all = s.val() ? Object.values(s.val()).filter(r => r.zone === session.zone) : [];
+      setRevs(all.filter(r => r.date === TODAY_ISO));
+      setRevsJ1(all.filter(r => r.date === YESTERDAY_ISO));
       setLoading(false);
     });
     /* load assortiment for photo/logo fallback */
@@ -688,6 +698,7 @@ function App() {
                 rev={revs.find(r => r.codeInterne === c.codeInterne && r.magasin === selMag)}
                 value={inputs[c.codeInterne] ?? 0}
                 stock={stockMap[String(selMag||'').trim() + '_' + String(c.codeInterne).trim()]}
+                j1={(() => { const r = revsJ1.find(r => r.codeInterne === c.codeInterne && r.magasin === selMag); return r && Number(r.palettes) > 0 ? Number(r.palettes) : null; })()}
                 onChange={val => handleChange(c.codeInterne, val)}
               />
             );
