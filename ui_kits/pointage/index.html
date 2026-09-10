@@ -2234,7 +2234,7 @@ function ReclamationView({ user }) {
     if (type==='photo'       && !photoB64)                             { setMsg('❌ Ajoutez la nouvelle photo.'); return; }
     if (type==='qtmh'        && (!form.qtmhActuel||!form.qtmhDemande)) { setMsg('❌ Remplissez les champs QTMH.'); return; }
     if (type==='coef'        && (!form.coefActuel||!form.coefDemande)) { setMsg('❌ Remplissez les champs coefficient.'); return; }
-    if (type==='designation' && (!form.designationActuelle||!form.designationDemandee)) { setMsg('❌ Remplissez les champs désignation.'); return; }
+    if (type==='designation' && (!form.designationDemandee)) { setMsg('❌ Remplissez la désignation correcte.'); return; }
     if (type==='dispo'       && !form.commentaire)                     { setMsg('❌ Ajoutez un commentaire.'); return; }
     if (type==='prix'        && (!form.prixActuel||!form.prixCorrect)) { setMsg('❌ Remplissez les champs prix.'); return; }
     setBusy(true); setMsg('');
@@ -2257,6 +2257,7 @@ function ReclamationView({ user }) {
       treatedBy:      '',
       treatedAt:      '',
       ...form,
+      ...(type==='designation' ? { designationActuelle: article.libelle || '' } : {}),
       ...(type==='photo' ? { photoBase64: photoB64 } : {}),
     });
     setBusy(false);
@@ -2325,7 +2326,16 @@ function ReclamationView({ user }) {
 
             {type==='qtmh' && (<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}><ReclField label="QTMH actuel" type="number" value={form.qtmhActuel||''} onChange={v=>F('qtmhActuel',v)}/><ReclField label="QTMH demandé" type="number" value={form.qtmhDemande||''} onChange={v=>F('qtmhDemande',v)}/></div>)}
             {type==='coef' && (<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}><ReclField label="Coef. actuel" type="number" value={form.coefActuel||''} onChange={v=>F('coefActuel',v)}/><ReclField label="Coef. demandé" type="number" value={form.coefDemande||''} onChange={v=>F('coefDemande',v)}/></div>)}
-            {type==='designation' && (<div style={{display:'flex',flexDirection:'column',gap:12,marginBottom:16}}><ReclField label="Désignation actuelle" value={form.designationActuelle||''} onChange={v=>F('designationActuelle',v)}/><ReclField label="Désignation correcte" value={form.designationDemandee||''} onChange={v=>F('designationDemandee',v)}/></div>)}
+            {type==='designation' && (
+              <div style={{display:'flex',flexDirection:'column',gap:12,marginBottom:16}}>
+                <div>
+                  <label style={{display:'block',fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:.5,marginBottom:6}}>Désignation actuelle</label>
+                  <input readOnly value={article ? (article.libelle||'') : (form.designationActuelle||'')}
+                    style={{width:'100%',border:'1.5px solid #E2E8F0',borderRadius:10,padding:'11px 14px',fontSize:14,outline:'none',background:'#F8FAFC',color:'#64748B',fontFamily:'inherit',boxSizing:'border-box',cursor:'default'}}/>
+                </div>
+                <ReclField label="Désignation correcte" value={form.designationDemandee||''} onChange={v=>F('designationDemandee',v)}/>
+              </div>
+            )}
             {type==='dispo' && (<div style={{marginBottom:16}}><label style={{display:'block',fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:.5,marginBottom:6}}>Commentaire</label><textarea value={form.commentaire||''} onChange={e=>F('commentaire',e.target.value)} rows={3} placeholder="Décrivez le problème..." style={{width:'100%',border:'1.5px solid #CBD5E1',borderRadius:10,padding:'11px 14px',fontSize:14,outline:'none',resize:'none',fontFamily:'inherit',boxSizing:'border-box'}}/></div>)}
             {type==='prix' && (<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}><ReclField label="Prix actuel (DH)" type="number" value={form.prixActuel||''} onChange={v=>F('prixActuel',v)}/><ReclField label="Prix correct (DH)" type="number" value={form.prixCorrect||''} onChange={v=>F('prixCorrect',v)}/></div>)}
             {type==='photo' && (

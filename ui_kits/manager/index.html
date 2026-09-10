@@ -148,6 +148,7 @@
     .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:100; display:flex; align-items:center; justify-content:center; padding:20px; }
     .modal { background:white; border-radius:16px; width:100%; max-width:440px; box-shadow:0 24px 64px rgba(0,0,0,0.2); animation:fadeIn 0.15s ease; }
     @keyframes fadeIn { from{opacity:0;transform:scale(0.97)} to{opacity:1;transform:scale(1)} }
+    @keyframes slideInRight { from{opacity:0;transform:translateX(100px)} to{opacity:1;transform:translateX(0)} }
     .modal-hd { padding:20px 24px 16px; border-bottom:1px solid var(--neutral-100); display:flex; align-items:center; justify-content:space-between; }
     .modal-title { font-size:17px; font-weight:800; color:var(--neutral-900); }
     .modal-close { background:var(--neutral-100); border:none; border-radius:8px; width:30px; height:30px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--neutral-500); }
@@ -6667,6 +6668,9 @@ function App() {
   const [animateurs,  setAnimateurs]  = useState(ANIMATEURS_DB);
   const [secteurs,    setSecteurs]    = useState([]);
   const [villes,      setVilles]      = useState([]);
+  const [reclPendingCount, setReclPendingCount] = useState(0);
+  const [reclToast,        setReclToast]        = useState(false);
+  const prevReclCountRef = useRef(null);
 
   const loggedIn = !!session;
 
@@ -6707,7 +6711,18 @@ function App() {
       sorted.forEach(v => { if (v.name) { VILLES.push(v.name); if (v.color) CITY_COLORS[v.name] = v.color; } });
       setVilles([...sorted]);
     });
-    return () => { refAcc.off('value'); refSes.off('value'); refPtg.off('value'); refAnim.off('value'); refSect.off('value'); refVille.off('value'); };
+    const refRecl = db.ref('ptg/reclamations');
+    refRecl.on('value', snap => {
+      const all = snap.exists() ? Object.values(snap.val()) : [];
+      const pending = all.filter(r => r.status !== 'traite').length;
+      setReclPendingCount(pending);
+      if (prevReclCountRef.current !== null && pending > prevReclCountRef.current) {
+        setReclToast(true);
+        setTimeout(() => setReclToast(false), 5000);
+      }
+      prevReclCountRef.current = pending;
+    });
+    return () => { refAcc.off('value'); refSes.off('value'); refPtg.off('value'); refAnim.off('value'); refSect.off('value'); refVille.off('value'); refRecl.off('value'); };
   }, [loggedIn, refreshKey]);
 
   if (!loggedIn) return <LoginPage onLogin={(sess, remember) => {
@@ -6783,13 +6798,23 @@ function App() {
     { key:'scores',       icon:'award',            label:'Scores',               badge:0 },
     { key:'watchlist',   icon:'alert-triangle',   label:'À surveiller',         badge:0 },
     { key:'sectscores',  icon:'pie-chart',        label:'Scoring Secteurs',     badge:0 },
-    { key:'reservations',icon:'package',          label:'Réservations',         badge:0 },
+    { key:'reservations',icon:'package',          label:'Réservations',         badge:reclPendingCount },
   ];
 
   const handleLogout = () => { localStorage.removeItem('ptg_manager_session'); setSession(null); setSidebarOpen(false); };
 
   return (
     <div className="app-layout">
+      {reclToast && (
+        <div onClick={() => { setReclToast(false); setView('reservations'); setSidebarOpen(false); }} style={{position:'fixed',top:18,right:18,zIndex:9999,background:'#FF4444',color:'#fff',borderRadius:12,padding:'14px 20px',display:'flex',alignItems:'center',gap:12,boxShadow:'0 4px 20px rgba(0,0,0,0.25)',cursor:'pointer',maxWidth:320,animation:'slideInRight .3s ease'}}>
+          <span style={{fontSize:22}}>🚨</span>
+          <div>
+            <div style={{fontWeight:800,fontSize:14}}>Nouvelle réclamation !</div>
+            <div style={{fontSize:12,opacity:.9}}>Cliquez pour voir les réclamations en attente</div>
+          </div>
+          <button onClick={e => { e.stopPropagation(); setReclToast(false); }} style={{marginLeft:'auto',background:'none',border:'none',color:'#fff',fontSize:18,cursor:'pointer',lineHeight:1}}>×</button>
+        </div>
+      )}
       {sidebarOpen && <div className="mob-overlay" onClick={() => setSidebarOpen(false)}></div>}
 
       <div className={`sidebar${sidebarOpen ? ' open' : ''}`}>
@@ -6937,6 +6962,7 @@ function ReservationsView({ isReservMgr = false }) {
   const [reclFilterMag,   setReclFilterMag]   = useState('Tous');
   const [reclFilterType,  setReclFilterType]  = useState('Tous');
   const [reclFilterStatus,setReclFilterStatus]= useState('Tous');
+  const [reclFilterDate,  setReclFilterDate]  = useState('Tous');
 
   /* import cibles */
   const [importing, setImporting]   = useState(false);
@@ -8361,12 +8387,40 @@ function ReservationsView({ isReservMgr = false }) {
         const TYPE_COLOR = { qtmh:'#EDE9FE', coef:'#FEF3C7', designation:'#E0F2FE', dispo:'#FEE2E2', prix:'#DCFCE7', photo:'#FDF4FF' };
         const TYPE_TEXT  = { qtmh:'#6D28D9', coef:'#92400E', designation:'#0369A1', dispo:'#991B1B', prix:'#166534', photo:'#7C3AED' };
 
+        const sess = (() => { try { return JSON.parse(localStorage.getItem('ptg_manager_session')); } catch { return null; } })();
+        const isAdmin = sess && sess.email === 'manager@labelvie.ma';
+
+        const reclDateLabel = (createdAt) => {
+          if (!createdAt) return '';
+          const now = new Date();
+          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+          const dDay  = new Date(new Date(createdAt).getFullYear(), new Date(createdAt).getMonth(), new Date(createdAt).getDate()).getTime();
+          const diff  = today - dDay;
+          if (diff === 0) return "Aujourd'hui";
+          if (diff === 86400000) return 'Hier';
+          return 'Il y a ' + Math.round(diff / 86400000) + ' j';
+        };
+
+        const matchesDate = (r) => {
+          if (reclFilterDate === 'Tous') return true;
+          if (!r.createdAt) return false;
+          const now = new Date();
+          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+          const dDay  = new Date(new Date(r.createdAt).getFullYear(), new Date(r.createdAt).getMonth(), new Date(r.createdAt).getDate()).getTime();
+          const diff  = today - dDay;
+          if (reclFilterDate === 'today')     return diff === 0;
+          if (reclFilterDate === 'yesterday') return diff === 86400000;
+          if (reclFilterDate === 'week')      return diff >= 0 && diff < 7 * 86400000;
+          return true;
+        };
+
         const allMags = [...new Set(reclamations.map(r=>r.magasin).filter(Boolean))].sort();
 
         const visible = reclamations
           .filter(r => reclFilterMag   ==='Tous' || r.magasin===reclFilterMag)
           .filter(r => reclFilterType  ==='Tous' || r.type===reclFilterType)
           .filter(r => reclFilterStatus==='Tous' || (reclFilterStatus==='pending' ? r.status!=='traite' : r.status==='traite'))
+          .filter(matchesDate)
           .sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
 
         const nbTotal   = reclamations.length;
@@ -8378,11 +8432,28 @@ function ReservationsView({ isReservMgr = false }) {
           await db.ref('ptg/reclamations/' + r.id).update({ status:'traite', feedback: fb, treatedBy:'Manager', treatedAt: new Date().toISOString() });
         };
 
+        const deleteRecl = async (r) => {
+          if (!window.confirm('Supprimer cette réclamation (' + (r.articleLibelle||r.articleCode) + ') ?')) return;
+          await db.ref('ptg/reclamations/' + r.id).remove().catch(()=>{});
+        };
+
+        const deleteAllRecl = async () => {
+          if (!window.confirm('Supprimer TOUTES les réclamations visibles (' + visible.length + ') ? Cette action est irréversible.')) return;
+          await Promise.all(visible.map(r => db.ref('ptg/reclamations/' + r.id).remove().catch(()=>{})));
+        };
+
         const downloadPhoto = (b64, code) => {
           const a = document.createElement('a');
           a.href = b64; a.download = 'photo_' + code + '.jpg';
           document.body.appendChild(a); a.click(); document.body.removeChild(a);
         };
+
+        const DATE_BTNS = [
+          { key:'Tous',      label:'Tous' },
+          { key:'today',     label:"Aujourd'hui" },
+          { key:'yesterday', label:'Hier (J-1)' },
+          { key:'week',      label:'Cette semaine' },
+        ];
 
         return (
           <div>
@@ -8394,6 +8465,22 @@ function ReservationsView({ isReservMgr = false }) {
                   <div style={{fontSize:12,fontWeight:700,color:c,opacity:.8,marginTop:2}}>{l}</div>
                 </div>
               ))}
+            </div>
+
+            {/* Date quick filters */}
+            <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
+              {DATE_BTNS.map(b => (
+                <button key={b.key} onClick={() => setReclFilterDate(b.key)}
+                  style={{padding:'7px 14px',borderRadius:20,border:'1.5px solid '+(reclFilterDate===b.key?'#0052CC':'#E2E8F0'),background:reclFilterDate===b.key?'#0052CC':'#fff',color:reclFilterDate===b.key?'#fff':'#475569',fontSize:13,fontWeight:700,cursor:'pointer',transition:'all .15s'}}>
+                  {b.label}
+                </button>
+              ))}
+              {isAdmin && visible.length > 0 && (
+                <button onClick={deleteAllRecl}
+                  style={{marginLeft:'auto',padding:'7px 16px',borderRadius:20,border:'1.5px solid #EF4444',background:'#FEF2F2',color:'#DC2626',fontSize:13,fontWeight:700,cursor:'pointer'}}>
+                  🗑 Supprimer tout ({visible.length})
+                </button>
+              )}
             </div>
 
             {/* Filters */}
@@ -8426,13 +8513,20 @@ function ReservationsView({ isReservMgr = false }) {
               </div>
             ) : visible.map(r => {
               const isPending = r.status !== 'traite';
+              const dateLabel = reclDateLabel(r.createdAt);
+              const dateLabelColor = dateLabel==="Aujourd'hui"?'#0052CC':dateLabel==='Hier'?'#7C3AED':'#64748B';
+              const dateLabelBg   = dateLabel==="Aujourd'hui"?'#EFF6FF':dateLabel==='Hier'?'#F5F3FF':'#F1F5F9';
               return (
                 <div key={r.id} style={{background:'white',border:'1.5px solid '+(isPending?'#FEE2E2':'#D1FAE5'),borderRadius:14,padding:'16px',marginBottom:14,boxShadow:'0 2px 8px rgba(0,0,0,.05)'}}>
                   {/* Header */}
                   <div style={{display:'flex',gap:12,marginBottom:12}}>
                     {r.articlePhoto && <img src={r.articlePhoto} style={{width:56,height:56,objectFit:'contain',borderRadius:10,background:'#F8FAFC',border:'1px solid #E2E8F0',flexShrink:0}} onError={e=>e.target.style.display='none'}/>}
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:14,fontWeight:800,color:'#1E293B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.articleLibelle}</div>
+                      <div style={{display:'flex',alignItems:'flex-start',gap:8,marginBottom:2}}>
+                        <div style={{fontSize:14,fontWeight:800,color:'#1E293B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>{r.articleLibelle}</div>
+                        {dateLabel && <span style={{background:dateLabelBg,color:dateLabelColor,fontSize:10,fontWeight:800,padding:'3px 8px',borderRadius:20,whiteSpace:'nowrap',flexShrink:0}}>{dateLabel}</span>}
+                        {isAdmin && <button onClick={()=>deleteRecl(r)} title="Supprimer" style={{background:'#FEF2F2',border:'1px solid #FECACA',color:'#DC2626',borderRadius:6,padding:'3px 8px',fontSize:11,fontWeight:700,cursor:'pointer',flexShrink:0}}>🗑</button>}
+                      </div>
                       <div style={{fontSize:12,color:'#64748B',marginTop:3}}>Code : {r.articleCode} · {r.rayon}{r.famille?' · '+r.famille:''}</div>
                       <div style={{display:'flex',gap:6,marginTop:6,flexWrap:'wrap'}}>
                         <span style={{background:TYPE_COLOR[r.type]||'#F1F5F9',color:TYPE_TEXT[r.type]||'#475569',fontSize:11,fontWeight:700,padding:'3px 9px',borderRadius:6}}>{RECL_TYPES[r.type]||r.type}</span>
