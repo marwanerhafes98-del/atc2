@@ -178,6 +178,8 @@ function LoginView({ onLogin }) {
       if (!user) { setErr('Identifiant ou mot de passe incorrect.'); setBusy(false); return; }
       const sess = { id: user.id, name: user.name, login: user.login, zone: user.zone };
       localStorage.setItem('ptg_resv_sess', JSON.stringify(sess));
+      /* log session pour suivi activité manager */
+      db.ref('ptg/sessions/' + user.id).update({ id: user.id, nom: user.name, login: user.login, zone: user.zone, lastSeen: Date.now() }).catch(()=>{});
       onLogin(sess);
     } catch { setErr('Erreur de connexion.'); }
     setBusy(false);
@@ -213,8 +215,35 @@ function ArticleCard({ cible, rev, value, stock, onChange }) {
   const isDone = num !== null && num > 0;
   const pct  = cible.ciblePalettes > 0 && num !== null ? Math.min(num / cible.ciblePalettes * 100, 100) : 0;
 
-  const dec = () => onChange(Math.max(0, (num || 0) - 1));
-  const inc = () => onChange((num || 0) + 1);
+  /* état local pour saisie décimale sans reset React */
+  const [focused, setFocused] = React.useState(false);
+  const [rawStr,  setRawStr]  = React.useState('');
+
+  const dec = () => { setFocused(false); onChange(Math.max(0, (num || 0) - 1)); };
+  const inc = () => { setFocused(false); onChange((num || 0) + 1); };
+
+  const handleFocus = (e) => {
+    const cur = num !== null ? String(num).replace('.', ',') : '';
+    setRawStr(cur);
+    setFocused(true);
+    setTimeout(() => e.target.select(), 0);
+  };
+  const handleChange = (e) => {
+    const raw = e.target.value;
+    setRawStr(raw);
+    const v = raw.replace(',', '.');
+    if (v === '') { onChange(0); return; }
+    const n = parseFloat(v);
+    if (!isNaN(n) && n >= 0) onChange(n);
+  };
+  const handleBlur = () => {
+    setFocused(false);
+    const v = rawStr.replace(',', '.');
+    const n = parseFloat(v);
+    onChange(isNaN(n) || n < 0 ? 0 : n);
+  };
+
+  const displayVal = focused ? rawStr : (num !== null ? String(num).replace('.', ',') : '');
 
   return (
     <div className={'art-card' + (isDone && !isOver ? ' reserved' : '') + (isOver ? ' over' : '')}>
@@ -255,21 +284,10 @@ function ArticleCard({ cible, rev, value, stock, onChange }) {
             <button className="counter-btn" onClick={dec} type="button" aria-label="Moins">−</button>
             <input
               type="text" inputMode="decimal" pattern="[0-9]*[.,]?[0-9]*"
-              value={num !== null ? String(num).replace('.',',') : ''}
-              onChange={e => {
-                const v = e.target.value.replace(',', '.');
-                if (v === '' || v === '.') { onChange(0); return; }
-                if (/^\d*\.$/.test(v)) return; /* en cours de saisie décimale */
-                const n = parseFloat(v);
-                if (!isNaN(n) && n >= 0) onChange(n);
-              }}
-              onBlur={e => {
-                /* normalise à la sortie du champ */
-                const v = e.target.value.replace(',', '.');
-                const n = parseFloat(v);
-                onChange(isNaN(n) || n < 0 ? 0 : n);
-              }}
-              onFocus={e => e.target.select()}
+              value={displayVal}
+              onChange={handleChange}
+              onBlur={handleBlur}
+              onFocus={handleFocus}
               className={'counter-val' + (isOver?' over':isDone?' done':'')}
               style={{width:54,textAlign:'center',border:'none',outline:'none',background:'transparent',fontWeight:800}}
             />

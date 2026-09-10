@@ -6882,6 +6882,7 @@ function ReservationsView() {
   const [userMsg, setUserMsg]           = useState('');
   /* magasins DB */
   const [magasinsDB,   setMagasinsDB]   = useState({});
+  const [sessions,     setSessions]     = useState([]);
   const [subTab,       setSubTab]       = useState('chefs');
   const [magForm,      setMagForm]      = useState({ code:'', nom:'' });
   const [showMagForm,  setShowMagForm]  = useState(false);
@@ -6925,7 +6926,9 @@ function ReservationsView() {
     });
     const r6 = db.ref('ptg/magasins');
     const h6 = r6.on('value', s => setMagasinsDB(s.val() || {}));
-    return () => { r1.off('value',h1); r2.off('value',h2); r3.off('value',h3); r4.off('value',h4); r5.off('value',h5); r6.off('value',h6); };
+    const r7 = db.ref('ptg/sessions');
+    const h7 = r7.on('value', s => setSessions(s.val() ? Object.values(s.val()) : []));
+    return () => { r1.off('value',h1); r2.off('value',h2); r3.off('value',h3); r4.off('value',h4); r5.off('value',h5); r6.off('value',h6); r7.off('value',h7); };
   }, []);
 
   /* derived */
@@ -7432,6 +7435,7 @@ function ReservationsView() {
         <button style={tabStyle('assortiment')} onClick={()=>setTab('assortiment')}>🗂 Assortiment ({assortiment.length})</button>
         <button style={tabStyle('comptes')}     onClick={()=>setTab('comptes')}>👤 Comptes chefs</button>
         <button style={tabStyle('magasins')}    onClick={()=>setTab('magasins')}>🏪 Magasins</button>
+        <button style={tabStyle('activite')}    onClick={()=>setTab('activite')}>📈 Activité chefs</button>
       </div>
 
       {/* ══ SUIVI TAB ══ */}
@@ -7943,6 +7947,225 @@ function ReservationsView() {
           </div>
         </div>
       )}
+      {/* ══ ACTIVITÉ CHEFS TAB ══ */}
+      {tab === 'activite' && (()=>{
+        /* semaine en cours : lundi → aujourd'hui */
+        const now     = new Date();
+        const todayMs = now.getTime();
+        const dowIdx  = now.getDay() === 0 ? 6 : now.getDay() - 1; /* 0=lun */
+        const mondayMs = todayMs - dowIdx * 86400000;
+        const mondayISO = new Date(mondayMs).toISOString().slice(0,10);
+        const todayISO  = now.toISOString().slice(0,10);
+        const fmtDate = (ms) => {
+          if (!ms) return '—';
+          const d = new Date(ms);
+          return d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' ' + d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+        };
+        const joursInactif = (ms) => {
+          if (!ms) return 999;
+          return Math.floor((todayMs - ms) / 86400000);
+        };
+        const statutBadge = (ms) => {
+          const j = joursInactif(ms);
+          if (j === 0)       return { label:'Actif aujourd\'hui', bg:'#DCFCE7', color:'#15803D', border:'#86EFAC' };
+          if (j <= 2)        return { label:`Actif (il y a ${j}j)`, bg:'#D1FAE5', color:'#065F46', border:'#6EE7B7' };
+          if (j <= 7)        return { label:`${j} jours inactif`, bg:'#FEF3C7', color:'#92400E', border:'#FCD34D' };
+          if (j <= 30)       return { label:`${j} jours inactif`, bg:'#FEE2E2', color:'#991B1B', border:'#FCA5A5' };
+          return               { label:'Jamais connecté', bg:'#F1F5F9', color:'#64748B', border:'#CBD5E1' };
+        };
+
+        /* réservations cette semaine par chef (userName + zone) */
+        const weekRevs = reservations.filter(r => r.date >= mondayISO && r.date <= todayISO);
+        const weekByChef = {};
+        weekRevs.forEach(r => {
+          const k = (r.userId || r.userName || '') + '___' + (r.zone || '');
+          if (!weekByChef[k]) weekByChef[k] = { arts:0, palettes:0 };
+          if (Number(r.palettes) > 0) { weekByChef[k].arts++; weekByChef[k].palettes += Number(r.palettes)||0; }
+        });
+
+        /* construire la liste chefs depuis users + sessions */
+        const chefRows = users.map(u => {
+          const sess = sessions.find(s => s.id === u.id || s.login === u.login);
+          const lastSeen = sess ? sess.lastSeen : null;
+          const j = joursInactif(lastSeen);
+          const k = (u.id || '') + '___' + (u.zone || '');
+          const wk = weekByChef[k] || { arts:0, palettes:0 };
+          return { ...u, lastSeen, joursInactif: j, weekArts: wk.arts, weekPalettes: wk.palettes };
+        }).sort((a,b) => a.joursInactif - b.joursInactif);
+
+        /* grouper par magasin */
+        const byMag = {};
+        chefRows.forEach(r => {
+          const z = r.zone || 'Non assigné';
+          if (!byMag[z]) byMag[z] = [];
+          byMag[z].push(r);
+        });
+        const sortedMags = Object.keys(byMag).sort();
+
+        const exportRapport = () => {
+          if (typeof XLSX === 'undefined') { alert('Librairie Excel non chargée.'); return; }
+          const aoa = [];
+          /* titre */
+          aoa.push([`RAPPORT HEBDOMADAIRE ACTIVITÉ CHEFS — Semaine du ${new Date(mondayMs).toLocaleDateString('fr-FR')} au ${now.toLocaleDateString('fr-FR')}`]);
+          aoa.push([`Généré le ${now.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} à ${now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}`]);
+          aoa.push([]);
+          const HDR = ['Magasin','Chef département','Login','Dernière connexion','Jours inactif','Statut','Articles réservés (semaine)','Total palettes (semaine)'];
+          aoa.push(HDR);
+          sortedMags.forEach(mag => {
+            byMag[mag].forEach(r => {
+              const s = statutBadge(r.lastSeen);
+              aoa.push([
+                mag,
+                r.name || r.nom || '',
+                r.login || '',
+                r.lastSeen ? fmtDate(r.lastSeen) : 'Jamais',
+                r.joursInactif >= 999 ? 'N/A' : r.joursInactif,
+                s.label,
+                r.weekArts,
+                r.weekPalettes % 1 === 0 ? r.weekPalettes : String(r.weekPalettes).replace('.',','),
+              ]);
+            });
+            aoa.push([]);
+          });
+
+          const ws = XLSX.utils.aoa_to_sheet(aoa);
+          /* styles */
+          const titleStyle = { font:{ bold:true, sz:13, color:{rgb:'FFFFFF'} }, fill:{fgColor:{rgb:'0052CC'}}, alignment:{horizontal:'center'} };
+          const hdrStyle   = { font:{ bold:true, sz:10, color:{rgb:'FFFFFF'} }, fill:{fgColor:{rgb:'1E3A5F'}}, alignment:{horizontal:'center'} };
+          const subtitleStyle = { font:{ italic:true, sz:10, color:{rgb:'64748B'} }, fill:{fgColor:{rgb:'F8FAFC'}} };
+          const cellA1 = ws['A1']; if (cellA1) cellA1.s = titleStyle;
+          const cellA2 = ws['A2']; if (cellA2) cellA2.s = subtitleStyle;
+          const hdrRow = 4;
+          HDR.forEach((_,i) => {
+            const ref = XLSX.utils.encode_cell({ r: hdrRow-1, c: i });
+            if (ws[ref]) ws[ref].s = hdrStyle;
+          });
+          /* largeurs colonnes */
+          ws['!cols'] = [22,24,14,22,14,20,24,20].map(w=>({wch:w}));
+          /* merge titre */
+          ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:7} }, { s:{r:1,c:0}, e:{r:1,c:7} }];
+
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, 'Activité chefs');
+          XLSX.writeFile(wb, `rapport_chefs_semaine_${mondayISO}.xlsx`);
+        };
+
+        return (
+          <div>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20,flexWrap:'wrap',gap:12}}>
+              <div>
+                <div style={{fontSize:17,fontWeight:800,color:'#1E293B'}}>Activité des chefs département</div>
+                <div style={{fontSize:13,color:'#64748B',marginTop:2}}>
+                  Suivi des connexions et réservations · Semaine du <strong>{new Date(mondayMs).toLocaleDateString('fr-FR',{day:'numeric',month:'long'})}</strong> au <strong>{now.toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})}</strong>
+                </div>
+              </div>
+              <button onClick={exportRapport}
+                style={{padding:'10px 20px',background:'#16A34A',color:'#fff',border:'none',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer',boxShadow:'0 2px 8px rgba(22,163,74,.3)',display:'flex',alignItems:'center',gap:8}}>
+                📥 Exporter rapport semaine
+              </button>
+            </div>
+
+            {/* KPI cards */}
+            {(()=>{
+              const total    = chefRows.length;
+              const actifs   = chefRows.filter(r => r.joursInactif <= 2).length;
+              const inactifs = chefRows.filter(r => r.joursInactif > 7).length;
+              const semaine  = chefRows.filter(r => r.weekArts > 0).length;
+              return (
+                <div style={{display:'flex',gap:12,marginBottom:24,flexWrap:'wrap'}}>
+                  {[
+                    { label:'Total chefs',         val:total,    icon:'👤', bg:'#EFF6FF', ic:'#2563EB', c:'#1D4ED8' },
+                    { label:'Actifs (0–2 jours)',  val:actifs,   icon:'✅', bg:'#DCFCE7', ic:'#16A34A', c:'#15803D' },
+                    { label:'Inactifs (>7 jours)', val:inactifs, icon:'⚠️', bg:'#FEE2E2', ic:'#DC2626', c:'#991B1B' },
+                    { label:'Réservé cette semaine',val:semaine, icon:'📦', bg:'#F5F3FF', ic:'#7C3AED', c:'#6D28D9' },
+                  ].map(k => (
+                    <div key={k.label} style={{flex:'1 1 160px',minWidth:140,background:k.bg,borderRadius:12,padding:'16px 20px',border:`1px solid ${k.bg}`}}>
+                      <div style={{fontSize:22}}>{k.icon}</div>
+                      <div style={{fontSize:26,fontWeight:800,color:k.c,marginTop:4}}>{k.val}</div>
+                      <div style={{fontSize:12,fontWeight:600,color:k.c,opacity:.8,marginTop:2}}>{k.label}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* tables par magasin */}
+            {sortedMags.map(mag => (
+              <div key={mag} style={{marginBottom:24,background:'#fff',border:'1px solid #E2E8F0',borderRadius:14,overflow:'hidden',boxShadow:'0 1px 4px rgba(0,0,0,.06)'}}>
+                <div style={{padding:'14px 20px',background:'linear-gradient(135deg,#0052CC,#1D6FE8)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                  <div style={{fontWeight:800,fontSize:15,color:'#fff'}}>🏪 {mag}</div>
+                  <div style={{fontSize:12,color:'rgba(255,255,255,.75)',fontWeight:600}}>
+                    {byMag[mag].length} chef{byMag[mag].length>1?'s':''} · {byMag[mag].filter(r=>r.weekArts>0).length} actif{byMag[mag].filter(r=>r.weekArts>0).length>1?'s':''} cette semaine
+                  </div>
+                </div>
+                <table style={{width:'100%',borderCollapse:'collapse'}}>
+                  <thead>
+                    <tr style={{background:'#F8FAFC',borderBottom:'2px solid #E2E8F0'}}>
+                      {['Chef département','Dernière connexion','Jours inactif','Statut','Articles (semaine)','Palettes (semaine)'].map(h=>(
+                        <th key={h} style={{padding:'10px 16px',fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:.6,color:'#64748B',textAlign:'left'}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {byMag[mag].map((r,i) => {
+                      const s = statutBadge(r.lastSeen);
+                      const j = r.joursInactif;
+                      return (
+                        <tr key={r.id||i} style={{borderBottom:'1px solid #F1F5F9',background:i%2===0?'#fff':'#FAFBFC'}}>
+                          <td style={{padding:'12px 16px'}}>
+                            <div style={{fontWeight:700,fontSize:13,color:'#1E293B'}}>{r.name || r.nom || '—'}</div>
+                            <div style={{fontSize:11,color:'#94A3B8',marginTop:1}}>{r.login || ''}</div>
+                          </td>
+                          <td style={{padding:'12px 16px',fontSize:12,color:'#334155'}}>
+                            {r.lastSeen ? (
+                              <div>
+                                <div style={{fontWeight:600}}>{new Date(r.lastSeen).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'})}</div>
+                                <div style={{fontSize:11,color:'#94A3B8'}}>{new Date(r.lastSeen).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</div>
+                              </div>
+                            ) : <span style={{color:'#CBD5E1',fontStyle:'italic'}}>Jamais connecté</span>}
+                          </td>
+                          <td style={{padding:'12px 16px',textAlign:'center'}}>
+                            {j < 999 ? (
+                              <span style={{fontWeight:800,fontSize:18,color: j===0?'#16A34A': j<=2?'#059669': j<=7?'#D97706':'#DC2626'}}>
+                                {j === 0 ? '0' : j}
+                              </span>
+                            ) : <span style={{color:'#CBD5E1',fontSize:12}}>N/A</span>}
+                          </td>
+                          <td style={{padding:'12px 16px'}}>
+                            <span style={{display:'inline-block',padding:'4px 10px',borderRadius:99,fontSize:11,fontWeight:700,background:s.bg,color:s.color,border:`1px solid ${s.border}`}}>
+                              {s.label}
+                            </span>
+                          </td>
+                          <td style={{padding:'12px 16px',textAlign:'center'}}>
+                            <span style={{fontWeight:800,fontSize:15,color: r.weekArts>0?'#7C3AED':'#CBD5E1'}}>{r.weekArts}</span>
+                          </td>
+                          <td style={{padding:'12px 16px',textAlign:'center'}}>
+                            <span style={{fontWeight:800,fontSize:15,color: r.weekPalettes>0?'#0052CC':'#CBD5E1'}}>
+                              {r.weekPalettes > 0 ? (r.weekPalettes%1===0 ? r.weekPalettes : String(r.weekPalettes).replace('.',',')) : '—'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+
+            {chefRows.length === 0 && (
+              <div style={{textAlign:'center',padding:'60px 24px',color:'#94A3B8'}}>
+                <div style={{fontSize:40,marginBottom:12}}>📊</div>
+                <div style={{fontSize:16,fontWeight:700,color:'#334155',marginBottom:6}}>Aucun chef à afficher</div>
+                <div style={{fontSize:13}}>Créez des comptes chefs dans l'onglet "Comptes chefs".</div>
+              </div>
+            )}
+
+            <div style={{marginTop:16,padding:'14px 16px',background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:10,fontSize:13,color:'#1D4ED8'}}>
+              ℹ️ <strong>Note :</strong> la "dernière connexion" est enregistrée à chaque ouverture de session sur l'outil de réservation téléphone. Le rapport Excel inclut tous les magasins avec le récapitulatif de la semaine en cours.
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
