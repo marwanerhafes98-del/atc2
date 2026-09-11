@@ -2107,6 +2107,12 @@ function App() {
   );
 }
 
+/* proxy images externes via wsrv.nl (postimg.cc bloque mobile) */
+function imgProxy(url) {
+  if (!url) return url;
+  return 'https://wsrv.nl/?url=' + encodeURIComponent(url);
+}
+
 /* ══ RÉCLAMATION ══════════════════════════════════════ */
 function ReclField({ label, type='text', value, onChange, placeholder='' }) {
   return (
@@ -2125,7 +2131,7 @@ function ReclHistCard({ r, typeLabels }) {
   return (
     <div style={{background:'white',border:'1.5px solid #E2E8F0',borderRadius:12,padding:'14px',marginBottom:12,boxShadow:'0 1px 4px rgba(0,0,0,.05)'}}>
       <div style={{display:'flex',gap:10,marginBottom:8}}>
-        {r.articlePhoto && <img src={r.articlePhoto} style={{width:44,height:44,objectFit:'contain',borderRadius:8,background:'#F8FAFC',flexShrink:0}} onError={e=>e.target.style.display='none'}/>}
+        {r.articlePhoto && <img src={r.articlePhoto} referrerPolicy="no-referrer" style={{width:44,height:44,objectFit:'contain',borderRadius:8,background:'#F8FAFC',flexShrink:0}} onError={e=>{if(!e.target.dataset.p){e.target.dataset.p='1';e.target.src=imgProxy(r.articlePhoto);}else{e.target.style.display='none';}}}/>}
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:13,fontWeight:800,color:'#1E293B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.articleLibelle}</div>
           <div style={{fontSize:11,color:'#94A3B8',marginTop:2}}>{r.articleCode} · {r.rayon}</div>
@@ -2288,7 +2294,7 @@ function ReclamationView({ user }) {
             <label style={{display:'block',fontSize:11,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:.5,marginBottom:6}}>Article</label>
             {article ? (
               <div style={{display:'flex',gap:12,alignItems:'center',background:'#EFF6FF',borderRadius:10,padding:'10px 14px',border:'1.5px solid #BAE6FD'}}>
-                {(article.photoUrl||article.photo) && <img src={article.photoUrl||article.photo} style={{width:52,height:52,objectFit:'contain',borderRadius:8,background:'white',flexShrink:0}} onError={e=>e.target.style.display='none'}/>}
+                {(article.photoUrl||article.photo) && <img src={article.photoUrl||article.photo} referrerPolicy="no-referrer" style={{width:52,height:52,objectFit:'contain',borderRadius:8,background:'white',flexShrink:0}} onError={e=>{const u=article.photoUrl||article.photo;if(!e.target.dataset.p){e.target.dataset.p='1';e.target.src=imgProxy(u);}else{e.target.style.display='none';}}}/>}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:14,fontWeight:800,color:'#0C4A6E'}}>{article.libelle}</div>
                   <div style={{fontSize:12,color:'#0369A1',marginTop:2}}>{article.codeInterne||article.id} · {article.rayon}{article.famille?' · '+article.famille:''}</div>
@@ -2320,7 +2326,7 @@ function ReclamationView({ user }) {
                       onMouseEnter={e=>e.currentTarget.style.background='#F0F9FF'}
                       onMouseLeave={e=>e.currentTarget.style.background='white'}>
                       {(a.photoUrl||a.photo)
-                        ? <img src={a.photoUrl||a.photo} style={{width:40,height:40,objectFit:'contain',borderRadius:6,background:'#F8FAFC',flexShrink:0}} onError={e=>e.target.style.display='none'}/>
+                        ? <img src={a.photoUrl||a.photo} referrerPolicy="no-referrer" style={{width:40,height:40,objectFit:'contain',borderRadius:6,background:'#F8FAFC',flexShrink:0}} onError={e=>{const u=a.photoUrl||a.photo;if(!e.target.dataset.p){e.target.dataset.p='1';e.target.src=imgProxy(u);}else{e.target.style.display='none';}}}/>
                         : <div style={{width:40,height:40,borderRadius:6,background:'#F1F5F9',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>📦</div>}
                       <div>
                         <div style={{fontSize:13,fontWeight:700,color:'#1E293B'}}>{a.libelle}</div>
