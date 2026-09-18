@@ -1818,9 +1818,9 @@ function App() {
       setGpsStatus('unavailable');
     }
 
-    // Écoute Firebase pour les changements d'animateurs (réaffectations manager)
+    // Chargement unique des animateurs (réaffectations rares → actualiser si besoin)
     const animRef = db.ref('ptg/animateurs');
-    const animHandler = animRef.on('value', snap => {
+    animRef.once('value', snap => {
       if (!snap.exists()) return;
       const newBase = Object.values(snap.val()).sort((a, b) => a.id - b.id);
       setAnimateurs(prev => {
@@ -1837,11 +1837,10 @@ function App() {
       nextId.current = (numIds.length > 0 ? Math.max(...numIds, 124) : 124) + 1;
     });
 
-    // Écoute Firebase en temps réel pour restaurer/sync les pointages du jour
-    const ref = db.ref('ptg/pointages');
-    const handler = ref.on('value', snap => {
+    // Chargement unique des pointages du jour pour restaurer l'état
+    db.ref('ptg/pointages').once('value', snap => {
       try {
-        const todayStr = new Date().toDateString(); // recalculated each time so overnight stays work
+        const todayStr = new Date().toDateString();
         const raw = snap.exists() ? snap.val() : {};
         const all = Object.values(raw || {}).filter(p => p && typeof p === 'object');
         const mine = all.filter(p => p.teamLeadEmail === user.email && p.date === todayStr);
@@ -1857,13 +1856,11 @@ function App() {
       } catch (e) { /* ignore parse errors */ }
     });
 
-    const sectRef = db.ref('ptg/secteurs');
-    const sectHandler = sectRef.on('value', snap => {
+    db.ref('ptg/secteurs').once('value', snap => {
       setSecteurs(snap.exists() ? Object.values(snap.val()).filter(Boolean) : []);
     });
 
-    const villeRef = db.ref('ptg/villes');
-    const villeHandler = villeRef.on('value', snap => {
+    db.ref('ptg/villes').once('value', snap => {
       setVillesDB(snap.exists() ? Object.values(snap.val()).filter(Boolean).sort((a,b)=>(a.name||'').localeCompare(b.name||'')) : []);
     });
 
@@ -1873,10 +1870,6 @@ function App() {
     return () => {
       if (watchIdRef.current !== null) { navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null; }
       accRef.off('value', accHandler);
-      animRef.off('value', animHandler);
-      ref.off('value', handler);
-      sectRef.off('value', sectHandler);
-      villeRef.off('value', villeHandler);
       clearInterval(ping);
       window.removeEventListener('beforeunload', onUnload);
     };
@@ -2175,8 +2168,7 @@ function ReclamationView({ user }) {
 
   React.useEffect(() => {
     db.ref('ptg/assortiment').once('value').then(s => setAssort(s.val() ? Object.values(s.val()) : []));
-    const ref = db.ref('ptg/reclamations');
-    const h   = ref.on('value', s => {
+    db.ref('ptg/reclamations').once('value', s => {
       if (!s.val()) { setRecls([]); return; }
       const all = Object.values(s.val());
       setRecls(all.filter(r => r.teamLeadEmail === user.email)
@@ -2189,7 +2181,7 @@ function ReclamationView({ user }) {
           db.ref('ptg/reclamations/' + r.id + '/photoBase64').remove().catch(()=>{});
       });
     });
-    return () => ref.off('value', h);
+    return () => {};
   }, [user.email]);
 
   const TYPES = [
@@ -2251,7 +2243,7 @@ function ReclamationView({ user }) {
     setBusy(true); setMsg('');
     const id = 'rec_' + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
     const today = new Date().toISOString().split('T')[0];
-    await db.ref('ptg/reclamations/' + id).set({
+    const newRecl = {
       id, type,
       articleCode:    article.codeInterne || article.id || '',
       articleLibelle: article.libelle || '',
@@ -2270,7 +2262,9 @@ function ReclamationView({ user }) {
       ...form,
       ...(type==='designation' ? { designationActuelle: article.libelle || '' } : {}),
       ...(type==='photo' ? { photoBase64: photoB64 } : {}),
-    });
+    };
+    await db.ref('ptg/reclamations/' + id).set(newRecl);
+    setRecls(prev => [newRecl, ...prev]);
     setBusy(false);
     setMsg('✅ Réclamation envoyée !');
     setArticle(null); setSearch(''); setType(''); setForm({}); setPhotoB64('');
