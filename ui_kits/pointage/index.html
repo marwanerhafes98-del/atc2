@@ -1294,14 +1294,13 @@ function KpiView({ animateurs, userEmail }) {
   useEffect(() => {
     if (subView === 'today') return;
     setLoading(true);
-    const ref = db.ref('ptg/pointages');
-    const handler = ref.on('value', snap => {
+    db.ref('ptg/pointages').once('value', snap => {
       if (!snap.exists()) { setPtgs([]); setLoading(false); return; }
       const all = Object.values(snap.val() || {}).filter(p => p && p.teamLeadEmail === userEmail);
       setPtgs(all);
       setLoading(false);
     });
-    return () => ref.off('value', handler);
+    return () => {};
   }, [subView, userEmail]);
 
   const days = React.useMemo(() => {
@@ -1603,8 +1602,8 @@ function HistoryView({ userEmail }) {
       setError('Erreur de connexion Firebase. Vérifiez les règles de sécurité.');
       setLoading(false);
     };
-    ref.on('value', onSuccess, onError);
-    return () => ref.off('value', onSuccess);
+    ref.once('value', onSuccess, onError);
+    return () => {};
   }, [userEmail]);
 
   if (loading) return (
